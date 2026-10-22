@@ -1,0 +1,27 @@
+[workspace]
+resolver = "3"
+members = [
+  "crates/authkit-core",
+  "crates/authkit-store",
+  "crates/authkit-server",
+  "crates/authkit-worker",
+]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.98"
+publish = false
+repository = "https://github.com/oio-systems/authkit"
+authors = ["AuthKit contributors"]
+
+[workspace.dependencies]
+authkit-core = { path = "crates/authkit-core" }
+authkit-store = { path = "crates/authkit-store" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
