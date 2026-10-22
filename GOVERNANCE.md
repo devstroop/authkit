@@ -12,7 +12,7 @@ The current maintainer list is provisional:
 
 | Maintainer | Areas | Status |
 | --- | --- | --- |
-| [@devstroop](https://github.com/devstroop) | Bootstrap maintainer for all areas; release and security contact | Placeholder until the initial team is confirmed |
+| [@akashshah-dev](https://github.com/akashshah-dev) | Bootstrap maintainer for all areas; release and security contact | Placeholder until the initial team is confirmed |
 
 The bootstrap maintainer is also the placeholder code owner listed in `CODEOWNERS`. Before public launch, the project must name either a second maintainer or an independent advisor so that no single person is the only reviewer for security-sensitive work and the only handler for conduct reports. Contact addresses in [SECURITY.md](SECURITY.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) are placeholders until confirmed.
 
@@ -138,7 +138,7 @@ The following items are open and must be resolved before public launch:
 
 - select and add the project license;
 - complete naming and trademark review, including the relationship to WorkOS AuthKit, before publishing packages or promoting the name;
-- confirm `security@devstroop.com` and `conduct@devstroop.com`, and enable GitHub private vulnerability reporting;
+- confirm `security@akashshah-dev.com` and `conduct@akashshah-dev.com`, and enable GitHub private vulnerability reporting;
 - name a second maintainer or independent advisor for conduct and security review;
 - publish a support and release policy;
 - enable and verify branch protection, required checks, and repository access controls;

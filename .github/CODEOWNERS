@@ -1,16 +1,16 @@
 # Default owner. Replace with a maintainer team before public launch.
-* @devstroop
+* @akashshah-dev
 
 # Governance and repository process
-/.github/ @devstroop
+/.github/ @akashshah-dev
 
 # Security-sensitive paths and policies
-/SECURITY.md @devstroop
-/GOVERNANCE.md @devstroop
-/CODE_OF_CONDUCT.md @devstroop
-/crates/authkit-core/ @devstroop
-/crates/authkit-store/ @devstroop
-/crates/authkit-server/ @devstroop
-/crates/authkit-worker/ @devstroop
-/migrations/ @devstroop
-/scripts/ @devstroop
+/SECURITY.md @akashshah-dev
+/GOVERNANCE.md @akashshah-dev
+/CODE_OF_CONDUCT.md @akashshah-dev
+/crates/authkit-core/ @akashshah-dev
+/crates/authkit-store/ @akashshah-dev
+/crates/authkit-server/ @akashshah-dev
+/crates/authkit-worker/ @akashshah-dev
+/migrations/ @akashshah-dev
+/scripts/ @akashshah-dev
