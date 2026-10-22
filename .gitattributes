@@ -1,0 +1,38 @@
+* text=auto eol=lf
+
+*.rs text eol=lf
+*.toml text eol=lf
+*.md text eol=lf
+*.sql text eol=lf
+*.sh text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.jsonc text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.js text eol=lf
+
+Cargo.lock text eol=lf
+package-lock.json text eol=lf
+pnpm-lock.yaml text eol=lf
+yarn.lock text eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.avif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.db binary
+*.sqlite binary
+*.sqlite3 binary

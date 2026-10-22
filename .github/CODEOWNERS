@@ -1,0 +1,16 @@
+# Default owner. Replace with a maintainer team before public launch.
+* @devstroop
+
+# Governance and repository process
+/.github/ @devstroop
+
+# Security-sensitive paths and policies
+/SECURITY.md @devstroop
+/GOVERNANCE.md @devstroop
+/CODE_OF_CONDUCT.md @devstroop
+/crates/authkit-core/ @devstroop
+/crates/authkit-store/ @devstroop
+/crates/authkit-server/ @devstroop
+/crates/authkit-worker/ @devstroop
+/migrations/ @devstroop
+/scripts/ @devstroop

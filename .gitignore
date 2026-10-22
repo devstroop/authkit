@@ -1,0 +1,73 @@
+# Rust build output and shared cache symlinks
+/target
+**/*.rs.bk
+*.pdb
+*.profraw
+*.profdata
+
+# Node dependencies, build output, and shared cache symlinks
+/node_modules
+/dist
+/.npm
+.turbo/
+.parcel-cache/
+.eslintcache
+*.tsbuildinfo
+
+# Lockfiles are intentionally tracked: Cargo.lock, package-lock.json,
+# pnpm-lock.yaml, yarn.lock, and bun.lockb must not be ignored.
+
+# Local databases and data directories
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite-journal
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite3
+*.sqlite3-journal
+*.sqlite3-shm
+*.sqlite3-wal
+/data/
+/sqlite-data/
+
+# Environment and local secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+/secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Test and coverage output
+/coverage/
+/tarpaulin-report.*
+/lcov.info
+/test-results/
+/playwright-report/
+/blob-report/
+*.log
+/logs/
+
+# Local caches and temporary files
+.cache/
+/tmp/
+
+# Editors and operating systems
+.DS_Store
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+*~
+.fleet/
