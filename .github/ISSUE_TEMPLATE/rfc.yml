@@ -1,0 +1,61 @@
+name: RFC
+description: Propose a significant or hard-to-reverse decision.
+title: "rfc: "
+labels: ["type/rfc", "status/discussion"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use an RFC for public API, configuration, data model, security, storage,
+        runtime, governance, licensing, or naming changes. The process is defined in
+        [GOVERNANCE.md](../../GOVERNANCE.md#rfc-and-adr-process).
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What problem or constraint forces a decision? Link related issues, ADRs, and code.
+    validations:
+      required: true
+  - type: textarea
+    id: options
+    attributes:
+      label: Options
+      description: List the realistic options with tradeoffs. Include "do nothing" where relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: Which option do you recommend, and why?
+    validations:
+      required: true
+  - type: textarea
+    id: security
+    attributes:
+      label: Security and privacy impact
+      description: Trust boundaries, abuse cases, failure behavior, and data handling.
+    validations:
+      required: true
+  - type: textarea
+    id: operations
+    attributes:
+      label: Operational and migration impact
+      description: Deployment, configuration, database, compatibility, and rollback.
+    validations:
+      required: true
+  - type: textarea
+    id: reversibility
+    attributes:
+      label: Reversibility
+      description: What would it cost to change this decision later?
+    validations:
+      required: true
+  - type: checklists
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues, RFCs, and ADRs.
+          required: true
+        - label: This RFC contains no secrets or vulnerability details.
+          required: true

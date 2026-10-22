@@ -1,0 +1,95 @@
+name: Bug report
+description: Report a reproducible defect in AuthKit.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Do not report security vulnerabilities here.** Follow [SECURITY.md](https://github.com/oio-systems/authkit/blob/develop/SECURITY.md) and report privately.
+
+        Redact credentials, tokens, personal data, and internal hostnames from logs and screenshots. Use disposable test data.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What went wrong, and what did you expect instead?
+      placeholder: A short description of the defect and its user-visible impact.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Provide the smallest reliable sequence. Include relevant commands, requests, or UI actions.
+      placeholder: |
+        1. Start with ...
+        2. Configure ...
+        3. Perform ...
+        4. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead? Include the exact error or incorrect state.
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Provide versions or commit identifiers and relevant deployment details.
+      placeholder: |
+        AuthKit version or commit:
+        Deployment: self-hosted Axum / Cloudflare Workers / other
+        Database: SQLite / PostgreSQL / other
+        Rust version:
+        Operating system:
+        Browser, if UI-related:
+        Reverse proxy or platform, if relevant:
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Paste only redacted output. Do not include secrets, session tokens, or personal data.
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Related issues, recent changes, frequency, workarounds, or anything else that helps reproduce the problem.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues for the same problem.
+          required: true
+        - label: I am reporting a security vulnerability privately rather than in this public issue.
+          required: true
+        - label: I have removed secrets and personal data from this report.
+          required: true

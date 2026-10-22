@@ -1,0 +1,87 @@
+name: Feature request
+description: Propose a new capability or a bounded improvement to AuthKit.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. Describe the problem first, then the proposed solution.
+
+        Do not include secrets, personal data, or security vulnerability details. Report vulnerabilities privately according to [SECURITY.md](https://github.com/oio-systems/authkit/blob/develop/SECURITY.md).
+
+        Changes that affect architecture, public interfaces, the data model, security, or infrastructure may require an RFC. See the RFC template and [GOVERNANCE.md](https://github.com/oio-systems/authkit/blob/develop/GOVERNANCE.md).
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or motivation
+      description: What problem are you trying to solve? Who is affected, and why does the current behavior fall short?
+      placeholder: Describe the use case, not only the preferred implementation.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What should AuthKit do? Include expected behavior, interfaces, and configuration where relevant.
+      placeholder: Describe the smallest coherent change that solves the problem.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What other approaches did you consider, and why are they less suitable?
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of AuthKit does this affect?
+      multiple: true
+      options:
+        - Authentication and account lifecycle
+        - Sessions and tokens
+        - Authorization and tenancy
+        - UI, templates, and accessibility
+        - Storage and migrations
+        - Deployment and configuration
+        - Developer experience and tooling
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: security
+    attributes:
+      label: Security and privacy considerations
+      description: Describe any effect on credentials, sessions, data exposure, abuse cases, or trust boundaries. If this could be a vulnerability, stop and report it privately.
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Links, prior art, mockups, related issues or RFCs, and any compatibility or migration concerns.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and RFCs before opening this request.
+          required: true
+        - label: This is not a security vulnerability, and I have not included sensitive data.
+          required: true
+        - label: I understand that a maintainer may ask for an RFC or decline the request.
+          required: true
