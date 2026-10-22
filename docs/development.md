@@ -1,6 +1,6 @@
 # Development Guide
 
-This guide covers local prerequisites, worktree setup, shared build caches, the proposed repository layout, configuration, and the checks expected once the workspace is scaffolded. AuthKit is still in documentation and planning, so some commands describe the intended toolchain rather than a working build. See the [project README](../README.md) for status and scope.
+This guide covers local prerequisites, worktree setup, shared build caches, the repository layout, configuration, and the checks expected from the workspace. AuthKit is still in planning and early scaffolding, so some commands describe the intended toolchain rather than a complete product. See the [project README](../README.md) for status and scope.
 
 For the contribution and review flow, read [CONTRIBUTING.md](../CONTRIBUTING.md) and [Workflow](workflow.md).
 
@@ -9,7 +9,7 @@ For the contribution and review flow, read [CONTRIBUTING.md](../CONTRIBUTING.md)
 The intended baseline for development is:
 
 - **Git** with worktree support.
-- **Rust stable** installed with [rustup](https://rustup.rs/), including the `rustfmt` and `clippy` components.
+- **Rust 1.98.0** installed with [rustup](https://rustup.rs/) as pinned by `rust-toolchain.toml`, including the `rustfmt` and `clippy` components.
 - **Node.js** (a current LTS release) and npm for Tailwind and other frontend tooling. The committed lockfile is authoritative once it exists.
 - **SQLx CLI** with SQLite and PostgreSQL support, installed with Cargo.
 - **SQLite** for the default local database.
@@ -103,7 +103,9 @@ Only force-push your own branch, and use `--force-with-lease`. Never force-push 
 
 ## Build and test expectations
 
-The workspace is not scaffolded yet. The intended local and CI checks are:
+The workspace is scaffolded with four crates and a pinned toolchain. The native server is a
+CLI scaffold; the HTTP server and persistence adapters are not implemented yet. The local
+and CI checks are:
 
 ```sh
 cargo build --workspace
@@ -116,6 +118,8 @@ cargo sqlx prepare --check --workspace
 Notes:
 
 - Run formatting and lint checks before opening a pull request. Fix warnings rather than suppressing them unless the suppression is narrow and explained.
+- Run `cargo run -p authkit-server -- --help` to verify the binary boundary after changing manifests or CLI arguments.
+- Documentation changes also run through `python3 scripts/check-docs.py`.
 - Unit tests should live beside the code they exercise. Cross-crate integration tests belong in the workspace test area.
 - Storage tests should cover both SQLite and PostgreSQL where behavior can differ. Use a disposable database, and never point tests at a database containing data you care about.
 - Use `SQLX_OFFLINE=true` to validate against committed query metadata. Run `cargo sqlx prepare --workspace` when queries change, and commit the resulting `.sqlx` metadata if the project adopts offline builds.
@@ -126,9 +130,9 @@ Once frontend tooling is scaffolded, the expected checks will include installing
 
 For the worker adapter, CI should eventually check the worker build separately from the native server build. Do not assume a native test result proves the worker target compiles or behaves correctly.
 
-## Repository layout proposal
+## Repository layout
 
-The workspace is planned to use a modular monolith layout:
+The workspace uses a modular monolith layout:
 
 ```text
 .
@@ -152,7 +156,7 @@ The workspace is planned to use a modular monolith layout:
 └── README.md
 ```
 
-This layout is a proposal. Changes to it should be recorded through the RFC/ADR process in [GOVERNANCE.md](../GOVERNANCE.md#rfc-and-adr-process) once the structure is settled.
+This layout is the current workspace structure. Changes to it should be recorded through the RFC/ADR process in [GOVERNANCE.md](../GOVERNANCE.md#rfc-and-adr-process).
 
 Keep dependency direction one-way: adapters may depend on the core, but the core must not depend on Axum, Askama, workers-rs, or SQLx. Storage and runtime concerns stay at the edges so both deployment targets can share domain behavior.
 
