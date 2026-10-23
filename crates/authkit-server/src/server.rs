@@ -7,8 +7,9 @@ use authkit_store::{SqlStore, StoreError};
 use tokio::net::TcpListener;
 use tracing::info;
 
-use crate::config::Config;
-use crate::http::{ReadinessProbe, SqlStoreReadiness, router};
+use crate::config::{Config, Environment};
+use crate::http::{ReadinessProbe, SqlStoreReadiness, router_with_sessions};
+use crate::session::{SessionService, SystemClock};
 use crate::signing::{KeyRing, KeyRingError, unix_now};
 
 /// A server startup, bind, or shutdown failure.
@@ -86,8 +87,20 @@ async fn serve_with_store(config: &Config, store: Arc<SqlStore>) -> Result<(), S
     .await
     .map_err(ServerError::Blocking)??;
     let keys = Arc::new(keys);
-    let readiness: Arc<dyn ReadinessProbe> = Arc::new(SqlStoreReadiness::new(store));
-    let app = router(readiness, keys, config.issuer().clone());
+    let readiness: Arc<dyn ReadinessProbe> = Arc::new(SqlStoreReadiness::new(store.clone()));
+    let sessions = Arc::new(SessionService::new(
+        store,
+        config.session().clone(),
+        config.environment(),
+        Arc::new(SystemClock),
+    ));
+    let app = router_with_sessions(
+        readiness,
+        keys,
+        config.issuer().clone(),
+        sessions,
+        config.environment() == Environment::Production,
+    );
     let listener = TcpListener::bind(config.bind_addr())
         .await
         .map_err(ServerError::Bind)?;

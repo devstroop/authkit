@@ -365,8 +365,8 @@ Recommended starting points, all configurable:
 | Access token | 5-15 minutes |
 | ID token | Same order as the access token |
 | Refresh token | Rotated every use; bounded family lifetime |
-| AuthKit session idle | 30 minutes for admin, longer for account UI |
-| AuthKit session absolute | 12 hours, or shorter for system admin |
+| AuthKit session idle | 15 minutes for admin; 30 minutes for account UI |
+| AuthKit session absolute | 8 hours for admin; 12 hours for account UI |
 | Clock skew allowance | 60 seconds |
 
 These are durations, not calendar deadlines. Deployments may tighten them. Do not extend

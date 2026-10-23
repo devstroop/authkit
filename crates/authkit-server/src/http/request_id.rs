@@ -12,7 +12,18 @@ use tracing::Instrument;
 const REQUEST_ID_HEADER: &str = "x-request-id";
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 
-pub(crate) async fn request_context(request: Request, next: Next) -> Response {
+/// A validated request identifier available to inner middleware and handlers.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RequestId(String);
+
+impl RequestId {
+    /// Returns the request identifier.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+pub(crate) async fn request_context(mut request: Request, next: Next) -> Response {
     let request_id = request
         .headers()
         .get(REQUEST_ID_HEADER)
@@ -20,6 +31,9 @@ pub(crate) async fn request_context(request: Request, next: Next) -> Response {
         .filter(|value| is_valid_request_id(value))
         .map(str::to_owned)
         .unwrap_or_else(generate_request_id);
+    request
+        .extensions_mut()
+        .insert(RequestId(request_id.clone()));
 
     let span = tracing::info_span!(
         "http.request",

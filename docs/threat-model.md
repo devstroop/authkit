@@ -493,8 +493,8 @@ pilot. They are not a substitute for independent review.
 | Decision | Why it matters | Current default until decided |
 | --- | --- | --- |
 | Final signing algorithm set | Client compatibility vs modern defaults | Ed25519 proposed; ES256 compatibility path |
-| Admin host and cookie names | Isolation and host-only cookie behavior | Same issuer host under `/admin`; `__Host-` names proposed |
-| Session idle/absolute lifetimes | Usability vs theft window | 12h/7d user; 15–30m/8h admin |
+| Admin host and cookie names | Isolation and host-only cookie behavior | Same issuer host under `/admin`; `__Host-authkit_session` and `__Host-authkit_admin_session` in production |
+| Session idle/absolute lifetimes | Usability vs theft window | 30m/12h user; 15m/8h admin |
 | Mandatory MFA scope | Security vs onboarding friction | System admins mandatory; org policy for others |
 | Password endpoints on Workers | Argon2 CPU/memory feasibility | Native origin preferred; Worker password auth pending |
 | Rate-limit state store | Bypass resistance and availability | Native shared store; Workers Durable Object/edge |

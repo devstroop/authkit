@@ -191,12 +191,18 @@ environment files are untracked.
 | `AUTHKIT_SIGNING_KEY_FILE` | Encrypted ES256 keyring file. Defaults to `authkit-signing-keys.json` in development; production requires an absolute path. Created with one active key on first start. Must not be group- or world-readable. |
 | `AUTHKIT_SIGNING_KEY_KEK` | Required 32-byte base64url key-encryption key for private key material. Inject it from a secret manager outside local development. |
 | `AUTHKIT_SIGNING_KEY_RETIRED_PUBLISH_SECS` | Default overlap for a retired key whose entry omits `publish_until`; derived from `retired_at`. Defaults to `900`; must be between `1` and `86400`. |
+| `AUTHKIT_SESSION_PEPPER` | Required 32-byte base64url pepper for HMAC session verifiers and CSRF tokens. Use a value independent from the key-encryption key. |
+| `AUTHKIT_COOKIE_SECURE` | Optional boolean that forces `Secure` session cookies. Defaults to `true` in production and `false` in development/test; `false` is rejected in production. |
+| `AUTHKIT_SESSION_IDLE_SECS` | Account-session idle timeout. Defaults to `1800`; must be between `60` and `86400` and less than the absolute lifetime. |
+| `AUTHKIT_SESSION_ABSOLUTE_SECS` | Account-session absolute lifetime. Defaults to `43200`; must be between `300` and `2592000`. |
+| `AUTHKIT_ADMIN_SESSION_IDLE_SECS` | Administrator-session idle timeout. Defaults to `900`; must be between `60` and `86400`, less than the admin absolute lifetime, and no greater than the account idle timeout. |
+| `AUTHKIT_ADMIN_SESSION_ABSOLUTE_SECS` | Administrator-session absolute lifetime. Defaults to `28800`; must be between `300` and `2592000`, and no greater than the account absolute lifetime. |
 | `AUTHKIT_LOG_FORMAT` | `json` or `pretty`. Defaults to `json` in production and `pretty` otherwise. |
 | `RUST_LOG` | Tracing filter. Defaults to `info`; never include credentials in log output. |
 
 Rules:
 
-- Copy `.env.example` to `.env` and generate a local `AUTHKIT_SIGNING_KEY_KEK`; the keyring is created on the first `serve`. Never commit `.env`, `.env.*` local variants, or the keyring file.
+- Copy `.env.example` to `.env` and generate local `AUTHKIT_SIGNING_KEY_KEK` and `AUTHKIT_SESSION_PEPPER` values; the keyring is created on the first `serve`. Never commit `.env`, `.env.*` local variants, or the keyring file.
 - Do not use production secrets for local development.
 - Do not put secrets in `AUTHKIT_*` example files, test fixtures, logs, or screenshots.
 - Treat issuer validation, cookie security, callback validation, and signing-key
@@ -206,8 +212,8 @@ Rules:
   keyring before binding, connects to the database, and `/readyz` pings the database, but
   migrations remain a separate one-shot job.
 - Back up the encrypted keyring with the key-encryption key; neither is usable alone.
-  Configuration `Debug` output redacts the database URL and key-encryption key. Do not log
-  raw configuration, key material, or request bodies.
+  Configuration `Debug` output redacts the database URL, key-encryption key, and session
+  pepper. Do not log raw configuration, key material, or request bodies.
 - Document any new variable here and in `.env.example` in the same change.
 
 Cloudflare Workers configuration will use the worker's bindings and secret storage rather than `.env` files. The worker must not require native-only configuration paths that cannot be represented at the edge.

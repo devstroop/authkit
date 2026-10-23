@@ -14,6 +14,9 @@ use serde_json::json;
 
 use crate::config::Issuer;
 use crate::http::request_id;
+use crate::http::security_headers::{SecurityHeaders, security_headers};
+use crate::http::session::{SessionSecurityState, session_context};
+use crate::session::SessionService;
 use crate::signing::KeyRing;
 
 /// A readiness check that can be run without blocking the async runtime.
@@ -70,7 +73,54 @@ impl AppState {
 }
 
 /// Builds the native server router.
+///
+/// This base router has no session or browser-security layers. The binary uses
+/// [`router_with_sessions`]; the base router keeps metadata and health tests independent of
+/// session storage.
 pub fn router(readiness: Arc<dyn ReadinessProbe>, keys: Arc<KeyRing>, issuer: Issuer) -> Router {
+    base_router(readiness, keys, issuer).layer(middleware::from_fn(request_id::request_context))
+}
+
+/// Builds the production router with session resolution, CSRF checks, and security headers.
+pub fn router_with_sessions(
+    readiness: Arc<dyn ReadinessProbe>,
+    keys: Arc<KeyRing>,
+    issuer: Issuer,
+    sessions: Arc<SessionService>,
+    hsts: bool,
+) -> Router {
+    with_session_security(
+        base_router(readiness, keys, issuer.clone()),
+        sessions,
+        issuer,
+        hsts,
+    )
+}
+
+/// Applies session resolution, CSRF checks, security headers, and request correlation.
+///
+/// This is public so integration tests and alternate route sets use the same middleware
+/// order as the native server.
+pub fn with_session_security(
+    router: Router,
+    sessions: Arc<SessionService>,
+    issuer: Issuer,
+    hsts: bool,
+) -> Router {
+    let state = SessionSecurityState {
+        service: sessions,
+        issuer,
+    };
+    router
+        .layer(middleware::from_fn_with_state(state, session_context))
+        .layer(middleware::from_fn_with_state(
+            SecurityHeaders::new(hsts),
+            security_headers,
+        ))
+        .layer(middleware::from_fn(request_id::request_context))
+}
+
+fn base_router(readiness: Arc<dyn ReadinessProbe>, keys: Arc<KeyRing>, issuer: Issuer) -> Router {
     Router::new()
         .route("/healthz", get(health))
         .route("/readyz", get(ready))
@@ -85,7 +135,6 @@ pub fn router(readiness: Arc<dyn ReadinessProbe>, keys: Arc<KeyRing>, issuer: Is
         .route("/oauth2/jwks", get(crate::http::metadata::jwks))
         .fallback(not_found)
         .with_state(AppState::new(readiness, keys, issuer))
-        .layer(middleware::from_fn(request_id::request_context))
 }
 
 async fn health() -> Response {
