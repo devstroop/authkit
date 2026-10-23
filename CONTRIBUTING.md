@@ -20,7 +20,7 @@ Prerequisites and platform-specific notes are in [docs/development.md](docs/deve
 A typical first checkout looks like this:
 
 ```sh
-git clone https://github.com/oio-systems/authkit.git
+git clone https://github.com/devstroop/authkit.git
 cd authkit
 git switch develop
 git fetch origin

@@ -84,6 +84,10 @@ impl DomainError {
     pub fn forbidden(message: impl Into<String>) -> Self {
         Self::new(ErrorCode::Forbidden, message)
     }
+    /// Creates an `Unauthenticated` error.
+    pub fn unauthenticated(message: impl Into<String>) -> Self {
+        Self::new(ErrorCode::Unauthenticated, message)
+    }
 
     /// Returns the stable error code.
     pub const fn code(&self) -> ErrorCode {
@@ -103,6 +107,11 @@ impl fmt::Display for DomainError {
 }
 
 impl std::error::Error for DomainError {}
+impl From<crate::domain::value::ValueError> for DomainError {
+    fn from(value: crate::domain::value::ValueError) -> Self {
+        Self::invalid(value.to_string())
+    }
+}
 
 #[cfg(test)]
 mod tests {

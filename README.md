@@ -166,12 +166,16 @@ for parallel work; see
 ## Security
 
 Please do not open a public issue for a suspected vulnerability. Report it privately through
-[GitHub security advisories](https://github.com/oio-systems/authkit/security/advisories/new)
+[GitHub security advisories](https://github.com/devstroop/authkit/security/advisories/new)
 or email `security@devstroop.com`. The email address is a placeholder and must be confirmed
 before public launch. See [SECURITY.md](SECURITY.md) for scope and response expectations.
 
 ## License
 
-License: **to be determined**. No open-source license has been selected yet, and no license
-is granted until a `LICENSE` file is added. Do not redistribute AuthKit under an assumed
-license. License selection is tracked as an open governance item before public launch.
+Licensed under either of
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+- MIT license ([LICENSE-MIT](LICENSE-MIT))
+
+at your option. Contributions are accepted under the same dual license unless
+stated otherwise. See [GOVERNANCE.md](GOVERNANCE.md) for the contribution terms.

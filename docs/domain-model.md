@@ -236,40 +236,63 @@ Constraints and rules:
 
 ### 3.6 Role, permission, and role binding
 
-Roles are named sets of permissions. The model has three scopes:
+Roles are named sets of permissions. Tenant roles have two scopes:
 
 | Scope | Owner | Examples |
 | --- | --- | --- |
-| System | AuthKit deployment | `system.org.manage`, `system.key.rotate`, `system.audit.read` |
-| Organization | One organization | `org.member.invite`, `org.application.manage`, `org.audit.read` |
+| Organization | One organization | `org.member.manage`, `org.application.manage`, `org.audit.read` |
 | Application | One application within an organization | `app.client.manage`, `app.user.read`, `app.audit.read` |
 
-System roles are built-in and not editable through tenant APIs. Organization and
-application roles are composable: organizations can create custom roles from the
-permission catalog, subject to the permissions the actor may delegate. Built-in roles
-(`owner`, `admin`, `member`; application `admin`, `operator`, `viewer`) are seeded and may
-be marked immutable.
+System administration is not a tenant role. System administrators are a separate,
+deployment-level record with a distinct authorization path and audit events, as described
+in [Architecture](architecture.md#3-planes-and-boundaries).
+
+Organization and application roles are composable: organizations can create custom roles
+from the permission catalog, subject to the permissions the actor may delegate. The v1
+organization roles (`owner`, `admin`, `member`) are seeded and immutable. Application
+built-in roles (`admin`, `operator`, `viewer`) are planned; v1 supports custom
+application-scoped roles.
+
+The v1 organization permission catalog is:
+
+| Permission | Owner | Admin | Member |
+| --- | --- | --- | --- |
+| `org.read` | yes | yes | yes |
+| `org.manage` | yes | yes | no |
+| `org.delete` | yes | no | no |
+| `org.member.read` | yes | yes | no |
+| `org.member.manage` | yes | yes | no |
+| `org.role.read` | yes | yes | no |
+| `org.role.manage` | yes | yes | no |
+| `org.application.read` | yes | yes | yes |
+| `org.application.manage` | yes | yes | no |
+| `org.client.manage` | yes | yes | no |
+| `org.session.manage` | yes | yes | no |
+| `org.audit.read` | yes | yes | no |
+
+The catalog is code-defined and migrated with the application. A custom role may include
+only permissions the granting administrator holds.
 
 **Role**
 
 | Field | Type | Notes |
 | --- | --- | --- |
 | `id` | text | `rol_...`. |
-| `org_id` | text nullable | Null for system roles. Required for organization/application roles. |
+| `org_id` | text | Required. Tenant-owned. |
 | `application_id` | text nullable | Set only for application-scoped roles. |
-| `scope` | text | `system`, `organization`, `application`. |
-| `key` | text | Stable machine key, unique within scope. |
+| `scope` | text | `organization` or `application`; derived from `application_id`. |
+| `kind` | text | `owner`, `admin`, `member`, or `custom`. |
+| `key` | text | Stable machine key (slug), unique within the scope. |
 | `name` | text | Display name. |
-| `built_in` | integer | `0`/`1`. |
-| `immutable` | integer | `0`/`1`. Prevents editing seeded roles. |
+| `description` | text nullable | Admin-facing description. |
+| `immutable` | integer | Derived from `kind != custom`; prevents editing seeded roles. |
 | `created_at`, `updated_at` | integer | Epoch milliseconds. |
 
 **Permission**
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `key` | text | Primary key, for example `org.member.invite`. |
-| `scope` | text | `system`, `organization`, `application`. |
+| `key` | text | Primary key, for example `org.member.manage`. The prefix encodes the scope. |
 | `description` | text | Admin-facing description. |
 | `delegable` | integer | Whether an org admin can grant it to a custom role. |
 
@@ -298,7 +321,7 @@ Constraints:
 - A binding requires an active membership in the same organization. Application bindings
   additionally require access to that application through the organization.
 - Role escalation is prevented in the application layer: an actor cannot grant a
-  permission it does not hold (unless system admin), and cannot grant system roles.
+  permission it does not hold, and cannot grant a role it does not hold.
 - Built-in owner membership is represented by a binding to the seeded `owner` role. The
   last-owner invariant protects against orphaning an organization.
 
@@ -306,10 +329,6 @@ Permission evaluation:
 
 ```text
 can(actor, permission, scope):
-  if actor is active system admin and permission.scope == system:
-      allow
-  if permission.scope == system:
-      deny for tenant actors
   require active membership(actor, org)
   require scope.application_id belongs to org (if present)
   union permissions from role bindings for actor at org scope and matching app scope
@@ -317,7 +336,8 @@ can(actor, permission, scope):
 ```
 
 The check is deny-by-default. UI visibility is not authorization; every use case repeats
-the permission check on the server.
+the permission check on the server. System-administration operations use a separate
+deployment-level check and are audited as deployment events, not tenant permission checks.
 
 ### 3.7 Credential
 
