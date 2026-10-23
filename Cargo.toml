@@ -19,6 +19,16 @@ license = "MIT OR Apache-2.0"
 [workspace.dependencies]
 authkit-core = { path = "crates/authkit-core" }
 authkit-store = { path = "crates/authkit-store" }
+serde_json = "1"
+sqlx = { version = "0.8", default-features = false, features = [
+  "macros",
+  "any",
+  "migrate",
+  "postgres",
+  "runtime-tokio",
+  "sqlite",
+] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
