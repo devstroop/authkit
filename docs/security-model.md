@@ -248,11 +248,10 @@ AuthKit has two related but distinct session layers:
 - Never upgrade an anonymous or pre-authentication session into an authenticated
   one. Mint a new session after successful authentication. This prevents session
   fixation.
-- Enforce both an idle timeout and an absolute lifetime. Suggested baseline:
-  ordinary users 12 hours idle / 7 days absolute; administrators 15–30 minutes
-  idle / 8 hours absolute. Final values are `Decision pending` and must be
-  documented per deployment. Shorter admin sessions are required regardless of
-  the exact numbers.
+- Enforce both an idle timeout and an absolute lifetime. Server defaults are
+  30 minutes idle / 12 hours absolute for ordinary users and 15 minutes idle /
+  8 hours absolute for administrators. Deployments may tighten these through
+  configuration; administrator limits must never exceed ordinary-session limits.
 - On every authenticated request, look up the active session, verify the
   principal is still active, verify the relevant membership/tenant context, and
   check expiry and revocation. A successful password check alone is not a
@@ -304,7 +303,7 @@ Production cookie rules:
 | `SameSite` | `Lax` for ordinary sessions; `Strict` for administrator sessions. SameSite is defense-in-depth, not a CSRF substitute. |
 | `Domain` | Omitted. Host-only cookies only. Never set a cookie for `.example.com`. |
 | `Path` | `/` for the issuer session; narrower only if the application is genuinely isolated under a path. |
-| Prefix | Prefer `__Host-` names in production, which require `Secure`, `Path=/`, and no `Domain`. Proposed names are `__Host-authkit_session` and `__Host-authkit_admin_session`; final names are `Decision pending`. Local development may use non-prefixed names but must never deploy them. |
+| Prefix | Production uses `__Host-authkit_session` and `__Host-authkit_admin_session`, which require `Secure`, `Path=/`, and no `Domain`. Development and test use `authkit_session` and `authkit_admin_session`; non-prefixed names must never deploy. |
 | Lifetime | `Max-Age` consistent with the server-side idle/absolute policy. Delete server-side state on logout, not just the cookie. |
 | Caching | Authentication, token, session, and admin responses use `Cache-Control: no-store` and `Vary: Cookie`. Personalized HTML must not be cached by a CDN. |
 
@@ -336,7 +335,10 @@ Additional rules:
   header (for example `X-CSRF-Token`) or a hidden form field. Do not accept it
   from the query string.
 - Rotate the CSRF token with the session. A token from a pre-login session must
-  not authorize a post-login action.
+  not authorize a post-login action. The native server derives a session-bound
+  token with HMAC-SHA256 over the session identifier and deployment pepper;
+  rejected unsafe requests are written to `audit_event` as
+  `security.csrf_rejected`.
 - Check `Origin` (and `Referer` as a fallback) against the issuer origin and
   configured trusted origins for browser unsafe methods. Reject missing or
   ambiguous origins for cookie-authenticated browser requests. Non-browser
@@ -344,6 +346,9 @@ Additional rules:
   cookies.
 - SameSite cookies and custom-header requirements are defense-in-depth. Do not
   rely on either alone. CORS is not a CSRF defense.
+- OAuth protocol endpoints such as `/oauth2/token` authenticate clients rather
+  than browser cookies, so they are outside cookie-session CSRF enforcement.
+  The native middleware still applies request IDs and security headers to them.
 - Login CSRF: issue a pre-session CSRF token on the login page, validate it on
   submission, and always rotate the session on success. Do not let an attacker
   log a victim into an attacker-controlled account.

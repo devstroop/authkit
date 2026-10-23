@@ -7,6 +7,7 @@
 
 pub mod config;
 pub mod http;
+pub mod session;
 pub mod signing;
 pub mod telemetry;
 

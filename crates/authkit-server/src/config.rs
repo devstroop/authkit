@@ -212,6 +212,94 @@ impl fmt::Debug for SigningKeyConfig {
     }
 }
 
+/// The idle and absolute lifetime policy for one session audience.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SessionLifetime {
+    idle_secs: u64,
+    absolute_secs: u64,
+}
+
+impl SessionLifetime {
+    pub const fn new(idle_secs: u64, absolute_secs: u64) -> Self {
+        Self {
+            idle_secs,
+            absolute_secs,
+        }
+    }
+
+    /// Returns the idle timeout in seconds.
+    pub const fn idle_secs(self) -> u64 {
+        self.idle_secs
+    }
+
+    /// Returns the absolute timeout in seconds.
+    pub const fn absolute_secs(self) -> u64 {
+        self.absolute_secs
+    }
+}
+
+/// Validated session, cookie, and CSRF configuration.
+#[derive(Clone, PartialEq, Eq)]
+pub struct SessionConfig {
+    pepper: Zeroizing<Vec<u8>>,
+    cookie_secure: bool,
+    account: SessionLifetime,
+    admin: SessionLifetime,
+}
+
+impl SessionConfig {
+    /// Creates a session configuration from its parts.
+    ///
+    /// Production callers should load [`Config`] from the environment so the pepper,
+    /// cookie, and lifetime settings are validated together. This constructor is public
+    /// for integration tests and alternate embedders.
+    pub fn new(
+        pepper: Vec<u8>,
+        cookie_secure: bool,
+        account: SessionLifetime,
+        admin: SessionLifetime,
+    ) -> Self {
+        Self {
+            pepper: Zeroizing::new(pepper),
+            cookie_secure,
+            account,
+            admin,
+        }
+    }
+
+    /// Returns the 32-byte session-token and CSRF pepper.
+    pub fn pepper(&self) -> &[u8] {
+        self.pepper.as_slice()
+    }
+
+    /// Returns whether browser cookies are marked `Secure`.
+    pub const fn cookie_secure(&self) -> bool {
+        self.cookie_secure
+    }
+
+    /// Returns the account-session lifetime policy.
+    pub const fn account(&self) -> SessionLifetime {
+        self.account
+    }
+
+    /// Returns the administrator-session lifetime policy.
+    pub const fn admin(&self) -> SessionLifetime {
+        self.admin
+    }
+}
+
+impl fmt::Debug for SessionConfig {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SessionConfig")
+            .field("pepper", &"<redacted>")
+            .field("cookie_secure", &self.cookie_secure)
+            .field("account", &self.account)
+            .field("admin", &self.admin)
+            .finish()
+    }
+}
+
 /// Fully validated server configuration.
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -220,6 +308,7 @@ pub struct Config {
     issuer: Issuer,
     database: DatabaseConfig,
     signing_keys: SigningKeyConfig,
+    session: SessionConfig,
     log_format: LogFormat,
 }
 
@@ -275,7 +364,10 @@ impl Config {
                 "must be an absolute path in production",
             ));
         }
-        let kek = decode_kek(&required(&get, "AUTHKIT_SIGNING_KEY_KEK")?)?;
+        let kek = decode_key(
+            &required(&get, "AUTHKIT_SIGNING_KEY_KEK")?,
+            "AUTHKIT_SIGNING_KEY_KEK",
+        )?;
         let retired_publish_secs = match get("AUTHKIT_SIGNING_KEY_RETIRED_PUBLISH_SECS") {
             Some(value) => value
                 .trim()
@@ -290,6 +382,63 @@ impl Config {
                 })?,
             None => 900,
         };
+
+        let session_pepper = decode_key(
+            &required(&get, "AUTHKIT_SESSION_PEPPER")?,
+            "AUTHKIT_SESSION_PEPPER",
+        )?;
+        let cookie_secure = match get("AUTHKIT_COOKIE_SECURE") {
+            Some(value) => parse_bool("AUTHKIT_COOKIE_SECURE", &value)?,
+            None => environment == Environment::Production,
+        };
+        if environment == Environment::Production && !cookie_secure {
+            return Err(ConfigError::invalid(
+                "AUTHKIT_COOKIE_SECURE",
+                "must be true in production",
+            ));
+        }
+        let account = SessionLifetime::new(
+            session_secs(&get, "AUTHKIT_SESSION_IDLE_SECS", 1_800, 60..=86_400)?,
+            session_secs(
+                &get,
+                "AUTHKIT_SESSION_ABSOLUTE_SECS",
+                43_200,
+                300..=2_592_000,
+            )?,
+        );
+        let admin = SessionLifetime::new(
+            session_secs(&get, "AUTHKIT_ADMIN_SESSION_IDLE_SECS", 900, 60..=86_400)?,
+            session_secs(
+                &get,
+                "AUTHKIT_ADMIN_SESSION_ABSOLUTE_SECS",
+                28_800,
+                300..=2_592_000,
+            )?,
+        );
+        if account.idle_secs >= account.absolute_secs {
+            return Err(ConfigError::invalid(
+                "AUTHKIT_SESSION_IDLE_SECS",
+                "must be less than AUTHKIT_SESSION_ABSOLUTE_SECS",
+            ));
+        }
+        if admin.idle_secs >= admin.absolute_secs {
+            return Err(ConfigError::invalid(
+                "AUTHKIT_ADMIN_SESSION_IDLE_SECS",
+                "must be less than AUTHKIT_ADMIN_SESSION_ABSOLUTE_SECS",
+            ));
+        }
+        if admin.idle_secs > account.idle_secs {
+            return Err(ConfigError::invalid(
+                "AUTHKIT_ADMIN_SESSION_IDLE_SECS",
+                "must not exceed AUTHKIT_SESSION_IDLE_SECS",
+            ));
+        }
+        if admin.absolute_secs > account.absolute_secs {
+            return Err(ConfigError::invalid(
+                "AUTHKIT_ADMIN_SESSION_ABSOLUTE_SECS",
+                "must not exceed AUTHKIT_SESSION_ABSOLUTE_SECS",
+            ));
+        }
 
         let log_format = match get("AUTHKIT_LOG_FORMAT") {
             Some(value) => LogFormat::parse(&value)?,
@@ -316,6 +465,7 @@ impl Config {
                 kek,
                 retired_publish_secs,
             ),
+            session: SessionConfig::new(session_pepper, cookie_secure, account, admin),
             log_format,
         })
     }
@@ -345,6 +495,11 @@ impl Config {
         &self.signing_keys
     }
 
+    /// Returns the session, cookie, and CSRF configuration.
+    pub fn session(&self) -> &SessionConfig {
+        &self.session
+    }
+
     /// Returns the tracing output format.
     pub const fn log_format(&self) -> LogFormat {
         self.log_format
@@ -360,22 +515,56 @@ fn required(
         .ok_or_else(|| ConfigError::missing(variable))
 }
 
-fn decode_kek(value: &str) -> Result<Vec<u8>, ConfigError> {
+fn decode_key(value: &str, variable: &'static str) -> Result<Vec<u8>, ConfigError> {
     let normalized = value
         .trim()
         .trim_end_matches('=')
         .replace('+', "-")
         .replace('/', "_");
-    let key = URL_SAFE_NO_PAD.decode(normalized).map_err(|_| {
-        ConfigError::invalid("AUTHKIT_SIGNING_KEY_KEK", "must be base64url-encoded")
-    })?;
+    let key = URL_SAFE_NO_PAD
+        .decode(normalized)
+        .map_err(|_| ConfigError::invalid(variable, "must be base64url-encoded"))?;
     if key.len() != 32 {
         return Err(ConfigError::invalid(
-            "AUTHKIT_SIGNING_KEY_KEK",
+            variable,
             "must decode to exactly 32 bytes",
         ));
     }
     Ok(key)
+}
+
+fn parse_bool(variable: &'static str, value: &str) -> Result<bool, ConfigError> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "true" | "1" => Ok(true),
+        "false" | "0" => Ok(false),
+        _ => Err(ConfigError::invalid(variable, "must be true or false")),
+    }
+}
+
+fn session_secs(
+    get: &impl Fn(&str) -> Option<String>,
+    variable: &'static str,
+    default: u64,
+    range: std::ops::RangeInclusive<u64>,
+) -> Result<u64, ConfigError> {
+    match get(variable) {
+        Some(value) => value
+            .trim()
+            .parse::<u64>()
+            .ok()
+            .filter(|value| range.contains(value))
+            .ok_or_else(|| {
+                ConfigError::invalid(
+                    variable,
+                    format!(
+                        "must be an integer between {} and {}",
+                        range.start(),
+                        range.end()
+                    ),
+                )
+            }),
+        None => Ok(default),
+    }
 }
 
 fn database_kind(url: &str) -> Result<DatabaseKind, ConfigError> {
@@ -456,6 +645,10 @@ mod tests {
                 "AUTHKIT_SIGNING_KEY_FILE",
                 "/var/lib/authkit/signing-keys.json",
             ),
+            (
+                "AUTHKIT_SESSION_PEPPER",
+                "g431h2m7ij_HA19vccPPRkGAcw0RTkFCxrkBiXDeyaw",
+            ),
         ]
     }
 
@@ -472,12 +665,21 @@ mod tests {
                 "AUTHKIT_SIGNING_KEY_FILE",
                 "/var/lib/authkit/signing-keys.json",
             ),
+            (
+                "AUTHKIT_SESSION_PEPPER",
+                "g431h2m7ij_HA19vccPPRkGAcw0RTkFCxrkBiXDeyaw",
+            ),
         ])
         .expect("valid config");
         assert_eq!(config.environment(), Environment::Production);
         assert_eq!(config.bind_addr(), "127.0.0.1:3000".parse().unwrap());
         assert_eq!(config.database().max_connections(), 5);
         assert_eq!(config.signing_keys().retired_publish_secs(), 900);
+        assert!(config.session().cookie_secure());
+        assert_eq!(config.session().account().idle_secs(), 1_800);
+        assert_eq!(config.session().account().absolute_secs(), 43_200);
+        assert_eq!(config.session().admin().idle_secs(), 900);
+        assert_eq!(config.session().admin().absolute_secs(), 28_800);
         assert_eq!(config.log_format(), LogFormat::Json);
     }
 
@@ -616,5 +818,76 @@ mod tests {
             config(&vars).expect_err("unknown log format").variable(),
             "AUTHKIT_LOG_FORMAT"
         );
+    }
+
+    #[test]
+    fn session_pepper_is_required_and_must_be_32_bytes() {
+        let mut vars = base_vars();
+        vars.retain(|(name, _)| *name != "AUTHKIT_SESSION_PEPPER");
+        let error = config(&vars).expect_err("missing session pepper");
+        assert_eq!(error.variable(), "AUTHKIT_SESSION_PEPPER");
+
+        let mut vars = base_vars();
+        vars.retain(|(name, _)| *name != "AUTHKIT_SESSION_PEPPER");
+        vars.push(("AUTHKIT_SESSION_PEPPER", "too-short"));
+        let error = config(&vars).expect_err("short session pepper");
+        assert_eq!(error.variable(), "AUTHKIT_SESSION_PEPPER");
+    }
+
+    #[test]
+    fn session_pepper_is_redacted() {
+        let config = config(&base_vars()).expect("valid config");
+        let debug = format!("{config:?}");
+        assert!(!debug.contains("g431h2m7ij_HA19vccPPRkGAcw0RTkFCxrkBiXDeyaw"));
+        assert!(debug.contains("<redacted>"));
+    }
+
+    #[test]
+    fn production_rejects_insecure_cookies() {
+        let mut vars = base_vars();
+        vars.push(("AUTHKIT_COOKIE_SECURE", "false"));
+        let error = config(&vars).expect_err("insecure production cookie");
+        assert_eq!(error.variable(), "AUTHKIT_COOKIE_SECURE");
+    }
+
+    #[test]
+    fn development_allows_secure_cookie_override() {
+        let mut vars = base_vars();
+        vars[0] = ("AUTHKIT_ENV", "development");
+        vars[1] = ("AUTHKIT_ISSUER", "http://localhost:3000");
+        vars.push(("AUTHKIT_COOKIE_SECURE", "true"));
+        let config = config(&vars).expect("secure development cookie");
+        assert!(config.session().cookie_secure());
+    }
+
+    #[test]
+    fn session_lifetimes_are_bounded_and_admin_is_shorter() {
+        let mut vars = base_vars();
+        vars.push(("AUTHKIT_SESSION_IDLE_SECS", "0"));
+        let error = config(&vars).expect_err("zero idle timeout");
+        assert_eq!(error.variable(), "AUTHKIT_SESSION_IDLE_SECS");
+
+        let mut vars = base_vars();
+        vars.push(("AUTHKIT_SESSION_IDLE_SECS", "43200"));
+        let error = config(&vars).expect_err("idle must be less than absolute");
+        assert_eq!(error.variable(), "AUTHKIT_SESSION_IDLE_SECS");
+
+        let mut vars = base_vars();
+        vars.push(("AUTHKIT_ADMIN_SESSION_IDLE_SECS", "3600"));
+        let error = config(&vars).expect_err("admin idle cannot exceed account idle");
+        assert_eq!(error.variable(), "AUTHKIT_ADMIN_SESSION_IDLE_SECS");
+
+        let mut vars = base_vars();
+        vars.push(("AUTHKIT_ADMIN_SESSION_ABSOLUTE_SECS", "50000"));
+        let error = config(&vars).expect_err("admin absolute cannot exceed account absolute");
+        assert_eq!(error.variable(), "AUTHKIT_ADMIN_SESSION_ABSOLUTE_SECS");
+    }
+
+    #[test]
+    fn cookie_secure_must_be_boolean() {
+        let mut vars = base_vars();
+        vars.push(("AUTHKIT_COOKIE_SECURE", "yes"));
+        let error = config(&vars).expect_err("invalid boolean");
+        assert_eq!(error.variable(), "AUTHKIT_COOKIE_SECURE");
     }
 }

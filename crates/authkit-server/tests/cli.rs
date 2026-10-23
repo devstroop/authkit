@@ -63,6 +63,25 @@ fn serve_fails_closed_without_a_signing_key_kek() {
 }
 
 #[test]
+fn serve_fails_closed_without_a_session_pepper() {
+    let output = binary()
+        .arg("serve")
+        .env("AUTHKIT_ENV", "development")
+        .env("AUTHKIT_ISSUER", "http://localhost:3000")
+        .env("AUTHKIT_DATABASE_URL", "sqlite::memory:")
+        .env(
+            "AUTHKIT_SIGNING_KEY_KEK",
+            "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+        )
+        .env_remove("AUTHKIT_SESSION_PEPPER")
+        .output()
+        .expect("run binary");
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).expect("utf-8 output");
+    assert!(stderr.contains("AUTHKIT_SESSION_PEPPER"));
+}
+
+#[test]
 fn serve_rejects_http_issuers_in_production() {
     let output = binary()
         .arg("serve")

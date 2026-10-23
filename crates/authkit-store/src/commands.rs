@@ -1461,6 +1461,30 @@ async fn insert_audit(
         .organization_id()
         .ok_or_else(|| DomainError::forbidden("tenant audit events require an organization"))?;
     ensure_tenant(tenant, event_org)?;
+    insert_audit_row(dialect, tx, event).await
+}
+
+pub(crate) fn append_unscoped_audit(
+    store: &SqlStore,
+    event: &AuditEvent,
+) -> Result<WriteOutcome, DomainError> {
+    store.block_on(async {
+        let mut tx = store.pool.begin().await.map_err(map_db_error)?;
+        let outcome = insert_audit_row(store.dialect, &mut tx, event).await?;
+        if outcome.is_applied() {
+            tx.commit().await.map_err(map_db_error)?;
+        } else {
+            tx.rollback().await.map_err(map_db_error)?;
+        }
+        Ok(outcome)
+    })
+}
+
+async fn insert_audit_row(
+    dialect: Dialect,
+    tx: &mut Transaction<'_, Any>,
+    event: &AuditEvent,
+) -> Result<WriteOutcome, DomainError> {
     let (actor_type, actor_id) = audit_actor_parts(event.actor());
     let attributes = event
         .attributes()

@@ -987,4 +987,37 @@ impl SqlStore {
     }
 }
 
+impl SqlStore {
+    /// Appends a security audit event without the tenant guard used by business audit
+    /// writes.
+    ///
+    /// This is reserved for security infrastructure such as rejected CSRF requests. An
+    /// event with an organization still records that organization ID; an event without one
+    /// is deployment-global. Tenant business events must use [`AuditRepository::append`].
+    pub fn append_security_audit(&self, event: &AuditEvent) -> Result<WriteOutcome, DomainError> {
+        crate::commands::append_unscoped_audit(self, event)
+    }
+
+    /// Lists audit events for one action in occurrence order.
+    ///
+    /// This read helper is intended for adapter diagnostics and security tests. It is not
+    /// tenant-filtered.
+    pub fn list_audit_events_by_action(
+        &self,
+        action: &str,
+    ) -> Result<Vec<AuditEvent>, DomainError> {
+        let sql = self.sql(
+            "SELECT id, org_id, actor_type, actor_id, action, target, occurred_at, attributes FROM audit_event WHERE action = ? ORDER BY occurred_at, id",
+        );
+        self.block_on(async {
+            let rows = sqlx::query(&sql)
+                .bind(action)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            rows.iter().map(map_audit_event).collect()
+        })
+    }
+}
+
 impl Repositories for SqlStore {}

@@ -148,11 +148,15 @@ checklist of values the deployment must define, not a frozen schema.
 | `AUTHKIT_SIGNING_KEY_FILE` | Encrypted native keyring | Absolute path in production; `0600`; separate encrypted backup |
 | `AUTHKIT_SIGNING_KEY_KEK` | Keyring key-encryption key | 32-byte base64url secret from a secret manager; never inline in config files |
 | `AUTHKIT_SIGNING_KEY_RETIRED_PUBLISH_SECS` | Default retired public-key overlap | `1`-`86400`; default `900`; used only when `publish_until` is omitted |
-| `AUTHKIT_SESSION_PEPPER` | Session digest protection | Secret manager; key-ring version |
+| `AUTHKIT_SESSION_PEPPER` | Session digest and CSRF protection | Required 32-byte base64url secret from a secret manager; key-ring version |
+| `AUTHKIT_SESSION_IDLE_SECS` | Account-session idle timeout | `1800` default; `60`-`86400`; less than the absolute lifetime |
+| `AUTHKIT_SESSION_ABSOLUTE_SECS` | Account-session absolute lifetime | `43200` default; `300`-`2592000` |
+| `AUTHKIT_ADMIN_SESSION_IDLE_SECS` | Administrator-session idle timeout | `900` default; `60`-`86400`; less than the admin absolute lifetime and account idle timeout |
+| `AUTHKIT_ADMIN_SESSION_ABSOLUTE_SECS` | Administrator-session absolute lifetime | `28800` default; `300`-`2592000`; no greater than the account absolute lifetime |
 | `AUTHKIT_EMAIL_TOKEN_PEPPER` | Reset/verification digest protection | Secret manager; versioned |
 | `AUTHKIT_ENCRYPTION_KEK` | Envelope encryption of stored secrets | KMS/secret manager |
 | `AUTHKIT_TRUSTED_PROXIES` | Which peers may set forwarded IP headers | Explicit CIDRs; empty by default |
-| `AUTHKIT_COOKIE_SECURE` | Force `Secure` cookies | True in production; explicit dev override only |
+| `AUTHKIT_COOKIE_SECURE` | Force `Secure` cookies | Defaults true in production and false in development/test; false is rejected in production |
 | `AUTHKIT_ADMIN_BOOTSTRAP_TOKEN` | First system admin | One-time, consumed; empty after bootstrap |
 | `AUTHKIT_SMTP_URL` / email provider | Verification/reset delivery | Secret manager; TLS required |
 | `AUTHKIT_RATE_LIMIT_BACKEND` | Shared limiter | Edge, database, or Durable Object; never per-process only |
