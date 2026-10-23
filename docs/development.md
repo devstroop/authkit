@@ -122,7 +122,9 @@ Notes:
 - Run formatting and lint checks before opening a pull request. Fix warnings rather than suppressing them unless the suppression is narrow and explained.
 - Run `cargo run -p authkit-server -- --help` to verify the binary boundary after changing
   manifests or CLI arguments. Start the server with
-  `cargo run -p authkit-server -- serve`.
+  `cargo run -p authkit-server -- serve`. Discovery currently publishes only implemented
+  capabilities (`issuer`, `jwks_uri`, and ES256 signing); endpoint metadata is added as
+  those endpoints land.
 - Documentation changes also run through `python3 scripts/check-docs.py`.
 - Unit tests should live beside the code they exercise. Cross-crate integration tests belong in the workspace test area.
 - Storage tests should cover both SQLite and PostgreSQL where behavior can differ. Set
@@ -186,21 +188,26 @@ environment files are untracked.
 | `AUTHKIT_ISSUER` | Required canonical public origin. Must be an absolute origin with no path, query, fragment, or user information. HTTPS is required outside `development` and `test`. |
 | `AUTHKIT_DATABASE_URL` | Required SQLx URL using `sqlite:`, `postgres://`, or `postgresql://`. `DATABASE_URL` is accepted as a fallback. |
 | `AUTHKIT_DATABASE_MAX_CONNECTIONS` | Connection pool limit. Defaults to `5`; must be positive. In-memory SQLite always uses one connection. |
+| `AUTHKIT_SIGNING_KEY_FILE` | Encrypted ES256 keyring file. Defaults to `authkit-signing-keys.json` in development; production requires an absolute path. Created with one active key on first start. Must not be group- or world-readable. |
+| `AUTHKIT_SIGNING_KEY_KEK` | Required 32-byte base64url key-encryption key for private key material. Inject it from a secret manager outside local development. |
+| `AUTHKIT_SIGNING_KEY_RETIRED_PUBLISH_SECS` | Default overlap for a retired key whose entry omits `publish_until`; derived from `retired_at`. Defaults to `900`; must be between `1` and `86400`. |
 | `AUTHKIT_LOG_FORMAT` | `json` or `pretty`. Defaults to `json` in production and `pretty` otherwise. |
 | `RUST_LOG` | Tracing filter. Defaults to `info`; never include credentials in log output. |
 
 Rules:
 
-- Copy `.env.example` to `.env`; never commit `.env` or local variants.
+- Copy `.env.example` to `.env` and generate a local `AUTHKIT_SIGNING_KEY_KEK`; the keyring is created on the first `serve`. Never commit `.env`, `.env.*` local variants, or the keyring file.
 - Do not use production secrets for local development.
 - Do not put secrets in `AUTHKIT_*` example files, test fixtures, logs, or screenshots.
 - Treat issuer validation, cookie security, callback validation, and signing-key
   configuration as security-sensitive. Unsafe defaults must not silently apply in
   production.
-- The server fails closed on missing or invalid configuration. It connects to the database
-  and `/readyz` pings it, but migrations remain a separate one-shot job.
-- Configuration `Debug` output redacts the database URL. Do not log raw configuration or
-  request bodies.
+- The server fails closed on missing or invalid configuration. It decrypts the signing
+  keyring before binding, connects to the database, and `/readyz` pings the database, but
+  migrations remain a separate one-shot job.
+- Back up the encrypted keyring with the key-encryption key; neither is usable alone.
+  Configuration `Debug` output redacts the database URL and key-encryption key. Do not log
+  raw configuration, key material, or request bodies.
 - Document any new variable here and in `.env.example` in the same change.
 
 Cloudflare Workers configuration will use the worker's bindings and secret storage rather than `.env` files. The worker must not require native-only configuration paths that cannot be represented at the edge.

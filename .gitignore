@@ -39,6 +39,7 @@
 !.env.example
 !.env.*.example
 /secrets/
+/authkit-signing-keys.json
 *.pem
 *.key
 *.p12

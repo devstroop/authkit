@@ -145,8 +145,9 @@ checklist of values the deployment must define, not a frozen schema.
 | `AUTHKIT_BIND_ADDR` | Native bind address | Loopback or private interface behind proxy |
 | `AUTHKIT_DATABASE_URL` / D1 binding | Data store | Private; least-privilege credentials |
 | `AUTHKIT_DATABASE_MAX_CONNECTIONS` | Native connection pool limit | Positive integer; size for the database, not CPU count alone |
-| `AUTHKIT_SIGNING_KEY` / key reference | Token signing | KMS/secret manager; never inline in config files |
-| `AUTHKIT_SIGNING_KID` | Key identifier | Stable, unique per key |
+| `AUTHKIT_SIGNING_KEY_FILE` | Encrypted native keyring | Absolute path in production; `0600`; separate encrypted backup |
+| `AUTHKIT_SIGNING_KEY_KEK` | Keyring key-encryption key | 32-byte base64url secret from a secret manager; never inline in config files |
+| `AUTHKIT_SIGNING_KEY_RETIRED_PUBLISH_SECS` | Default retired public-key overlap | `1`-`86400`; default `900`; used only when `publish_until` is omitted |
 | `AUTHKIT_SESSION_PEPPER` | Session digest protection | Secret manager; key-ring version |
 | `AUTHKIT_EMAIL_TOKEN_PEPPER` | Reset/verification digest protection | Secret manager; versioned |
 | `AUTHKIT_ENCRYPTION_KEK` | Envelope encryption of stored secrets | KMS/secret manager |
@@ -175,8 +176,9 @@ Rules:
 - Separate secrets and keys per environment. Never copy production keys to
   staging or CI.
 - Validate configuration at startup: issuer is HTTPS (except explicit local
-  development), signing key is loadable, key id matches, cookie settings are
-  safe, database is reachable, schema version is supported. Fail closed.
+  development), the signing keyring decrypts with exactly one active ES256 key,
+  cookie settings are safe, database is reachable, schema version is supported.
+  Fail closed.
 - Redact configuration dumps. Never print a secret to a log, even at debug
   level. Do not include request headers or token bodies in error reports.
 - If a secret may have leaked, rotate it first and investigate second. See
@@ -190,9 +192,10 @@ A safe first boot follows this order:
    separate host. Confirm host-only cookie behavior.
 2. Provision the database and a least-privilege application role. Enable
    encryption at rest and automated backups.
-3. Create the secret store entries: signing key, session pepper, email-token
-   pepper, encryption KEK, email provider credentials, and the one-time admin
-   bootstrap token.
+3. Create the secret store entries: signing keyring KEK, session pepper,
+   email-token pepper, email provider credentials, and the one-time admin
+   bootstrap token. On first start the server creates the encrypted signing
+   keyring with one active ES256 key; back it up with the KEK.
 4. Run the schema migration as a one-shot job. Verify the schema version and
    backup before and after.
 5. Start AuthKit with traffic disabled or the edge returning a maintenance
@@ -350,6 +353,14 @@ and a reviewed forward fix. Record the outcome in the audit/operations log.
 Exact rotation intervals are `Decision pending` and should be risk-based.
 
 ### Signing-key rotation
+
+The native keyring supports `next`, `active`, `retired`, and `compromised`
+entries. Automated generation and switching is tracked in #35; until then, a
+rotation is a reviewed keyring update with the server stopped. A retired entry
+must include `retired_at` or an explicit `publish_until`. If the deadline is
+omitted, startup derives it once from `retired_at` plus
+`AUTHKIT_SIGNING_KEY_RETIRED_PUBLISH_SECS`; the deadline does not reset on
+restart.
 
 1. Generate a new key in the KMS/keystore with a new `kid`. Do not overwrite the
    old key.
@@ -527,7 +538,7 @@ Service-level objectives for availability, login latency, and token issuance are
 | Endpoint | Purpose | Behavior |
 | --- | --- | --- |
 | `/healthz` (liveness) | Process is running | `200` if the process can serve; no database dependency; no secrets |
-| `/readyz` (readiness) | Safe to receive auth traffic | Checks database connectivity; `503` if not ready. Schema-version, signing-key, and required-binding checks land with those features. |
+| `/readyz` (readiness) | Safe to receive auth traffic | Checks database connectivity; `503` if not ready. The signing keyring is decrypted before the listener binds. Schema-version and required-binding checks land with those features. |
 | Admin diagnostics | Deeper operator view | Admin-only, redacted, rate-limited; never returns key material or tokens |
 
 Rules:
