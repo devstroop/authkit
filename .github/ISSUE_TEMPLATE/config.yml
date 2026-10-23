@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security report
-    url: https://github.com/oio-systems/authkit/security/advisories/new
+    url: https://github.com/devstroop/authkit/security/advisories/new
     about: Report a suspected vulnerability privately. Do not open a public issue.
   - name: Governance and RFC process
-    url: https://github.com/oio-systems/authkit/blob/develop/GOVERNANCE.md
+    url: https://github.com/devstroop/authkit/blob/develop/GOVERNANCE.md
     about: Read how significant decisions are proposed, discussed, and recorded.

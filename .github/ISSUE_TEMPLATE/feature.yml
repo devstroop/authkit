@@ -9,9 +9,9 @@ body:
       value: |
         Thanks for the suggestion. Describe the problem first, then the proposed solution.
 
-        Do not include secrets, personal data, or security vulnerability details. Report vulnerabilities privately according to [SECURITY.md](https://github.com/oio-systems/authkit/blob/develop/SECURITY.md).
+        Do not include secrets, personal data, or security vulnerability details. Report vulnerabilities privately according to [SECURITY.md](https://github.com/devstroop/authkit/blob/develop/SECURITY.md).
 
-        Changes that affect architecture, public interfaces, the data model, security, or infrastructure may require an RFC. See the RFC template and [GOVERNANCE.md](https://github.com/oio-systems/authkit/blob/develop/GOVERNANCE.md).
+        Changes that affect architecture, public interfaces, the data model, security, or infrastructure may require an RFC. See the RFC template and [GOVERNANCE.md](https://github.com/devstroop/authkit/blob/develop/GOVERNANCE.md).
 
   - type: textarea
     id: problem

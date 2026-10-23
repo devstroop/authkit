@@ -22,7 +22,7 @@ Only code on the official repository is covered. Forks, unpublished modification
 
 Use one of these private channels:
 
-1. **GitHub private vulnerability reporting:** [Open a private security advisory](https://github.com/oio-systems/authkit/security/advisories/new). This is the preferred channel once it is enabled for the repository.
+1. **GitHub private vulnerability reporting:** [Open a private security advisory](https://github.com/devstroop/authkit/security/advisories/new). This is the preferred channel once it is enabled for the repository.
 2. **Email:** `security@devstroop.com`
 
 The email address and advisory link are **placeholders and must be confirmed before public launch**. If neither channel is available, contact a maintainer privately through the contact method listed on their GitHub profile and ask for a secure channel. Do not include exploit details in that initial contact.
