@@ -2,21 +2,28 @@
 //!
 //! Ports are shaped around domain types. The core never imports a concrete adapter.
 
+pub mod write;
+
+pub use write::{EntityKind, OrganizationProvisioning, UnitOfWork, WriteBatch, WriteCommand};
+
 use crate::domain::DomainError;
 use crate::domain::Timestamp;
 use crate::domain::application::Application;
 use crate::domain::audit::AuditEvent;
 use crate::domain::credential::Credential;
 use crate::domain::email::Email;
+use crate::domain::grant::{AuthorizationCode, Consent, RefreshFamily, RefreshToken};
 use crate::domain::id::{
-    ApplicationEntity, Entity, Id, IdError, InvitationEntity, MembershipEntity, OAuthClientEntity,
-    OrganizationEntity, RoleBindingEntity, RoleEntity, SessionEntity, UserEntity,
+    ApplicationEntity, AuthorizationCodeEntity, ConsentEntity, Entity, Id, IdError,
+    InvitationEntity, MembershipEntity, OAuthClientEntity, OrganizationEntity, RefreshFamilyEntity,
+    RefreshTokenEntity, RoleBindingEntity, RoleEntity, SessionEntity, UserEntity,
 };
 use crate::domain::invitation::Invitation;
 use crate::domain::membership::Membership;
 use crate::domain::oauth_client::OAuthClient;
 use crate::domain::organization::Organization;
 use crate::domain::role::{Role, RoleBinding};
+use crate::domain::secret::SecretHash;
 use crate::domain::session::Session;
 use crate::domain::slug::Slug;
 use crate::domain::tenant::TenantContext;
@@ -194,8 +201,19 @@ pub trait OAuthClientRepository {
 }
 
 /// Read and write access to credentials.
+///
+/// Adapters persist the type-specific credential payload in the columns for its kind and
+/// must reject a row whose stored type does not match the domain value. Secret material is
+/// already encrypted or hashed by the adapter before it reaches this port; the core never
+/// receives plaintext passwords or TOTP secrets.
 pub trait CredentialRepository {
-    /// Finds credentials for a user.
+    /// Finds a credential by identifier.
+    fn find_by_id(
+        &self,
+        id: &Id<crate::domain::id::CredentialEntity>,
+    ) -> Result<Option<Credential>, DomainError>;
+
+    /// Lists credentials for a user.
     fn list_for_user(&self, user_id: &Id<UserEntity>) -> Result<Vec<Credential>, DomainError>;
 
     /// Inserts a new credential.
@@ -215,10 +233,7 @@ pub trait SessionRepository {
     fn find_by_id(&self, id: &Id<SessionEntity>) -> Result<Option<Session>, DomainError>;
 
     /// Finds a session by token hash.
-    fn find_by_token_hash(
-        &self,
-        token_hash: &crate::domain::secret::SecretHash,
-    ) -> Result<Option<Session>, DomainError>;
+    fn find_by_token_hash(&self, token_hash: &SecretHash) -> Result<Option<Session>, DomainError>;
 
     /// Inserts a new session.
     fn insert(&self, session: &Session) -> Result<WriteOutcome, DomainError>;
@@ -276,6 +291,128 @@ pub trait RoleBindingRepository {
     ) -> Result<WriteOutcome, DomainError>;
 }
 
+/// Read and write access to one-time authorization codes.
+pub trait AuthorizationCodeRepository {
+    /// Finds a code by identifier.
+    fn find_by_id(
+        &self,
+        tenant: &TenantContext,
+        id: &Id<AuthorizationCodeEntity>,
+    ) -> Result<Option<AuthorizationCode>, DomainError>;
+
+    /// Finds a code by its hashed verifier.
+    fn find_by_hash(
+        &self,
+        tenant: &TenantContext,
+        hash: &SecretHash,
+    ) -> Result<Option<AuthorizationCode>, DomainError>;
+
+    /// Inserts a new code.
+    fn insert(
+        &self,
+        tenant: &TenantContext,
+        code: &AuthorizationCode,
+    ) -> Result<WriteOutcome, DomainError>;
+
+    /// Consumes or otherwise updates a code using optimistic concurrency.
+    fn update(
+        &self,
+        tenant: &TenantContext,
+        code: &AuthorizationCode,
+        expected_version: u64,
+    ) -> Result<WriteOutcome, DomainError>;
+}
+
+/// Read and write access to user consent records.
+pub trait ConsentRepository {
+    /// Finds a consent by identifier.
+    fn find_by_id(
+        &self,
+        tenant: &TenantContext,
+        id: &Id<ConsentEntity>,
+    ) -> Result<Option<Consent>, DomainError>;
+
+    /// Finds the consent for a client and user, if one exists.
+    fn find_for_client_user(
+        &self,
+        tenant: &TenantContext,
+        client_id: &Id<OAuthClientEntity>,
+        user_id: &Id<UserEntity>,
+    ) -> Result<Option<Consent>, DomainError>;
+
+    /// Inserts a new consent.
+    fn insert(
+        &self,
+        tenant: &TenantContext,
+        consent: &Consent,
+    ) -> Result<WriteOutcome, DomainError>;
+
+    /// Updates an existing consent using optimistic concurrency.
+    fn update(
+        &self,
+        tenant: &TenantContext,
+        consent: &Consent,
+        expected_version: u64,
+    ) -> Result<WriteOutcome, DomainError>;
+}
+
+/// Read and write access to refresh-token families.
+pub trait RefreshFamilyRepository {
+    /// Finds a family by identifier.
+    fn find_by_id(
+        &self,
+        tenant: &TenantContext,
+        id: &Id<RefreshFamilyEntity>,
+    ) -> Result<Option<RefreshFamily>, DomainError>;
+
+    /// Inserts a new family.
+    fn insert(
+        &self,
+        tenant: &TenantContext,
+        family: &RefreshFamily,
+    ) -> Result<WriteOutcome, DomainError>;
+
+    /// Revokes or otherwise updates a family using optimistic concurrency.
+    fn update(
+        &self,
+        tenant: &TenantContext,
+        family: &RefreshFamily,
+        expected_version: u64,
+    ) -> Result<WriteOutcome, DomainError>;
+}
+
+/// Read and write access to refresh tokens.
+pub trait RefreshTokenRepository {
+    /// Finds a token by identifier.
+    fn find_by_id(
+        &self,
+        tenant: &TenantContext,
+        id: &Id<RefreshTokenEntity>,
+    ) -> Result<Option<RefreshToken>, DomainError>;
+
+    /// Finds a token by its hashed verifier.
+    fn find_by_hash(
+        &self,
+        tenant: &TenantContext,
+        hash: &SecretHash,
+    ) -> Result<Option<RefreshToken>, DomainError>;
+
+    /// Inserts a new token.
+    fn insert(
+        &self,
+        tenant: &TenantContext,
+        token: &RefreshToken,
+    ) -> Result<WriteOutcome, DomainError>;
+
+    /// Consumes or rotates a token using optimistic concurrency.
+    fn update(
+        &self,
+        tenant: &TenantContext,
+        token: &RefreshToken,
+        expected_version: u64,
+    ) -> Result<WriteOutcome, DomainError>;
+}
+
 /// Read and write access to tenant-owned audit events.
 pub trait AuditRepository {
     /// Appends an audit event. Audit writes are append-only.
@@ -298,6 +435,11 @@ pub trait Repositories:
     + SessionRepository
     + RoleRepository
     + RoleBindingRepository
+    + AuthorizationCodeRepository
+    + ConsentRepository
+    + RefreshFamilyRepository
+    + RefreshTokenRepository
     + AuditRepository
+    + write::UnitOfWork
 {
 }
