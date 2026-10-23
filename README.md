@@ -166,9 +166,9 @@ for parallel work; see
 ## Security
 
 Please do not open a public issue for a suspected vulnerability. Report it privately through
-[GitHub security advisories](https://github.com/devstroop/authkit/security/advisories/new)
-or email `security@devstroop.com`. The email address is a placeholder and must be confirmed
-before public launch. See [SECURITY.md](SECURITY.md) for scope and response expectations.
+[GitHub security advisories](https://github.com/devstroop/authkit/security/advisories/new),
+which is enabled for this repository, or email `security@devstroop.com`. See
+[SECURITY.md](SECURITY.md) for scope, triage ownership, and response expectations.
 
 ## License
 
@@ -177,5 +177,6 @@ Licensed under either of
 - Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
 - MIT license ([LICENSE-MIT](LICENSE-MIT))
 
-at your option. Contributions are accepted under the same dual license unless
-stated otherwise. See [GOVERNANCE.md](GOVERNANCE.md) for the contribution terms.
+at your option. Contributions are accepted under the same dual license. See
+[CONTRIBUTING.md](CONTRIBUTING.md#licensing-and-contributions) for contribution
+terms and [ADR-0010](docs/adr/0010-dual-mit-apache-2-0-license.md) for the decision.

@@ -15,6 +15,7 @@ in place.
 | [0007](0007-no-auth-proxy-or-outposts.md) | No auth proxy or outposts | Accepted |
 | [0008](0008-sqlite-first-postgres-scale.md) | SQLite first, Postgres for scale | Accepted |
 | [0009](0009-generic-consumer-agnostic-product.md) | A generic, consumer-agnostic product | Accepted |
+| [0010](0010-dual-mit-apache-2-0-license.md) | Dual MIT and Apache-2.0 license | Accepted |
 
 ## When an ADR is required
 

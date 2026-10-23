@@ -341,16 +341,29 @@ deployment-level check and are audited as deployment events, not tenant permissi
 
 ### 3.7 Credential
 
-Separate rows per credential type.
+Separate rows per credential type, with a shared lifecycle and type-specific payload. The
+domain exposes distinct `Password`, `Passkey`, and `Totp` constructors; there is no generic
+"secret hash + kind" constructor.
 
 | Field | Type | Notes |
 | --- | --- | --- |
 | `id` | text | `cred_...`. |
 | `user_id` | text | FK. |
-| `type` | text | `password`, `passkey`, `totp`, `recovery_code` (v1 scope TBD). |
-| `secret_hash` | text nullable | Argon2id PHC string for passwords; credential-specific for others. |
-| `public_key` | text nullable | For passkeys, serialized credential public key. |
-| `sign_count` | integer nullable | For passkeys. |
+| `type` | text | `password`, `passkey`, or `totp`. |
+| `password_verifier` | text nullable | Password rows only. Argon2id PHC string. |
+| `webauthn_credential_id` | blob nullable | Passkey rows only. Raw credential ID. |
+| `webauthn_public_key` | blob nullable | Passkey rows only. CBOR-encoded COSE key. |
+| `webauthn_aaguid` | blob nullable | Passkey rows only. 16-byte authenticator AAGUID. |
+| `webauthn_sign_count` | integer nullable | Passkey rows only. Last accepted signature counter. |
+| `webauthn_transports` | text nullable | Passkey rows only. Persisted transport hints. |
+| `webauthn_discoverable` | boolean nullable | Passkey rows only. |
+| `webauthn_backup_eligible` | boolean nullable | Passkey rows only. |
+| `webauthn_backup_state` | boolean nullable | Passkey rows only. |
+| `totp_ciphertext` | blob nullable | TOTP rows only. AEAD ciphertext, never plaintext. |
+| `totp_key_id` | text nullable | TOTP rows only. Key-encryption-key version for rotation. |
+| `totp_nonce` | blob nullable | TOTP rows only. AEAD nonce. |
+| `totp_algorithm`, `totp_digits`, `totp_period` | text/integer | TOTP rows only. |
+| `totp_last_accepted_step` | integer nullable | TOTP rows only. Replay guard. |
 | `label` | text | User-visible label. |
 | `status` | text | `active`, `disabled`, `revoked`. |
 | `created_at`, `last_used_at` | integer | Epoch milliseconds. |
@@ -359,10 +372,24 @@ Separate rows per credential type.
 Rules:
 
 - Never store plaintext passwords or password-equivalent secrets.
-- Password hashes are Argon2id PHC strings with per-hash salts and calibrated parameters.
-  Parameter changes trigger rehash on successful login.
+- Password verifiers are Argon2id PHC strings with per-hash salts. The domain accepts only
+  Argon2id version 19, at least 19 MiB memory, two passes, one lane, a 16-64 byte salt, and
+  a 32-byte output. Parameter changes trigger rehash on successful login.
+- Passkey rows store the raw credential ID, the COSE public key, the AAGUID, transport
+  hints, discoverability, and backup flags. A non-zero signature counter must increase on
+  every authentication; a regression fails closed as a possible cloned authenticator. A
+  zero counter is accepted for authenticators that do not implement clone detection.
+- TOTP secrets are encrypted with an AEAD adapter before they reach storage. The
+  key-encryption key comes from the deployment secret store, and `totp_key_id` records the
+  key version so secrets can be re-encrypted during rotation. The core never sees plaintext
+  TOTP secrets.
+- The adapter computes the TOTP time step after verifying the code. `totp_last_accepted_step`
+  is monotonic: a step that is equal to or lower than the stored step is rejected as a
+  replay, and rotating the secret clears the step.
+- Disabling a credential is reversible; revocation is terminal. Revoked rows are retained
+  for audit and recovery investigation and are deleted only with the owning user.
 - Passkeys/WebAuthn and TOTP are not confirmed for v1. **Decision pending:** MFA scope.
-  If included, they use this table rather than adding columns to `user`.
+  If included, they use this model rather than adding columns to `user`.
 - One-time tokens (email verification, password reset, invitation acceptance, magic link if
   ever supported) live in `one_time_token`: hashed token, user or invitation reference,
   purpose, `expires_at`, `consumed_at`, `created_at`, and request metadata. They are
@@ -629,13 +656,18 @@ Additional rules:
   Zero rows affected means conflict; reload and either return a conflict or retry a
   non-security-sensitive operation.
 - One-time consumption uses `WHERE consumed_at IS NULL` and checks affected rows.
-- Multi-row commands are submitted as a batch. Each statement includes its guard. The
-  native adapter wraps the batch in a transaction; D1 executes a batch atomically per D1's
-  batch semantics. If any statement fails, the transaction/batch fails and the use case
-  reloads.
+- Multi-row commands are submitted as one `WriteBatch` through the `UnitOfWork` port. Each
+  `WriteCommand` includes its guard and tenant context. The batch is all-or-nothing: a
+  guard failure or storage error returns `Conflict`/`NotFound` and rolls back every earlier
+  command. The native adapter wraps the batch in one transaction; D1 translates the same
+  ordered commands into one `batch()` call. If any statement fails, the transaction/batch
+  fails and the use case reloads.
 - Never design a use case that requires reading a value written earlier in the same
   transaction. Precompute all values before the batch. This is the key portability rule
   for D1, which has no interactive transactions.
+- Audit events for a state change belong in the same batch as the change, using
+  `AppendAudit`. An asynchronous outbox may carry non-critical fan-out, but it must not
+  replace the guarded audit row required for a security-sensitive mutation.
 - For counters and last-owner checks, prefer a conditional update based on a subquery or a
   precomputed count with a version guard. If the adapter cannot express the invariant in
   one statement, use a dedicated lock row (for example, an organization row version bump)

@@ -236,6 +236,8 @@ The exact Rust signatures will evolve, but the port categories are stable:
 | Port | Purpose | Runtime notes |
 | --- | --- | --- |
 | `UserRepository`, `OrganizationRepository`, `ApplicationRepository` | Aggregate reads and guarded writes. | All tenant-owned methods require `TenantContext`. |
+| `UnitOfWork` | Executes a precomputed `WriteBatch` atomically. | Native adapters use one SQL transaction; D1 uses one `batch()` call with the same guards. |
+| `CredentialRepository` | Type-specific password, passkey, and TOTP credential persistence. | Adapters hash passwords, encrypt TOTP secrets, and enforce the stored credential type. |
 | `ClientRepository` | OAuth client lookup, secret verifier rotation, redirect URI registration. | Client IDs are deployment-global. |
 | `MembershipRepository`, `RoleRepository` | Membership and role-binding queries. | Permission checks must be expressible as one query or a bounded set. |
 | `SessionRepository` | Session creation, rotation, idle/absolute expiry, revocation. | Auth-critical reads should target the primary on D1. |
@@ -263,10 +265,32 @@ A use case performs this sequence:
 4. If the batch fails a guard, re-read and return a conflict or a safe OAuth error. Do not
    retry blindly for one-time grants.
 
-The native adapter executes the batch inside a SQL transaction. The D1 adapter executes a
-D1 `batch()` and uses the same guards. Because no read occurs inside the transaction, the
-core does not need interactive transactions. See [Domain model](domain-model.md) for the
-schema implications and [Runtime targets](runtime-targets.md) for D1 caveats.
+The portable contract is `authkit_core::ports::write`: a `WriteBatch` holds ordered
+`WriteCommand` values, and `UnitOfWork::commit` applies the batch. The command values carry
+domain aggregates, tenant contexts, and the version or one-time guard the use case read.
+They contain no SQLx, SQLite, PostgreSQL, or runtime transaction type. The command set covers
+users, organizations, memberships, invitations, applications, OAuth clients, credentials,
+sessions, roles, role bindings, authorization codes, consents, refresh families and tokens,
+and audit events.
+
+The native adapter executes the batch inside one SQL transaction. A SQLite adapter uses a
+write transaction with a busy timeout; a PostgreSQL adapter uses one transaction with
+per-statement guards and unique constraints. The D1 adapter translates the same ordered
+commands into one D1 `batch()` and uses the same guards; because D1 has no interactive
+transactions, a use case must precompute every value and must not read a value written
+earlier in the batch. A guard failure or statement error rolls back the whole batch and is
+reported as `WriteOutcome::Conflict` or `WriteOutcome::NotFound`. Callers reload and either
+return a safe conflict or retry only operations that are safe to retry; one-time grants are
+never retried blindly.
+
+Each adapter must pass the same conformance cases: a duplicate or stale guard returns
+`Conflict`, a missing row returns `NotFound`, an injected late failure leaves no earlier
+write visible, and the audit row is committed with the state change. The in-memory test
+double covers these cases today; native and D1 adapter tests must repeat them when those
+adapters land.
+
+See [Domain model](domain-model.md) for the schema implications and
+[Runtime targets](runtime-targets.md) for D1 caveats.
 
 ## 5. Request flows
 
