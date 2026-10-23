@@ -190,7 +190,7 @@ environment files are untracked.
 | `AUTHKIT_DATABASE_MAX_CONNECTIONS` | Connection pool limit. Defaults to `5`; must be positive. In-memory SQLite always uses one connection. |
 | `AUTHKIT_SIGNING_KEY_FILE` | Encrypted ES256 keyring file. Defaults to `authkit-signing-keys.json` in development; production requires an absolute path. Created with one active key on first start. Must not be group- or world-readable. |
 | `AUTHKIT_SIGNING_KEY_KEK` | Required 32-byte base64url key-encryption key for private key material. Inject it from a secret manager outside local development. |
-| `AUTHKIT_SIGNING_KEY_RETIRED_PUBLISH_SECS` | How long retired public keys remain in JWKS. Defaults to `900`; must be between `1` and `86400`. |
+| `AUTHKIT_SIGNING_KEY_RETIRED_PUBLISH_SECS` | Default overlap for a retired key whose entry omits `publish_until`; derived from `retired_at`. Defaults to `900`; must be between `1` and `86400`. |
 | `AUTHKIT_LOG_FORMAT` | `json` or `pretty`. Defaults to `json` in production and `pretty` otherwise. |
 | `RUST_LOG` | Tracing filter. Defaults to `info`; never include credentials in log output. |
 

@@ -147,7 +147,7 @@ checklist of values the deployment must define, not a frozen schema.
 | `AUTHKIT_DATABASE_MAX_CONNECTIONS` | Native connection pool limit | Positive integer; size for the database, not CPU count alone |
 | `AUTHKIT_SIGNING_KEY_FILE` | Encrypted native keyring | Absolute path in production; `0600`; separate encrypted backup |
 | `AUTHKIT_SIGNING_KEY_KEK` | Keyring key-encryption key | 32-byte base64url secret from a secret manager; never inline in config files |
-| `AUTHKIT_SIGNING_KEY_RETIRED_PUBLISH_SECS` | Retired public-key overlap | `1`-`86400`; default `900` |
+| `AUTHKIT_SIGNING_KEY_RETIRED_PUBLISH_SECS` | Default retired public-key overlap | `1`-`86400`; default `900`; used only when `publish_until` is omitted |
 | `AUTHKIT_SESSION_PEPPER` | Session digest protection | Secret manager; key-ring version |
 | `AUTHKIT_EMAIL_TOKEN_PEPPER` | Reset/verification digest protection | Secret manager; versioned |
 | `AUTHKIT_ENCRYPTION_KEK` | Envelope encryption of stored secrets | KMS/secret manager |
@@ -356,7 +356,11 @@ Exact rotation intervals are `Decision pending` and should be risk-based.
 
 The native keyring supports `next`, `active`, `retired`, and `compromised`
 entries. Automated generation and switching is tracked in #35; until then, a
-rotation is a reviewed keyring update with the server stopped.
+rotation is a reviewed keyring update with the server stopped. A retired entry
+must include `retired_at` or an explicit `publish_until`. If the deadline is
+omitted, startup derives it once from `retired_at` plus
+`AUTHKIT_SIGNING_KEY_RETIRED_PUBLISH_SECS`; the deadline does not reset on
+restart.
 
 1. Generate a new key in the KMS/keystore with a new `kid`. Do not overwrite the
    old key.
