@@ -32,7 +32,11 @@ pub mod write;
 pub use application::{Application, ApplicationKind, ApplicationStatus};
 pub use audit::{AuditAction, AuditActor, AuditAttribute, AuditEvent, AuditTarget};
 pub use client_id::ClientId;
-pub use credential::{Credential, CredentialKind, CredentialStatus};
+pub use credential::{
+    Argon2idParameters, AuthenticatorTransport, Credential, CredentialData, CredentialKind,
+    CredentialStatus, EncryptedSecret, PasskeyCredential, PasskeyRegistration, PasswordVerifier,
+    TotpAlgorithm, TotpConfig, TotpCredential,
+};
 pub use email::Email;
 pub use error::{DomainError, ErrorCode};
 pub use grant::{AuthorizationCode, Consent, RefreshFamily, RefreshToken};
