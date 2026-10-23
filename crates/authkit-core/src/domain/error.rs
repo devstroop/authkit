@@ -84,6 +84,10 @@ impl DomainError {
     pub fn forbidden(message: impl Into<String>) -> Self {
         Self::new(ErrorCode::Forbidden, message)
     }
+    /// Creates an `Unauthenticated` error.
+    pub fn unauthenticated(message: impl Into<String>) -> Self {
+        Self::new(ErrorCode::Unauthenticated, message)
+    }
 
     /// Returns the stable error code.
     pub const fn code(&self) -> ErrorCode {
