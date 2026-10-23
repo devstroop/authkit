@@ -4,10 +4,20 @@
 
 use crate::domain::DomainError;
 use crate::domain::Timestamp;
+use crate::domain::application::Application;
 use crate::domain::audit::AuditEvent;
+use crate::domain::credential::Credential;
 use crate::domain::email::Email;
-use crate::domain::id::{Entity, Id, IdError, OrganizationEntity, UserEntity};
+use crate::domain::id::{
+    ApplicationEntity, Entity, Id, IdError, InvitationEntity, MembershipEntity, OAuthClientEntity,
+    OrganizationEntity, RoleBindingEntity, RoleEntity, SessionEntity, UserEntity,
+};
+use crate::domain::invitation::Invitation;
+use crate::domain::membership::Membership;
+use crate::domain::oauth_client::OAuthClient;
 use crate::domain::organization::Organization;
+use crate::domain::role::{Role, RoleBinding};
+use crate::domain::session::Session;
 use crate::domain::slug::Slug;
 use crate::domain::tenant::TenantContext;
 use crate::domain::user::User;
@@ -63,6 +73,209 @@ pub trait OrganizationRepository {
     ) -> Result<WriteOutcome, DomainError>;
 }
 
+/// Read and write access to tenant-owned memberships.
+pub trait MembershipRepository {
+    /// Finds a membership by identifier.
+    fn find_by_id(
+        &self,
+        tenant: &TenantContext,
+        id: &Id<MembershipEntity>,
+    ) -> Result<Option<Membership>, DomainError>;
+
+    /// Finds the membership for a user in a tenant.
+    fn find_by_user(
+        &self,
+        tenant: &TenantContext,
+        user_id: &Id<UserEntity>,
+    ) -> Result<Option<Membership>, DomainError>;
+
+    /// Inserts a new membership.
+    fn insert(
+        &self,
+        tenant: &TenantContext,
+        membership: &Membership,
+    ) -> Result<WriteOutcome, DomainError>;
+
+    /// Updates an existing membership using optimistic concurrency.
+    fn update(
+        &self,
+        tenant: &TenantContext,
+        membership: &Membership,
+        expected_version: u64,
+    ) -> Result<WriteOutcome, DomainError>;
+}
+
+/// Read and write access to tenant-owned invitations.
+pub trait InvitationRepository {
+    /// Finds an invitation by identifier.
+    fn find_by_id(
+        &self,
+        tenant: &TenantContext,
+        id: &Id<InvitationEntity>,
+    ) -> Result<Option<Invitation>, DomainError>;
+
+    /// Inserts a new invitation.
+    fn insert(
+        &self,
+        tenant: &TenantContext,
+        invitation: &Invitation,
+    ) -> Result<WriteOutcome, DomainError>;
+
+    /// Updates an existing invitation using optimistic concurrency.
+    fn update(
+        &self,
+        tenant: &TenantContext,
+        invitation: &Invitation,
+        expected_version: u64,
+    ) -> Result<WriteOutcome, DomainError>;
+}
+
+/// Read and write access to tenant-owned applications.
+pub trait ApplicationRepository {
+    /// Finds an application by identifier.
+    fn find_by_id(
+        &self,
+        tenant: &TenantContext,
+        id: &Id<ApplicationEntity>,
+    ) -> Result<Option<Application>, DomainError>;
+
+    /// Finds an application by slug within a tenant.
+    fn find_by_slug(
+        &self,
+        tenant: &TenantContext,
+        slug: &crate::domain::slug::Slug,
+    ) -> Result<Option<Application>, DomainError>;
+
+    /// Inserts a new application.
+    fn insert(
+        &self,
+        tenant: &TenantContext,
+        application: &Application,
+    ) -> Result<WriteOutcome, DomainError>;
+
+    /// Updates an existing application using optimistic concurrency.
+    fn update(
+        &self,
+        tenant: &TenantContext,
+        application: &Application,
+        expected_version: u64,
+    ) -> Result<WriteOutcome, DomainError>;
+}
+
+/// Read and write access to OAuth clients.
+pub trait OAuthClientRepository {
+    /// Finds a client by internal identifier.
+    fn find_by_id(
+        &self,
+        tenant: &TenantContext,
+        id: &Id<OAuthClientEntity>,
+    ) -> Result<Option<OAuthClient>, DomainError>;
+
+    /// Finds a client by its public client identifier.
+    fn find_by_client_id(
+        &self,
+        client_id: &crate::domain::client_id::ClientId,
+    ) -> Result<Option<OAuthClient>, DomainError>;
+
+    /// Inserts a new client.
+    fn insert(
+        &self,
+        tenant: &TenantContext,
+        client: &OAuthClient,
+    ) -> Result<WriteOutcome, DomainError>;
+
+    /// Updates an existing client using optimistic concurrency.
+    fn update(
+        &self,
+        tenant: &TenantContext,
+        client: &OAuthClient,
+        expected_version: u64,
+    ) -> Result<WriteOutcome, DomainError>;
+}
+
+/// Read and write access to credentials.
+pub trait CredentialRepository {
+    /// Finds credentials for a user.
+    fn list_for_user(&self, user_id: &Id<UserEntity>) -> Result<Vec<Credential>, DomainError>;
+
+    /// Inserts a new credential.
+    fn insert(&self, credential: &Credential) -> Result<WriteOutcome, DomainError>;
+
+    /// Updates an existing credential using optimistic concurrency.
+    fn update(
+        &self,
+        credential: &Credential,
+        expected_version: u64,
+    ) -> Result<WriteOutcome, DomainError>;
+}
+
+/// Read and write access to sessions.
+pub trait SessionRepository {
+    /// Finds a session by identifier.
+    fn find_by_id(&self, id: &Id<SessionEntity>) -> Result<Option<Session>, DomainError>;
+
+    /// Finds a session by token hash.
+    fn find_by_token_hash(
+        &self,
+        token_hash: &crate::domain::secret::SecretHash,
+    ) -> Result<Option<Session>, DomainError>;
+
+    /// Inserts a new session.
+    fn insert(&self, session: &Session) -> Result<WriteOutcome, DomainError>;
+
+    /// Updates an existing session using optimistic concurrency.
+    fn update(&self, session: &Session, expected_version: u64)
+    -> Result<WriteOutcome, DomainError>;
+}
+
+/// Read and write access to roles.
+pub trait RoleRepository {
+    /// Finds a role by identifier.
+    fn find_by_id(
+        &self,
+        tenant: &TenantContext,
+        id: &Id<RoleEntity>,
+    ) -> Result<Option<Role>, DomainError>;
+
+    /// Lists roles for a tenant.
+    fn list(&self, tenant: &TenantContext) -> Result<Vec<Role>, DomainError>;
+
+    /// Inserts a new role.
+    fn insert(&self, tenant: &TenantContext, role: &Role) -> Result<WriteOutcome, DomainError>;
+
+    /// Updates an existing role using optimistic concurrency.
+    fn update(
+        &self,
+        tenant: &TenantContext,
+        role: &Role,
+        expected_version: u64,
+    ) -> Result<WriteOutcome, DomainError>;
+}
+
+/// Read and write access to role bindings.
+pub trait RoleBindingRepository {
+    /// Finds bindings for a user in a tenant.
+    fn list_for_user(
+        &self,
+        tenant: &TenantContext,
+        user_id: &Id<UserEntity>,
+    ) -> Result<Vec<RoleBinding>, DomainError>;
+
+    /// Inserts a new binding.
+    fn insert(
+        &self,
+        tenant: &TenantContext,
+        binding: &RoleBinding,
+    ) -> Result<WriteOutcome, DomainError>;
+
+    /// Deletes a binding.
+    fn delete(
+        &self,
+        tenant: &TenantContext,
+        binding_id: &Id<RoleBindingEntity>,
+    ) -> Result<WriteOutcome, DomainError>;
+}
+
 /// Read and write access to tenant-owned audit events.
 pub trait AuditRepository {
     /// Appends an audit event. Audit writes are append-only.
@@ -74,4 +287,17 @@ pub trait AuditRepository {
 }
 
 /// A repository bundle available to use cases.
-pub trait Repositories: UserRepository + OrganizationRepository + AuditRepository {}
+pub trait Repositories:
+    UserRepository
+    + OrganizationRepository
+    + MembershipRepository
+    + InvitationRepository
+    + ApplicationRepository
+    + OAuthClientRepository
+    + CredentialRepository
+    + SessionRepository
+    + RoleRepository
+    + RoleBindingRepository
+    + AuditRepository
+{
+}
