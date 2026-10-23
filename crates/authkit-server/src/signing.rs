@@ -106,7 +106,7 @@ impl SigningKey {
             secret: Some(secret),
             created_at: now,
             activated_at: (state == KeyState::Active).then_some(now),
-            retired_at: None,
+            retired_at: (state == KeyState::Retired).then_some(now),
             publish_until: None,
         })
     }
@@ -238,7 +238,7 @@ impl KeyRing {
         let keys = file
             .keys
             .into_iter()
-            .map(|entry| entry.into_signing_key(config.kek(), now, config.retired_publish_secs()))
+            .map(|entry| entry.into_signing_key(config.kek(), config.retired_publish_secs()))
             .collect::<Result<Vec<_>, _>>()?;
         Self::new(keys)
     }
@@ -353,11 +353,13 @@ impl KeyEntry {
     fn into_signing_key(
         mut self,
         kek: &[u8],
-        now: u64,
         retired_publish_secs: u64,
     ) -> Result<SigningKey, KeyRingError> {
         if self.state == KeyState::Retired && self.publish_until.is_none() {
-            self.publish_until = Some(now.saturating_add(retired_publish_secs));
+            let retired_at = self.retired_at.ok_or(KeyRingError::Invalid(
+                "retired signing keys require a retirement time or publication deadline",
+            ))?;
+            self.publish_until = Some(retired_at.saturating_add(retired_publish_secs));
         }
         if self.alg != ES256 {
             return Err(KeyRingError::Invalid("signing keys must use ES256"));
@@ -550,6 +552,42 @@ mod tests {
         let second = KeyRing::load_or_bootstrap(&config, 2_000).expect("reload keyring");
         assert_eq!(first.active().kid(), second.active().kid());
         assert_eq!(second.active().state(), KeyState::Active);
+
+        fs::remove_file(path).expect("remove keyring");
+    }
+
+    #[test]
+    fn retired_deadline_is_derived_from_retirement_time() {
+        let path = temporary_path();
+        let kek = vec![3_u8; 32];
+        let active = SigningKey::generate(KeyState::Active, 1_000).expect("active key");
+        let retired = SigningKey::generate(KeyState::Retired, 500).expect("retired key");
+        let retired_kid = retired.kid().to_owned();
+        let file = KeyRingFile {
+            version: KEYRING_VERSION,
+            keys: vec![
+                KeyEntry::from_signing_key(&active, &kek).expect("active entry"),
+                KeyEntry::from_signing_key(&retired, &kek).expect("retired entry"),
+            ],
+        };
+        write_keyring(&path, &file).expect("write keyring");
+
+        let config = config(path.clone(), kek);
+        let early = KeyRing::load_or_bootstrap(&config, 1_000).expect("load before deadline");
+        assert!(
+            early
+                .published_keys(1_000)
+                .iter()
+                .any(|key| key.kid == retired_kid)
+        );
+
+        let late = KeyRing::load_or_bootstrap(&config, 2_000).expect("load after deadline");
+        assert!(
+            !late
+                .published_keys(2_000)
+                .iter()
+                .any(|key| key.kid == retired_kid)
+        );
 
         fs::remove_file(path).expect("remove keyring");
     }
