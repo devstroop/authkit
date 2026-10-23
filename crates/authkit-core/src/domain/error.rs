@@ -113,6 +113,12 @@ impl From<crate::domain::value::ValueError> for DomainError {
     }
 }
 
+impl From<crate::domain::id::IdError> for DomainError {
+    fn from(value: crate::domain::id::IdError) -> Self {
+        Self::invalid(value.to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
