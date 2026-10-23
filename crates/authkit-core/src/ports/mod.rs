@@ -6,11 +6,11 @@ use crate::domain::DomainError;
 use crate::domain::Timestamp;
 use crate::domain::audit::AuditEvent;
 use crate::domain::email::Email;
+use crate::domain::id::{Entity, Id, IdError, OrganizationEntity, UserEntity};
 use crate::domain::organization::Organization;
 use crate::domain::slug::Slug;
-use crate::domain::user::User;
-use crate::domain::id::{Entity, Id, IdError, OrganizationEntity, UserEntity};
 use crate::domain::tenant::TenantContext;
+use crate::domain::user::User;
 use crate::domain::write::WriteOutcome;
 
 /// Supplies the current time to domain and application code.
@@ -66,7 +66,11 @@ pub trait OrganizationRepository {
 /// Read and write access to tenant-owned audit events.
 pub trait AuditRepository {
     /// Appends an audit event. Audit writes are append-only.
-    fn append(&self, tenant: &TenantContext, event: &AuditEvent) -> Result<WriteOutcome, DomainError>;
+    fn append(
+        &self,
+        tenant: &TenantContext,
+        event: &AuditEvent,
+    ) -> Result<WriteOutcome, DomainError>;
 }
 
 /// A repository bundle available to use cases.

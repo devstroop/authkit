@@ -28,7 +28,9 @@ impl CreateUser {
     ) -> Result<User, DomainError> {
         let now = clock.now();
         if repositories.find_by_email(&self.email)?.is_some() {
-            return Err(DomainError::conflict("a user with this email already exists"));
+            return Err(DomainError::conflict(
+                "a user with this email already exists",
+            ));
         }
         let id = ids.generate::<crate::domain::id::UserEntity>()?;
         let user = User::new(id, self.email.clone(), self.display_name.clone(), now);
@@ -57,7 +59,9 @@ impl CreateOrganization {
     ) -> Result<Organization, DomainError> {
         let now = clock.now();
         if repositories.find_by_slug(&self.slug)?.is_some() {
-            return Err(DomainError::conflict("an organization with this slug already exists"));
+            return Err(DomainError::conflict(
+                "an organization with this slug already exists",
+            ));
         }
         let id = ids.generate::<crate::domain::id::OrganizationEntity>()?;
         let organization = Organization::new(id, self.slug.clone(), self.name.clone(), now);
