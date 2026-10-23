@@ -104,15 +104,16 @@ Only force-push your own branch, and use `--force-with-lease`. Never force-push 
 ## Build and test expectations
 
 The workspace is scaffolded with four crates and a pinned toolchain. The native server is a
-CLI scaffold; the HTTP server and persistence adapters are not implemented yet. The local
-and CI checks are:
+CLI scaffold and the HTTP server is not implemented yet; the SQLx persistence adapters and
+migrations are implemented. The local and CI checks are:
 
 ```sh
 cargo build --workspace
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo test --workspace
-cargo sqlx prepare --check --workspace
+cargo test --workspace --all-features
+cargo doc --workspace --no-deps --all-features
+python3 scripts/check-docs.py
 ```
 
 Notes:
@@ -121,8 +122,17 @@ Notes:
 - Run `cargo run -p authkit-server -- --help` to verify the binary boundary after changing manifests or CLI arguments.
 - Documentation changes also run through `python3 scripts/check-docs.py`.
 - Unit tests should live beside the code they exercise. Cross-crate integration tests belong in the workspace test area.
-- Storage tests should cover both SQLite and PostgreSQL where behavior can differ. Use a disposable database, and never point tests at a database containing data you care about.
-- Use `SQLX_OFFLINE=true` to validate against committed query metadata. Run `cargo sqlx prepare --workspace` when queries change, and commit the resulting `.sqlx` metadata if the project adopts offline builds.
+- Storage tests should cover both SQLite and PostgreSQL where behavior can differ. Set
+  `TEST_POSTGRES_URL` to a disposable PostgreSQL database to run the Postgres contract;
+  without it, the Postgres contract skips. Never point tests at a database containing data
+  you care about. CI starts a disposable Postgres service and sets this variable.
+- `SqlStore` owns a Tokio runtime. Create and drop it on a blocking thread, and call its
+  repository methods from a blocking thread (for example `spawn_blocking`) when the caller
+  is inside an async task.
+- The SQLx adapter uses runtime `Any` queries so one implementation serves SQLite and
+  Postgres. A single `.sqlx` offline cache cannot represent both dialects, so offline
+  metadata is intentionally not used. Migration application and the shared repository
+  contract suite are the guard against schema drift.
 - Add a new migration instead of editing one that may already have been applied. Test migrations against both supported databases and document any irreversible step.
 - Security-sensitive behavior needs negative tests: expired sessions, revoked tokens, invalid callbacks, cross-account access, CSRF rejection, and redaction of secrets in errors and logs.
 

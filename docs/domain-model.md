@@ -614,7 +614,7 @@ only when all target engines are verified by migration tests.
 | Logical type | Physical representation | Rationale |
 | --- | --- | --- |
 | ID | `TEXT` | Identical across engines; stable ordering with sortable IDs. |
-| Timestamp | `INTEGER` epoch milliseconds, UTC | No database clock dependency; ordering and comparisons are portable. |
+| Timestamp | SQLite `INTEGER`, Postgres `BIGINT` epoch milliseconds, UTC | No database clock dependency; ordering and comparisons are portable. Postgres uses `BIGINT` so SQLx `Any` can bind timestamps as `i64`. |
 | Boolean | `INTEGER` 0/1 with `CHECK (col IN (0,1))` | Same semantics in SQLite, D1, and Postgres; avoids dialect casting. |
 | Enum | `TEXT` with `CHECK (col IN (...))` | No native enum migrations; values are explicit. |
 | JSON | `TEXT` containing a JSON object | SQLite/D1 JSON1 support varies; Postgres `jsonb` is not portable. Validate in Rust. |
@@ -630,8 +630,9 @@ Additional rules:
   the port, but the logical schema and behavior must not depend on them.
 - Use `TEXT` for all IDs even in Postgres. The storage overhead is acceptable and enables
   the same fixtures across test targets.
-- Use `INTEGER` for Postgres timestamps instead of `TIMESTAMPTZ` to keep comparisons and
-  bindings identical. Reporting can cast at query time.
+- Use integer epoch milliseconds for Postgres timestamps instead of `TIMESTAMPTZ` to keep
+  comparisons and bindings identical. The Postgres migration uses `BIGINT` because SQLx
+  `Any` binds integers as `i64`; SQLite uses `INTEGER`. Reporting can cast at query time.
 - Case folding: store `email_normalized` and preserve `email_display` if the product needs
   original casing. Slugs are lowercase ASCII with hyphens; validate with a single shared
   rule.
@@ -647,8 +648,14 @@ Additional rules:
 - D1 migrations are applied through Wrangler or the D1 API; SQLite/Postgres migrations are
   applied by the AuthKit CLI. Migration metadata is stored in a dedicated table owned by
   the migration tool, not the domain.
-- CI must run the full migration set against SQLite, Postgres, and D1 (or a D1-compatible
-  local runner) before merging. Schema drift is a release blocker.
+- CI must run the full migration set against every supported engine before merging. The
+  native adapter currently covers SQLite and Postgres; D1 migration coverage lands with the
+  D1 adapter. Schema drift is a release blocker.
+- The SQLx adapter uses runtime `Any` queries so that one implementation serves SQLite and
+  Postgres. A single `.sqlx` offline cache cannot represent both dialects, so offline
+  metadata is intentionally not committed. Migration application and the shared SQLite and
+  Postgres repository contract suite are the CI guard; revisit this if the adapter stops
+  using `Any`.
 
 ### 5.5 Concurrency and atomicity
 
