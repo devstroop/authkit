@@ -22,10 +22,12 @@ Only code on the official repository is covered. Forks, unpublished modification
 
 Use one of these private channels:
 
-1. **GitHub private vulnerability reporting:** [Open a private security advisory](https://github.com/devstroop/authkit/security/advisories/new). This is the preferred channel once it is enabled for the repository.
-2. **Email:** `security@devstroop.com`
+1. **GitHub private vulnerability reporting:** [Open a private security advisory](https://github.com/devstroop/authkit/security/advisories/new). This is the preferred channel and is enabled for the repository. Only the maintainers and the reporter can see the advisory.
+2. **Email:** `security@devstroop.com`. Use this fallback if GitHub is unavailable or you cannot use an authenticated GitHub account. If you do not receive an acknowledgement within three business days, open a GitHub advisory and reference the email subject.
 
-The email address and advisory link are **placeholders and must be confirmed before public launch**. If neither channel is available, contact a maintainer privately through the contact method listed on their GitHub profile and ask for a secure channel. Do not include exploit details in that initial contact.
+Do not include exploit details in public issues, discussions, pull requests, or an initial contact through an unrelated channel. If neither channel is available, contact a maintainer privately through the contact method listed on their GitHub profile and ask for a secure channel.
+
+The maintainer named as the release and security contact in [GOVERNANCE.md](GOVERNANCE.md#maintainers) owns triage. If that person is unavailable, is the reporter, or has a conflict of interest, another maintainer takes over. Before public launch the project must name a second maintainer or independent advisor so that no security report depends on one person.
 
 Please include, when available:
 
@@ -65,16 +67,19 @@ When in doubt, report privately and let maintainers determine scope.
 
 ## Response process
 
-Maintainers will make a best-effort effort to:
+Maintainers follow this process:
 
-1. acknowledge the report privately and confirm a secure channel;
-2. triage severity, reproducibility, and affected components;
+1. acknowledge the report privately and confirm a secure channel, targeting three business days;
+2. triage severity, reproducibility, affected components, and whether a release is affected, targeting ten business days for an initial assessment;
 3. ask for additional information when needed and avoid unnecessary collection of sensitive data;
 4. prepare and test a fix, including tests that reproduce the issue where practical;
 5. coordinate a disclosure plan and publish an advisory with affected versions, impact, and mitigation;
-6. credit the reporter by name or handle if they wish.
+6. credit the reporter by name or handle if they wish;
+7. record the resolution and any follow-up hardening in the private advisory or release notes.
 
-The project does not guarantee a response time, fix time, bounty, or any particular outcome. Do not disclose the issue publicly, including in a fork or package release, before maintainers confirm that a coordinated disclosure is ready. If a report is declined as out of scope, we will explain why when possible.
+The targets above are best effort, not a service-level guarantee. The project does not guarantee a fix time, bounty, or any particular outcome. Do not disclose the issue publicly, including in a fork or package release, before maintainers confirm that a coordinated disclosure is ready. If a report is declined as out of scope, we will explain why when possible.
+
+The private reporting channel is verified again before every release promotion, including a test acknowledgement through the advisory flow. See the [1.0 release gate](docs/roadmap.md#10-release-gate).
 
 Security-sensitive changes follow the additional requirements in [GOVERNANCE.md](GOVERNANCE.md#security-sensitive-changes). For contribution process and branch rules, see [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/workflow.md](docs/workflow.md).
 
@@ -86,4 +91,4 @@ We welcome good-faith research that respects privacy, avoids harming users, and 
 
 Security contact: `security@devstroop.com`
 
-This address is a placeholder and must be confirmed before public launch. The maintainer team and reporting channels will be reviewed as part of the open items in [GOVERNANCE.md](GOVERNANCE.md#access-continuity-and-open-items).
+The repository's private vulnerability reporting channel is enabled and is the primary contact. The email fallback is published for reporters who cannot use GitHub. Maintainer ownership, escalation, and the remaining resilience requirements are recorded in [GOVERNANCE.md](GOVERNANCE.md#access-continuity-and-open-items).

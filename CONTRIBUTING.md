@@ -154,4 +154,6 @@ An accepted RFC becomes an ADR in `docs/adr/` when that directory is introduced.
 
 ## Licensing and contributions
 
-The project license is still an open governance item. Before public launch, maintainers will publish the chosen license and any contribution terms in the repository. Do not assume a license for redistribution before that happens.
+AuthKit is dual-licensed under the MIT license or the Apache License, Version 2.0, at the user's option. The license texts are in `LICENSE-MIT` and `LICENSE-APACHE`, and the decision is recorded in [ADR-0010](docs/adr/0010-dual-mit-apache-2-0-license.md).
+
+Contributions are accepted under the same dual license (inbound = outbound). No separate contributor license agreement is required. By submitting a contribution, you confirm that you have the right to license it under these terms and that it does not knowingly include incompatible third-party code. Do not add a dependency or copied source file unless its license is compatible with both license options.
