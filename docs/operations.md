@@ -135,15 +135,16 @@ weaker hashing, revocation, or rate limiting.
 
 ## 2. Configuration and secrets
 
-Configuration names below are working names; final names are `Decision pending`.
-Treat this as a checklist of values the deployment must define, not a frozen
-schema.
+Configuration names below are the implemented native names where available; secret and
+provider settings that are not implemented yet remain working names. Treat this as a
+checklist of values the deployment must define, not a frozen schema.
 
 | Setting | Purpose | Default / requirement |
 | --- | --- | --- |
-| `AUTHKIT_ISSUER` | Canonical public origin | `https://auth.<apex>`; must match discovery and tokens |
-| `AUTHKIT_LISTEN_ADDR` | Native bind address | Loopback or private interface behind proxy |
+| `AUTHKIT_ISSUER` | Canonical public origin | `https://auth.<apex>`; must match discovery and tokens; HTTPS required in production |
+| `AUTHKIT_BIND_ADDR` | Native bind address | Loopback or private interface behind proxy |
 | `AUTHKIT_DATABASE_URL` / D1 binding | Data store | Private; least-privilege credentials |
+| `AUTHKIT_DATABASE_MAX_CONNECTIONS` | Native connection pool limit | Positive integer; size for the database, not CPU count alone |
 | `AUTHKIT_SIGNING_KEY` / key reference | Token signing | KMS/secret manager; never inline in config files |
 | `AUTHKIT_SIGNING_KID` | Key identifier | Stable, unique per key |
 | `AUTHKIT_SESSION_PEPPER` | Session digest protection | Secret manager; key-ring version |
@@ -158,7 +159,7 @@ schema.
 | `AUTHKIT_DEFAULT_ORG_POLICY` | Membership and MFA defaults | Least privilege |
 | `AUTHKIT_AUDIT_EXPORT_TARGET` | Offsite audit copy | Encrypted object storage/SIEM |
 | `AUTHKIT_MIGRATION_MODE` | Legacy/dual-run/cutover flags | Off by default; explicit enablement |
-| `AUTHKIT_LOG_FORMAT` / level | Structured logging | JSON, redacted; no secrets |
+| `AUTHKIT_LOG_FORMAT` / `RUST_LOG` | Structured logging and filter | JSON in production, redacted; no secrets |
 | Worker bindings | D1, KV (public config only), queues, secrets | Least privilege per environment |
 
 Rules:
@@ -526,7 +527,7 @@ Service-level objectives for availability, login latency, and token issuance are
 | Endpoint | Purpose | Behavior |
 | --- | --- | --- |
 | `/healthz` (liveness) | Process is running | `200` if the process can serve; no database dependency; no secrets |
-| `/readyz` (readiness) | Safe to receive auth traffic | Checks database connectivity, schema version, signing key loaded, required secret bindings, and migration state; `503` if not ready |
+| `/readyz` (readiness) | Safe to receive auth traffic | Checks database connectivity; `503` if not ready. Schema-version, signing-key, and required-binding checks land with those features. |
 | Admin diagnostics | Deeper operator view | Admin-only, redacted, rate-limited; never returns key material or tokens |
 
 Rules:

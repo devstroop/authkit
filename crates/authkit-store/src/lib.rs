@@ -61,17 +61,46 @@ pub struct SqlStore {
 }
 
 impl SqlStore {
-    /// Connects to a SQLite database.
+    /// Connects to the database selected by the URL scheme.
+    ///
+    /// `max_connections` must be greater than zero. In-memory SQLite URLs always use a
+    /// single connection so every operation sees the same database.
+    pub fn connect(url: &str, max_connections: u32) -> Result<Self, StoreError> {
+        if max_connections == 0 {
+            return Err(StoreError::Configuration(
+                "database max connections must be greater than zero".to_owned(),
+            ));
+        }
+        if url.starts_with("sqlite:") {
+            Self::connect_sqlite_with_max_connections(url, max_connections)
+        } else if url.starts_with("postgres://") || url.starts_with("postgresql://") {
+            Self::connect_postgres_with_max_connections(url, max_connections)
+        } else {
+            Err(StoreError::Configuration(
+                "database URL must start with sqlite:, postgres://, or postgresql://".to_owned(),
+            ))
+        }
+    }
+
+    /// Connects to a SQLite database with the default pool limit.
     ///
     /// The URL must select a database file or `sqlite::memory:`. Use a URL with
     /// `?mode=rwc` when the file may not exist yet. In-memory URLs use a single pooled
     /// connection so every operation sees the same database.
     pub fn connect_sqlite(url: &str) -> Result<Self, StoreError> {
+        Self::connect_sqlite_with_max_connections(url, 5)
+    }
+
+    fn connect_sqlite_with_max_connections(
+        url: &str,
+        max_connections: u32,
+    ) -> Result<Self, StoreError> {
         install_default_drivers();
         let runtime = build_runtime()?;
+        let max_connections = sqlite_max_connections(url).min(max_connections);
         let pool = runtime.block_on(async {
             AnyPoolOptions::new()
-                .max_connections(sqlite_max_connections(url))
+                .max_connections(max_connections)
                 .after_connect(|connection, _metadata| {
                     Box::pin(async move {
                         connection.execute("PRAGMA foreign_keys = ON").await?;
@@ -90,33 +119,26 @@ impl SqlStore {
 
     /// Creates a single-connection in-memory SQLite store.
     pub fn sqlite_in_memory() -> Result<Self, StoreError> {
+        Self::connect_sqlite_with_max_connections("sqlite::memory:", 1)
+    }
+
+    /// Connects to a Postgres database with the default pool limit.
+    pub fn connect_postgres(url: &str) -> Result<Self, StoreError> {
+        Self::connect_postgres_with_max_connections(url, 5)
+    }
+
+    fn connect_postgres_with_max_connections(
+        url: &str,
+        max_connections: u32,
+    ) -> Result<Self, StoreError> {
         install_default_drivers();
         let runtime = build_runtime()?;
         let pool = runtime.block_on(async {
             AnyPoolOptions::new()
-                .max_connections(1)
-                .after_connect(|connection, _metadata| {
-                    Box::pin(async move {
-                        connection.execute("PRAGMA foreign_keys = ON").await?;
-                        Ok(())
-                    })
-                })
-                .connect("sqlite::memory:")
+                .max_connections(max_connections)
+                .connect(url)
                 .await
         })?;
-        Ok(Self {
-            pool,
-            runtime,
-            dialect: Dialect::Sqlite,
-        })
-    }
-
-    /// Connects to a Postgres database.
-    pub fn connect_postgres(url: &str) -> Result<Self, StoreError> {
-        install_default_drivers();
-        let runtime = build_runtime()?;
-        let pool = runtime
-            .block_on(async { AnyPoolOptions::new().max_connections(5).connect(url).await })?;
         Ok(Self {
             pool,
             runtime,
@@ -136,6 +158,14 @@ impl SqlStore {
                 .block_on(sqlx::migrate!("./migrations/postgres").run(&self.pool))
                 .map_err(StoreError::Migrate),
         }
+    }
+
+    /// Runs a trivial query to verify that the database is reachable.
+    pub fn ping(&self) -> Result<(), StoreError> {
+        self.block_on(async {
+            sqlx::query("SELECT 1").execute(&self.pool).await?;
+            Ok(())
+        })
     }
 
     fn sql(&self, query: &str) -> String {
@@ -176,6 +206,18 @@ pub enum StoreError {
     Configuration(String),
 }
 
+impl StoreError {
+    /// Returns a short, redacted description safe for logs and user-facing errors.
+    pub fn safe_message(&self) -> &str {
+        match self {
+            Self::Sqlx(_) => "database operation failed",
+            Self::Migrate(_) => "migration failed",
+            Self::Runtime(_) => "store runtime failed",
+            Self::Configuration(error) => error,
+        }
+    }
+}
+
 impl fmt::Display for StoreError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -212,4 +254,25 @@ fn map_db_error(error: sqlx::Error) -> DomainError {
 
 fn invalid_stored_value() -> DomainError {
     DomainError::new(ErrorCode::Internal, "stored data is invalid")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn connect_rejects_zero_connections() {
+        assert!(matches!(
+            SqlStore::connect("sqlite::memory:", 0),
+            Err(StoreError::Configuration(_))
+        ));
+    }
+
+    #[test]
+    fn connect_rejects_unknown_schemes() {
+        assert!(matches!(
+            SqlStore::connect("mysql://localhost/authkit", 5),
+            Err(StoreError::Configuration(_))
+        ));
+    }
 }

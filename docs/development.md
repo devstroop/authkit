@@ -103,9 +103,10 @@ Only force-push your own branch, and use `--force-with-lease`. Never force-push 
 
 ## Build and test expectations
 
-The workspace is scaffolded with four crates and a pinned toolchain. The native server is a
-CLI scaffold and the HTTP server is not implemented yet; the SQLx persistence adapters and
-migrations are implemented. The local and CI checks are:
+The workspace is scaffolded with four crates and a pinned toolchain. The native server
+provides an Axum HTTP skeleton with typed configuration, health and readiness endpoints,
+request IDs, structured tracing, and RFC 6749 error mapping. The SQLx persistence adapters
+and migrations are implemented. The local and CI checks are:
 
 ```sh
 cargo build --workspace
@@ -119,7 +120,9 @@ python3 scripts/check-docs.py
 Notes:
 
 - Run formatting and lint checks before opening a pull request. Fix warnings rather than suppressing them unless the suppression is narrow and explained.
-- Run `cargo run -p authkit-server -- --help` to verify the binary boundary after changing manifests or CLI arguments.
+- Run `cargo run -p authkit-server -- --help` to verify the binary boundary after changing
+  manifests or CLI arguments. Start the server with
+  `cargo run -p authkit-server -- serve`.
 - Documentation changes also run through `python3 scripts/check-docs.py`.
 - Unit tests should live beside the code they exercise. Cross-crate integration tests belong in the workspace test area.
 - Storage tests should cover both SQLite and PostgreSQL where behavior can differ. Set
@@ -172,27 +175,33 @@ Keep dependency direction one-way: adapters may depend on the core, but the core
 
 ## Environment and configuration
 
-Configuration is not implemented yet. The intended approach is to keep a committed example file, keep real environment files untracked, and fail closed when required security settings are absent.
-
-Planned configuration inputs:
+Configuration is loaded and validated by `authkit-server` before the listener binds. The
+committed `.env.example` contains safe local defaults; copy it to `.env` for local work. Real
+environment files are untracked.
 
 | Variable | Purpose |
 | --- | --- |
-| `AUTHKIT_ENV` | Runtime environment name, such as `development`, `test`, or `production` |
-| `AUTHKIT_BIND_ADDR` | Local listen address for the self-hosted server |
-| `AUTHKIT_BASE_URL` | Public base URL used for links, callbacks, and cookie decisions |
-| `DATABASE_URL` | SQLx connection string for SQLite or PostgreSQL |
-| `DATABASE_MAX_CONNECTIONS` | Optional connection pool limit |
-| `RUST_LOG` | Logging filter, with sensitive values redacted |
-| `SQLX_OFFLINE` | Use committed query metadata instead of a live database during builds |
+| `AUTHKIT_ENV` | `development`, `test`, or `production`. Defaults to `production`. |
+| `AUTHKIT_BIND_ADDR` | Listen address. Defaults to `127.0.0.1:3000`. |
+| `AUTHKIT_ISSUER` | Required canonical public origin. Must be an absolute origin with no path, query, fragment, or user information. HTTPS is required outside `development` and `test`. |
+| `AUTHKIT_DATABASE_URL` | Required SQLx URL using `sqlite:`, `postgres://`, or `postgresql://`. `DATABASE_URL` is accepted as a fallback. |
+| `AUTHKIT_DATABASE_MAX_CONNECTIONS` | Connection pool limit. Defaults to `5`; must be positive. In-memory SQLite always uses one connection. |
+| `AUTHKIT_LOG_FORMAT` | `json` or `pretty`. Defaults to `json` in production and `pretty` otherwise. |
+| `RUST_LOG` | Tracing filter. Defaults to `info`; never include credentials in log output. |
 
 Rules:
 
-- Copy `.env.example` to `.env` when it is added; never commit `.env` or local variants.
+- Copy `.env.example` to `.env`; never commit `.env` or local variants.
 - Do not use production secrets for local development.
 - Do not put secrets in `AUTHKIT_*` example files, test fixtures, logs, or screenshots.
-- Treat cookie security, callback validation, and signing-key configuration as security-sensitive. Unsafe defaults must not silently apply in production.
-- Document any new variable here and in the example file in the same change.
+- Treat issuer validation, cookie security, callback validation, and signing-key
+  configuration as security-sensitive. Unsafe defaults must not silently apply in
+  production.
+- The server fails closed on missing or invalid configuration. It connects to the database
+  and `/readyz` pings it, but migrations remain a separate one-shot job.
+- Configuration `Debug` output redacts the database URL. Do not log raw configuration or
+  request bodies.
+- Document any new variable here and in `.env.example` in the same change.
 
 Cloudflare Workers configuration will use the worker's bindings and secret storage rather than `.env` files. The worker must not require native-only configuration paths that cannot be represented at the edge.
 
