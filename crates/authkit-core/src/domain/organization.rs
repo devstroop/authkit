@@ -41,6 +41,37 @@ impl Organization {
         }
     }
 
+    /// Reconstructs an organization from persisted state.
+    ///
+    /// Storage adapters use this; normal callers create organizations through
+    /// [`Organization::new`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn restore(
+        id: Id<OrganizationEntity>,
+        slug: Slug,
+        name: DisplayName,
+        status: OrganizationStatus,
+        created_at: Timestamp,
+        updated_at: Timestamp,
+        version: u64,
+    ) -> Result<Self, DomainError> {
+        if updated_at < created_at {
+            return Err(DomainError::invalid(
+                "organization updated_at must not precede created_at",
+            ));
+        }
+
+        Ok(Self {
+            id,
+            slug,
+            name,
+            status,
+            created_at,
+            updated_at,
+            version,
+        })
+    }
+
     /// Returns the organization identifier.
     pub const fn id(&self) -> &Id<OrganizationEntity> {
         &self.id

@@ -71,6 +71,64 @@ impl Membership {
         }
     }
 
+    /// Reconstructs a membership from persisted state.
+    ///
+    /// Storage adapters use this; normal callers create memberships through
+    /// [`Membership::invited`] or [`Membership::active`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn restore(
+        id: Id<MembershipEntity>,
+        organization_id: Id<OrganizationEntity>,
+        user_id: Id<UserEntity>,
+        status: MembershipStatus,
+        invited_by: Option<Id<UserEntity>>,
+        joined_at: Option<Timestamp>,
+        created_at: Timestamp,
+        updated_at: Timestamp,
+        version: u64,
+    ) -> Result<Self, DomainError> {
+        if updated_at < created_at {
+            return Err(DomainError::invalid(
+                "membership updated_at must not precede created_at",
+            ));
+        }
+        if let Some(joined_at) = joined_at
+            && joined_at < created_at
+        {
+            return Err(DomainError::invalid(
+                "membership joined_at must not precede creation",
+            ));
+        }
+        match status {
+            MembershipStatus::Invited if joined_at.is_some() => {
+                return Err(DomainError::invalid(
+                    "an invited membership must not have a joined_at time",
+                ));
+            }
+            MembershipStatus::Active | MembershipStatus::Suspended if joined_at.is_none() => {
+                return Err(DomainError::invalid(
+                    "an active or suspended membership must have a joined_at time",
+                ));
+            }
+            MembershipStatus::Invited
+            | MembershipStatus::Active
+            | MembershipStatus::Suspended
+            | MembershipStatus::Removed => {}
+        }
+
+        Ok(Self {
+            id,
+            organization_id,
+            user_id,
+            status,
+            invited_by,
+            joined_at,
+            created_at,
+            updated_at,
+            version,
+        })
+    }
+
     /// Returns the membership identifier.
     pub const fn id(&self) -> &Id<MembershipEntity> {
         &self.id

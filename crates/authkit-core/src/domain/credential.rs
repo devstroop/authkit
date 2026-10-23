@@ -399,6 +399,22 @@ impl TotpCredential {
         }
     }
 
+    /// Reconstructs a TOTP credential from persisted secret and replay state.
+    ///
+    /// Storage adapters use this; normal callers create TOTP credentials through
+    /// [`TotpCredential::new`] and accept time steps.
+    pub fn restore(
+        secret: EncryptedSecret,
+        config: TotpConfig,
+        last_accepted_step: Option<u64>,
+    ) -> Self {
+        Self {
+            secret,
+            config,
+            last_accepted_step,
+        }
+    }
+
     /// Returns the encrypted shared secret.
     pub const fn secret(&self) -> &EncryptedSecret {
         &self.secret
@@ -630,6 +646,17 @@ impl PasskeyCredential {
         }
     }
 
+    /// Reconstructs a passkey credential from persisted registration and counter state.
+    ///
+    /// Storage adapters use this; normal callers create passkeys through
+    /// [`PasskeyCredential::new`] and record authentications.
+    pub fn restore(registration: PasskeyRegistration, sign_count: u32) -> Self {
+        Self {
+            registration,
+            sign_count,
+        }
+    }
+
     /// Returns the registration data.
     pub const fn registration(&self) -> &PasskeyRegistration {
         &self.registration
@@ -755,6 +782,45 @@ impl Credential {
             last_used_at: None,
             version: 0,
         }
+    }
+
+    /// Reconstructs a credential from persisted state.
+    ///
+    /// Storage adapters use this; normal callers use the type-specific constructors.
+    #[allow(clippy::too_many_arguments)]
+    pub fn restore(
+        id: Id<CredentialEntity>,
+        user_id: Id<UserEntity>,
+        data: CredentialData,
+        status: CredentialStatus,
+        created_at: Timestamp,
+        updated_at: Timestamp,
+        last_used_at: Option<Timestamp>,
+        version: u64,
+    ) -> Result<Self, DomainError> {
+        if updated_at < created_at {
+            return Err(DomainError::invalid(
+                "credential updated_at must not precede created_at",
+            ));
+        }
+        if let Some(last_used_at) = last_used_at
+            && last_used_at < created_at
+        {
+            return Err(DomainError::invalid(
+                "credential last_used_at must not precede creation",
+            ));
+        }
+
+        Ok(Self {
+            id,
+            user_id,
+            data,
+            status,
+            created_at,
+            updated_at,
+            last_used_at,
+            version,
+        })
     }
 
     /// Returns the credential identifier.

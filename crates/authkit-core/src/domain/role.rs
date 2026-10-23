@@ -205,6 +205,45 @@ impl Role {
         )
     }
 
+    /// Reconstructs a role from persisted state.
+    ///
+    /// Storage adapters use this; normal callers create roles through the role
+    /// constructors.
+    #[allow(clippy::too_many_arguments)]
+    pub fn restore(
+        id: Id<RoleEntity>,
+        organization_id: Id<OrganizationEntity>,
+        application_id: Option<Id<ApplicationEntity>>,
+        slug: Slug,
+        name: DisplayName,
+        description: Option<String>,
+        kind: RoleKind,
+        permissions: PermissionSet,
+        created_at: Timestamp,
+        updated_at: Timestamp,
+        version: u64,
+    ) -> Result<Self, DomainError> {
+        if updated_at < created_at {
+            return Err(DomainError::invalid(
+                "role updated_at must not precede created_at",
+            ));
+        }
+        let mut role = Self::new(
+            id,
+            organization_id,
+            application_id,
+            slug,
+            name,
+            description,
+            kind,
+            permissions,
+            created_at,
+        )?;
+        role.updated_at = updated_at;
+        role.version = version;
+        Ok(role)
+    }
+
     /// Returns the role identifier.
     pub const fn id(&self) -> &Id<RoleEntity> {
         &self.id
@@ -432,6 +471,31 @@ impl RoleBinding {
             role_id,
             user_id,
             created_at: now,
+        }
+    }
+
+    /// Reconstructs a role binding from persisted state.
+    ///
+    /// Storage adapters use this; normal callers create bindings through
+    /// [`RoleBinding::organization`] or [`RoleBinding::application`].
+    pub fn restore(
+        id: Id<RoleBindingEntity>,
+        organization_id: Id<OrganizationEntity>,
+        application_id: Option<Id<ApplicationEntity>>,
+        role_id: Id<RoleEntity>,
+        user_id: Id<UserEntity>,
+        created_at: Timestamp,
+    ) -> Self {
+        match application_id {
+            Some(application_id) => Self::application(
+                id,
+                organization_id,
+                application_id,
+                role_id,
+                user_id,
+                created_at,
+            ),
+            None => Self::organization(id, organization_id, role_id, user_id, created_at),
         }
     }
 

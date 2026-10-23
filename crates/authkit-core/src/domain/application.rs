@@ -69,6 +69,43 @@ impl Application {
         }
     }
 
+    /// Reconstructs an application from persisted state.
+    ///
+    /// Storage adapters use this; normal callers create applications through
+    /// [`Application::new`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn restore(
+        id: Id<ApplicationEntity>,
+        organization_id: Id<OrganizationEntity>,
+        slug: Slug,
+        name: DisplayName,
+        kind: ApplicationKind,
+        first_party: bool,
+        status: ApplicationStatus,
+        created_at: Timestamp,
+        updated_at: Timestamp,
+        version: u64,
+    ) -> Result<Self, DomainError> {
+        if updated_at < created_at {
+            return Err(DomainError::invalid(
+                "application updated_at must not precede created_at",
+            ));
+        }
+
+        Ok(Self {
+            id,
+            organization_id,
+            slug,
+            name,
+            kind,
+            first_party,
+            status,
+            created_at,
+            updated_at,
+            version,
+        })
+    }
+
     /// Returns the application identifier.
     pub const fn id(&self) -> &Id<ApplicationEntity> {
         &self.id

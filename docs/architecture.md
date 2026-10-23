@@ -545,8 +545,9 @@ community-supported.
   logged. The issuer URL is validated at startup and must be HTTPS outside local
   development.
 - **Migrations:** one logical migration series with dialect-specific SQL where necessary.
-  CI runs migrations on SQLite, Postgres, and D1 before tests. Migrations are forward-only;
-  destructive changes require an expand/contract sequence.
+  CI runs the SQLite and Postgres migration contract before tests; D1 migration coverage
+  lands with the D1 adapter. Migrations are forward-only; destructive changes require an
+  expand/contract sequence.
 - **Backups:** SQLite snapshots or WAL-aware backup; Postgres managed backups; D1 export
   or Time Travel where available. Signing keys and secrets are backed up separately and
   encrypted.
