@@ -113,7 +113,7 @@ Assumptions:
 | User | A person known to the issuer | Global identity; may belong to zero or more organizations |
 | Organization / workspace | Tenant boundary | Every tenant-scoped row and authorization decision is scoped by `org_id` |
 | Application | A registered relying party/client configuration | Not a tenant. Enabling an application for an organization is a separate grant |
-| OAuth client | A credential and redirect configuration belonging to an application | Public clients have no secret and must use PKCE |
+| OAuth client | A credential and redirect configuration belonging to an application | Public clients have no secret; all clients must use PKCE |
 | Membership | A user's relationship to an organization, with roles | Removal or disablement takes effect server-side; tokens are not the sole authority |
 | Role | A named bundle of permissions | Composable; application-scoped where applicable |
 | Permission | A fine-grained capability | Checked by AuthKit and asserted in tokens for relying parties |
@@ -211,7 +211,7 @@ Baseline requirements:
 - OAuth client secrets are generated with at least 256 bits of CSPRNG entropy,
   shown once at creation/rotation, and stored only as a keyed digest or a
   slow hash appropriate to the credential's entropy. Public clients must not
-  receive a secret and must use PKCE.
+  receive a secret. All clients must use PKCE.
 - API keys, if AuthKit issues them, are high-entropy, prefixed, shown once,
   stored as digests, owned by a principal, scoped to permissions/audiences,
   optionally expiring, and individually revocable. They must never appear in
@@ -369,8 +369,8 @@ Additional rules:
 
 ### Flows
 
-- Authorization code flow only. Require PKCE with `S256` for public clients and
-  strongly prefer it for confidential clients.
+- Authorization code flow only. Require PKCE with `S256` for every client, including
+  confidential BFF clients.
 - Do not enable implicit flow, resource owner password credentials, or a
   password grant. Client credentials are limited to service principals and
   explicitly scoped APIs.
@@ -772,7 +772,7 @@ with a documented risk decision:
   restricted by policy.
 - Deny by default: no implicit access from a valid session or token; every
   operation needs a permission.
-- Exact redirect URI matching; PKCE required for public clients; no implicit or
+- Exact redirect URI matching; PKCE required for every client; no implicit or
   password grants.
 - Short access-token lifetimes; rotating refresh tokens; revocation on password
   change and disablement.
@@ -835,7 +835,7 @@ Security invariants:
    never used as a tenant key.
 4. Every cookie-authenticated mutation has CSRF and origin protection.
 5. Production session cookies are host-only, `Secure`, and `HttpOnly`.
-6. Redirect URIs are exact-match and PKCE is required for public clients.
+6. Redirect URIs are exact-match and PKCE is required for every client.
 7. Access tokens are short-lived and audience-restricted; refresh tokens rotate
    and detect reuse.
 8. Password changes, resets, and disablement revoke sessions and refresh tokens.

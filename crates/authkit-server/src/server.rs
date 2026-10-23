@@ -7,6 +7,7 @@ use authkit_store::{SqlStore, StoreError};
 use tokio::net::TcpListener;
 use tracing::info;
 
+use crate::authorization::AuthorizationService;
 use crate::config::{Config, Environment};
 use crate::http::{ReadinessProbe, SqlStoreReadiness, router_with_sessions};
 use crate::session::{SessionService, SystemClock};
@@ -89,9 +90,14 @@ async fn serve_with_store(config: &Config, store: Arc<SqlStore>) -> Result<(), S
     let keys = Arc::new(keys);
     let readiness: Arc<dyn ReadinessProbe> = Arc::new(SqlStoreReadiness::new(store.clone()));
     let sessions = Arc::new(SessionService::new(
-        store,
+        store.clone(),
         config.session().clone(),
         config.environment(),
+        Arc::new(SystemClock),
+    ));
+    let authorization = Arc::new(AuthorizationService::new(
+        store.clone(),
+        config.issuer().clone(),
         Arc::new(SystemClock),
     ));
     let app = router_with_sessions(
@@ -99,6 +105,7 @@ async fn serve_with_store(config: &Config, store: Arc<SqlStore>) -> Result<(), S
         keys,
         config.issuer().clone(),
         sessions,
+        Some(authorization),
         config.environment() == Environment::Production,
     );
     let listener = TcpListener::bind(config.bind_addr())

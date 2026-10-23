@@ -644,6 +644,8 @@ fn authorization_code() -> AuthorizationCode {
         PkceChallenge::parse("A".repeat(43)).expect("valid challenge"),
         None,
         now(),
+        None,
+        now(),
         Timestamp::from_millis(2_000),
     )
     .expect("valid authorization code")

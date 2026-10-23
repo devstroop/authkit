@@ -171,7 +171,7 @@ A client registration used by one application surface.
 | `token_endpoint_auth_method` | text | `client_secret_basic`, `client_secret_post`, or `none`. |
 | `secret_hash` | text nullable | Keyed hash of the current secret. Not an Argon2 password hash. |
 | `secret_rotated_at` | integer nullable | Epoch milliseconds. |
-| `require_pkce` | integer | `1` for public clients and BFFs recommended. |
+| `require_pkce` | integer | Must be `1` for every client that allows the authorization code grant; PKCE `S256` is mandatory for those clients. |
 | `status` | text | `active`, `disabled`. |
 | `created_at`, `updated_at` | integer | Epoch milliseconds. |
 | `version` | integer | Concurrency control. |
@@ -195,8 +195,8 @@ Rules:
 - A confidential client may have at most two active secrets during a rotation window.
   **Decision pending:** the exact overlap policy. The safe default is one current secret
   plus one previous secret with an explicit expiry, both stored hashed.
-- Public clients have no secret and must use PKCE. They are appropriate for native and CLI
-  clients, not for browser SPAs in the default architecture.
+- Public clients have no secret and are appropriate for native and CLI clients, not for
+  browser SPAs in the default architecture. All clients must use PKCE.
 - Redirect URI changes are security-sensitive and audited. Wildcards are not allowed.
 - Disabling a client rejects new authorization requests and token exchanges and revokes
   its refresh families. It does not retroactively revoke already issued JWTs; short access
@@ -453,7 +453,8 @@ Rules:
 | `scope` | text | Space-delimited granted scopes. |
 | `pkce_challenge`, `pkce_method` | text | `S256` only; `plain` rejected outside tests. |
 | `nonce` | text nullable | OIDC nonce, echoed in the ID token. |
-| `auth_time` | integer | Authentication time. |
+| `auth_time` | integer | Authentication time bound to the code. |
+| `session_id` | text nullable | Browser session that authorized the code, for traceability. |
 | `expires_at` | integer | Short-lived. |
 | `consumed_at` | integer nullable | Set exactly once. |
 | `created_at` | integer | Epoch milliseconds. |

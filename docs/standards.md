@@ -65,7 +65,7 @@ Both return JSON with `Cache-Control` suitable for caching (for example, minutes
 seconds) and an `ETag`. The OIDC document is authoritative for OIDC clients; the OAuth
 metadata document is provided for OAuth-only clients. Their shared values must agree.
 
-Required metadata:
+Target metadata (fields are added only as the corresponding endpoint ships):
 
 ```json
 {
@@ -113,7 +113,13 @@ Rules:
   than silently ignoring them.
 - `claims_parameter_supported` is false; the `claims` request parameter is rejected in v1.
 - Metadata is generated from the same configuration used by the endpoints. Hard-coded
-  documents that drift from behavior are a release blocker.
+  documents that drift from behavior are a release blocker. The current native
+  implementation advertises `authorization_endpoint`, `response_types_supported`,
+  `response_modes_supported`, `grant_types_supported` (`authorization_code`), and
+  `code_challenge_methods_supported` only when the authorization service is enabled. It
+  always advertises `subject_types_supported` (`public`) and explicitly disables the
+  `claims`, `request`, and `request_uri` parameters. Token, userinfo, revocation, and logout
+  endpoints stay unadvertised until they ship.
 
 ## 3. Authorization endpoint
 
@@ -128,26 +134,24 @@ GET /oauth2/authorize
 | `response_type` | Required | Must be `code`. Implicit and hybrid are not supported. |
 | `client_id` | Required | Resolve to an active client and its application/organization. |
 | `redirect_uri` | Required | Exact match against a registered URI. No wildcards, no fragments. |
-| `scope` | Required for OIDC | Space-delimited. Must include `openid` for an ID token. Unknown scopes are rejected. |
+| `scope` | Required | Space-delimited. Must include `openid` for an ID token. Unknown scopes are rejected. |
 | `state` | Recommended | Opaque to AuthKit; echoed exactly. Applications must verify it. |
 | `nonce` | Required for OIDC in AuthKit | Bound into the ID token. Rejected if missing when `openid` is requested. |
-| `code_challenge` | Required for public clients; required by policy for confidential clients unless explicitly exempted | 43-128 characters, base64url. |
-| `code_challenge_method` | Required with challenge | `S256` only. `plain` is rejected outside tests. |
-| `prompt` | Optional | `none`, `login`, `consent`, `select_account` as supported. |
+| `code_challenge` | Required for every client | 43 base64url characters (SHA-256 output) for `S256`. |
+| `code_challenge_method` | Required with challenge | `S256` only. `plain` is rejected. |
+| `prompt` | Optional | `none` and `consent` are supported. `login` and `select_account` are rejected until reauthentication/account-selection UI ships. |
 | `max_age` | Optional | Forces reauthentication when the authentication is older. |
-| `login_hint` | Optional | Prefills the identifier; never authenticates by itself. |
-| `acr_values` | Optional | Only advertised/supported values are honored; otherwise `invalid_request`. |
-| `ui_locales` | Optional | Best-effort localization. Unsupported locales fall back to the deployment default. |
-| `resource` | Optional | RFC 8707 resource indicator; constrains the access-token audience. |
+| `login_hint` | Optional | Ignored in the current milestone; there is no login UI. |
+| `acr_values` | Optional | Rejected with `invalid_request`; step-up authentication is not implemented. |
+| `ui_locales` | Optional | Ignored; the current UI is English-only. |
+| `resource` | Optional | Rejected with `invalid_request`; audience restriction is not implemented. |
+| `claims` | Not supported | Rejected with `invalid_request`; `claims_parameter_supported` is false. |
 
-**Decision pending:** whether PKCE is mandatory for every client, including confidential
-BFF clients. The recommendation is to require S256 for all clients, with a documented
-exemption only for a legacy confidential client during migration. OAuth 2.1 and the
-security BCP push in this direction.
+**Resolved:** PKCE with `S256` is mandatory for every client, including confidential BFF
+clients. There is no v1 exemption; a legacy migration path would require a separate decision.
 
-**Decision pending:** whether `nonce` is mandatory for all OIDC authorization-code requests
-(AuthKit's stricter profile) or only recommended. If mandatory, clients that omit it receive
-`invalid_request` before any redirect.
+**Resolved:** `nonce` is mandatory whenever `scope` includes `openid`. A request that omits
+it receives `invalid_request` before any redirect.
 
 ### 3.2 Validation order
 
@@ -159,13 +163,16 @@ security BCP push in this direction.
 4. Validate `response_type`, `scope`, PKCE, nonce, and other parameters. Once the client and
    redirect URI are valid, protocol errors redirect to the redirect URI with `error`,
    `error_description` (non-sensitive), and the original `state`.
-5. Authenticate the user if there is no active AuthKit session, or if `prompt=login` or
-   `max_age` requires it.
+5. Require an active AuthKit session. The current milestone has no login or reauthentication
+   UI: an unauthenticated browser request receives a local `401` page, while `prompt=none`
+   redirects `login_required`. A `max_age` failure follows the same split.
 6. Resolve the tenant from the client's application. Verify that the user has an active
    membership in that organization. A user who is not a member receives `access_denied`
    after authentication, not a cross-tenant token.
-7. Evaluate consent. First-party clients may be auto-consented only under an explicit policy;
-   otherwise show the consent screen for requested scopes not already granted.
+7. Evaluate consent. Auto-consent is enabled only for applications explicitly marked
+   first-party (`Application.first_party`) and is audited with `consent=automatic`; otherwise
+   show the consent screen for requested scopes not already granted. `prompt=consent` always
+   shows the screen.
 8. Issue a code and redirect.
 
 Open redirects are prevented by exact matching before any redirect. Error responses must not
@@ -177,7 +184,7 @@ URIs, and a plain redirect error for valid clients.
 - At least 256 bits of cryptographically secure randomness, base64url encoded.
 - Stored only as a hash, with `client_id`, `user_id`, `org_id`, exact `redirect_uri`,
   `scope`, PKCE challenge/method, `nonce`, `auth_time`, and `sid`.
-- Lifetime: short, recommended 60 seconds; configurable within a strict maximum.
+- Lifetime: short. The native milestone uses a fixed 60-second lifetime; later configuration must stay within a strict maximum.
 - Single use. Consumption is a guarded update; replay is audited and, where possible,
   revokes tokens issued from that code.
 - Bound to the client and redirect URI. A code presented by another client or with a
@@ -188,27 +195,32 @@ URIs, and a plain redirect error for valid clients.
 
 - Consent is per user, client, and organization, with the granted scope set.
 - Adding scopes requires a new consent. Reducing scopes does not.
-- The consent screen lists the client name, application, organization, and human-readable
-  scopes. It does not display raw internal permission keys.
+- The consent screen lists the client name, application, organization, and the requested
+  scope names. It does not display raw internal permission keys; human-readable scope labels
+  are a follow-up.
 - Denial redirects with `access_denied` and the original `state`.
-- Consent grants are auditable and revocable in the account UI. Revoking consent does not
-  automatically revoke existing refresh families unless the user also revokes access.
-  **Decision pending:** whether consent revocation revokes active refresh tokens.
-- First-party auto-consent is **Decision pending**. If enabled, it is restricted to clients
-  explicitly marked first-party by a system administrator, still recorded as an audit event,
-  and still visible in the account UI.
+- Consent grants are auditable. Account-UI revocation is planned; until then an
+  administrator can revoke access. Revoking consent does not automatically revoke existing
+  refresh families unless the user also revokes access. **Decision pending:** whether
+  consent revocation revokes active refresh tokens.
+- First-party auto-consent is enabled only for applications marked first-party by a system
+  administrator. It is recorded as an audit event with `consent=automatic`, remains visible
+  in the account UI, and is bypassed by `prompt=consent`.
 
 ### 3.5 Prompt and session behavior
 
 - `prompt=none`: never show UI. Return `login_required`, `consent_required`, or
-  `interaction_required` as appropriate.
-- `prompt=login`: force reauthentication even with an active session.
-- `prompt=consent`: force the consent screen.
-- `prompt=select_account`: show account selection for a user with multiple sessions or
-  identities. **Decision pending:** whether AuthKit supports multiple simultaneous user
-  sessions in one browser. The default is one active AuthKit session per browser profile.
-- `max_age`: if `auth_time` is older than allowed, reauthenticate. The new `auth_time` is
-  reflected in the ID token.
+  `interaction_required` as appropriate. The current implementation returns `login_required`
+  when no session or `max_age` freshness is missing, and `consent_required` when a
+  third-party client lacks consent.
+- `prompt=consent`: force the consent screen, including for first-party applications.
+- `prompt=login` and `prompt=select_account`: rejected with `invalid_request` until
+  reauthentication and account-selection UI ship. **Decision pending:** multiple simultaneous
+  user sessions in one browser; the default remains one active AuthKit session per profile.
+- `max_age`: if the session authentication time is at least max_age older, require fresh
+  authentication. The current milestone uses the session creation time as `auth_time` (the
+  session row has no separate authentication timestamp yet) and returns a local `401` or,
+  for `prompt=none`, `login_required`; there is no reauthentication UI yet.
 
 ## 4. Token endpoint
 
@@ -627,20 +639,17 @@ authorization, or operational security; those require the custom tests above.
 
 ## 13. Open standards decisions
 
-1. Whether PKCE S256 is mandatory for confidential clients.
-2. Whether `nonce` is mandatory for all OIDC code requests.
-3. The exact namespaced tenant claim and whether it appears in ID tokens as well as access
+1. The exact namespaced tenant claim and whether it appears in ID tokens as well as access
    tokens.
-4. Access-token resource/audience defaults and whether RFC 8707 `resource` is required for
+2. Access-token resource/audience defaults and whether RFC 8707 `resource` is required for
    multi-resource clients.
-5. Refresh-family absolute lifetime, ID-token reissue on refresh, and logout revocation
+3. Refresh-family absolute lifetime, ID-token reissue on refresh, and logout revocation
    semantics.
-6. Consent auto-approval policy for first-party clients.
-7. Introspection support and its authentication/rate-limit model.
-8. Whether `form_post` response mode is needed.
-9. OpenID certification as a v1 requirement.
-10. Whether any deferred feature (device flow, PAR, DPoP, back-channel logout) is promoted
-    before v1.
+4. Introspection support and its authentication/rate-limit model.
+5. Whether `form_post` response mode is needed.
+6. OpenID certification as a v1 requirement.
+7. Whether any deferred feature (device flow, PAR, DPoP, back-channel logout) is promoted
+   before v1.
 
 See [Architecture](architecture.md) for runtime context, [Domain model](domain-model.md) for
 the persisted grant and session state, and [UI stack](ui-stack.md) for the login, consent,

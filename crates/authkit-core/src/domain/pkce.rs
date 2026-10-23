@@ -2,8 +2,7 @@ use core::fmt;
 
 use crate::domain::value::ValueError;
 
-const MIN_CHALLENGE_LEN: usize = 43;
-const MAX_CHALLENGE_LEN: usize = 128;
+const CHALLENGE_LEN: usize = 43;
 const MAX_NONCE_LEN: usize = 255;
 
 /// A PKCE S256 code challenge.
@@ -23,10 +22,10 @@ impl PkceChallenge {
                 field: "pkce_challenge",
             });
         }
-        if !(MIN_CHALLENGE_LEN..=MAX_CHALLENGE_LEN).contains(&value.len()) {
+        if value.len() != CHALLENGE_LEN {
             return Err(ValueError::InvalidFormat {
                 field: "pkce_challenge",
-                reason: "must be 43 to 128 base64url characters",
+                reason: "must be 43 base64url characters for S256",
             });
         }
         if !value
@@ -99,7 +98,7 @@ impl fmt::Display for Nonce {
 mod tests {
     use super::*;
 
-    const CHALLENGE: &str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_";
+    const CHALLENGE: &str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ";
 
     #[test]
     fn accepts_base64url_challenges() {
@@ -108,8 +107,9 @@ mod tests {
     }
 
     #[test]
-    fn rejects_short_or_invalid_challenges() {
+    fn rejects_wrong_length_or_invalid_challenges() {
         assert!(PkceChallenge::parse("short").is_err());
+        assert!(PkceChallenge::parse("A".repeat(44)).is_err());
         assert!(PkceChallenge::parse("!".repeat(43)).is_err());
     }
 

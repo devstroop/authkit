@@ -5,6 +5,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod authorization;
 pub mod config;
 pub mod http;
 pub mod session;
