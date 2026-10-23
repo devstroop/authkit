@@ -122,6 +122,11 @@ impl SigningKey {
         &self.kid
     }
 
+    /// Returns the ECDSA private key, when this key has private material.
+    pub fn secret(&self) -> Option<&SecretKey> {
+        self.secret.as_ref()
+    }
+
     /// Returns the lifecycle state.
     pub const fn state(&self) -> KeyState {
         self.state
