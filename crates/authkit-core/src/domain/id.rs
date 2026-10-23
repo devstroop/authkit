@@ -61,7 +61,12 @@ entity!(
 entity!(
     /// A role definition.
     RoleEntity,
-    "role"
+    "rol"
+);
+entity!(
+    /// A binding of a role to a user within an organization or application.
+    RoleBindingEntity,
+    "rbd"
 );
 entity!(
     /// A permission definition.
@@ -76,17 +81,17 @@ entity!(
 entity!(
     /// A one-time authorization code.
     AuthorizationCodeEntity,
-    "code"
+    "ac"
 );
 entity!(
     /// A refresh-token family.
     RefreshFamilyEntity,
-    "rfm"
+    "rf"
 );
 entity!(
     /// A refresh token within a family.
     RefreshTokenEntity,
-    "rtk"
+    "rt"
 );
 entity!(
     /// An append-only audit event.
@@ -111,7 +116,7 @@ entity!(
 entity!(
     /// A user's consent to an OAuth client and scope set.
     ConsentEntity,
-    "cons"
+    "cns"
 );
 
 /// A typed, prefix-validated entity identifier.

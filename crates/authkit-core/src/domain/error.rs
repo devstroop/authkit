@@ -107,6 +107,11 @@ impl fmt::Display for DomainError {
 }
 
 impl std::error::Error for DomainError {}
+impl From<crate::domain::value::ValueError> for DomainError {
+    fn from(value: crate::domain::value::ValueError) -> Self {
+        Self::invalid(value.to_string())
+    }
+}
 
 #[cfg(test)]
 mod tests {
