@@ -48,6 +48,45 @@ impl User {
         }
     }
 
+    /// Reconstructs a user from persisted state.
+    ///
+    /// Storage adapters use this; normal callers create users through [`User::new`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn restore(
+        id: Id<UserEntity>,
+        email: Email,
+        email_verified_at: Option<Timestamp>,
+        display_name: DisplayName,
+        status: UserStatus,
+        created_at: Timestamp,
+        updated_at: Timestamp,
+        version: u64,
+    ) -> Result<Self, DomainError> {
+        if updated_at < created_at {
+            return Err(DomainError::invalid(
+                "user updated_at must not precede created_at",
+            ));
+        }
+        if let Some(verified_at) = email_verified_at
+            && verified_at < created_at
+        {
+            return Err(DomainError::invalid(
+                "user verification must not precede creation",
+            ));
+        }
+
+        Ok(Self {
+            id,
+            email,
+            email_verified_at,
+            display_name,
+            status,
+            created_at,
+            updated_at,
+            version,
+        })
+    }
+
     /// Returns the user identifier.
     pub const fn id(&self) -> &Id<UserEntity> {
         &self.id

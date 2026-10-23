@@ -189,6 +189,57 @@ impl OAuthClient {
         })
     }
 
+    /// Reconstructs an OAuth client from persisted state.
+    ///
+    /// Storage adapters use this; normal callers register clients through
+    /// [`OAuthClient::new`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn restore(
+        id: Id<OAuthClientEntity>,
+        application_id: Id<ApplicationEntity>,
+        client_id: ClientId,
+        name: DisplayName,
+        client_type: ClientType,
+        token_endpoint_auth_method: TokenEndpointAuthMethod,
+        secret_hash: Option<SecretHash>,
+        require_pkce: bool,
+        redirect_uris: Vec<RedirectUri>,
+        post_logout_redirect_uris: Vec<RedirectUri>,
+        allowed_scopes: ScopeSet,
+        allowed_grant_types: Vec<GrantType>,
+        status: ClientStatus,
+        created_at: Timestamp,
+        updated_at: Timestamp,
+        version: u64,
+    ) -> Result<Self, DomainError> {
+        if updated_at < created_at {
+            return Err(DomainError::invalid(
+                "OAuth client updated_at must not precede created_at",
+            ));
+        }
+        let mut client = Self::new(
+            id,
+            OAuthClientSpec {
+                application_id,
+                client_id,
+                name,
+                client_type,
+                token_endpoint_auth_method,
+                secret_hash,
+                require_pkce,
+                redirect_uris,
+                post_logout_redirect_uris,
+                allowed_scopes,
+                allowed_grant_types,
+            },
+            created_at,
+        )?;
+        client.status = status;
+        client.updated_at = updated_at;
+        client.version = version;
+        Ok(client)
+    }
+
     /// Returns the internal row identifier.
     pub const fn id(&self) -> &Id<OAuthClientEntity> {
         &self.id

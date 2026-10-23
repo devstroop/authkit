@@ -69,6 +69,53 @@ impl AuthorizationCode {
         })
     }
 
+    /// Reconstructs an authorization code from persisted state.
+    ///
+    /// Storage adapters use this; normal callers create codes through
+    /// [`AuthorizationCode::new`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn restore(
+        id: Id<AuthorizationCodeEntity>,
+        organization_id: Id<OrganizationEntity>,
+        application_id: Id<ApplicationEntity>,
+        client_id: Id<OAuthClientEntity>,
+        user_id: Id<UserEntity>,
+        code_hash: SecretHash,
+        redirect_uri: RedirectUri,
+        scopes: ScopeSet,
+        pkce_challenge: PkceChallenge,
+        nonce: Option<Nonce>,
+        created_at: Timestamp,
+        expires_at: Timestamp,
+        consumed_at: Option<Timestamp>,
+        version: u64,
+    ) -> Result<Self, DomainError> {
+        let mut code = Self::new(
+            id,
+            organization_id,
+            application_id,
+            client_id,
+            user_id,
+            code_hash,
+            redirect_uri,
+            scopes,
+            pkce_challenge,
+            nonce,
+            created_at,
+            expires_at,
+        )?;
+        if let Some(consumed_at) = consumed_at {
+            if consumed_at < created_at || !consumed_at.is_before(expires_at) {
+                return Err(DomainError::invalid(
+                    "authorization code consumption is outside the code lifetime",
+                ));
+            }
+            code.consumed_at = Some(consumed_at);
+        }
+        code.version = version;
+        Ok(code)
+    }
+
     /// Returns the code identifier.
     pub const fn id(&self) -> &Id<AuthorizationCodeEntity> {
         &self.id
@@ -197,6 +244,48 @@ impl Consent {
         }
     }
 
+    /// Reconstructs a consent from persisted state.
+    ///
+    /// Storage adapters use this; normal callers create consent through
+    /// [`Consent::new`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn restore(
+        id: Id<ConsentEntity>,
+        organization_id: Id<OrganizationEntity>,
+        user_id: Id<UserEntity>,
+        client_id: Id<OAuthClientEntity>,
+        scopes: ScopeSet,
+        created_at: Timestamp,
+        updated_at: Timestamp,
+        revoked_at: Option<Timestamp>,
+        version: u64,
+    ) -> Result<Self, DomainError> {
+        if updated_at < created_at {
+            return Err(DomainError::invalid(
+                "consent updated_at must not precede created_at",
+            ));
+        }
+        if let Some(revoked_at) = revoked_at
+            && (revoked_at < created_at || revoked_at > updated_at)
+        {
+            return Err(DomainError::invalid(
+                "consent revoked_at is outside the consent lifetime",
+            ));
+        }
+
+        Ok(Self {
+            id,
+            organization_id,
+            user_id,
+            client_id,
+            scopes,
+            created_at,
+            updated_at,
+            revoked_at,
+            version,
+        })
+    }
+
     /// Returns the consent identifier.
     pub const fn id(&self) -> &Id<ConsentEntity> {
         &self.id
@@ -314,6 +403,41 @@ impl RefreshFamily {
         })
     }
 
+    /// Reconstructs a refresh family from persisted state.
+    ///
+    /// Storage adapters use this; normal callers create families through
+    /// [`RefreshFamily::new`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn restore(
+        id: Id<RefreshFamilyEntity>,
+        organization_id: Id<OrganizationEntity>,
+        client_id: Id<OAuthClientEntity>,
+        user_id: Id<UserEntity>,
+        created_at: Timestamp,
+        absolute_expires_at: Timestamp,
+        revoked_at: Option<Timestamp>,
+        version: u64,
+    ) -> Result<Self, DomainError> {
+        let mut family = Self::new(
+            id,
+            organization_id,
+            client_id,
+            user_id,
+            created_at,
+            absolute_expires_at,
+        )?;
+        if let Some(revoked_at) = revoked_at {
+            if revoked_at < created_at {
+                return Err(DomainError::invalid(
+                    "refresh family revoked_at must not precede creation",
+                ));
+            }
+            family.revoked_at = Some(revoked_at);
+        }
+        family.version = version;
+        Ok(family)
+    }
+
     /// Returns the family identifier.
     pub const fn id(&self) -> &Id<RefreshFamilyEntity> {
         &self.id
@@ -404,6 +528,33 @@ impl RefreshToken {
             consumed_at: None,
             version: 0,
         })
+    }
+
+    /// Reconstructs a refresh token from persisted state.
+    ///
+    /// Storage adapters use this; normal callers create tokens through
+    /// [`RefreshToken::new`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn restore(
+        id: Id<RefreshTokenEntity>,
+        family_id: Id<RefreshFamilyEntity>,
+        token_hash: SecretHash,
+        created_at: Timestamp,
+        expires_at: Timestamp,
+        consumed_at: Option<Timestamp>,
+        version: u64,
+    ) -> Result<Self, DomainError> {
+        let mut token = Self::new(id, family_id, token_hash, created_at, expires_at)?;
+        if let Some(consumed_at) = consumed_at {
+            if consumed_at < created_at || !consumed_at.is_before(expires_at) {
+                return Err(DomainError::invalid(
+                    "refresh token consumption is outside the token lifetime",
+                ));
+            }
+            token.consumed_at = Some(consumed_at);
+        }
+        token.version = version;
+        Ok(token)
     }
 
     /// Returns the token identifier.
