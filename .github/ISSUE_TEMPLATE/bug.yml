@@ -7,7 +7,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        **Do not report security vulnerabilities here.** Follow [SECURITY.md](https://github.com/oio-systems/authkit/blob/develop/SECURITY.md) and report privately.
+        **Do not report security vulnerabilities here.** Follow [SECURITY.md](https://github.com/devstroop/authkit/blob/develop/SECURITY.md) and report privately.
 
         Redact credentials, tokens, personal data, and internal hostnames from logs and screenshots. Use disposable test data.
 
