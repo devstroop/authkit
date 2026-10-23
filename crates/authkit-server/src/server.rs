@@ -9,12 +9,15 @@ use tracing::info;
 
 use crate::config::Config;
 use crate::http::{ReadinessProbe, SqlStoreReadiness, router};
+use crate::signing::{KeyRing, KeyRingError, unix_now};
 
 /// A server startup, bind, or shutdown failure.
 #[derive(Debug)]
 pub enum ServerError {
     /// The database store could not be created.
     Store(StoreError),
+    /// The signing keyring could not be loaded.
+    Signing(KeyRingError),
     /// The listen address could not be bound.
     Bind(std::io::Error),
     /// The HTTP server failed.
@@ -31,6 +34,7 @@ impl fmt::Display for ServerError {
                 "database startup failed: {}",
                 error.safe_message()
             ),
+            Self::Signing(error) => write!(formatter, "signing key startup failed: {error}"),
             Self::Bind(error) => write!(formatter, "could not bind the listen address: {error}"),
             Self::Serve(error) => write!(formatter, "HTTP server failed: {error}"),
             Self::Blocking(error) => write!(formatter, "blocking task failed: {error}"),
@@ -43,6 +47,12 @@ impl std::error::Error for ServerError {}
 impl From<StoreError> for ServerError {
     fn from(error: StoreError) -> Self {
         Self::Store(error)
+    }
+}
+
+impl From<KeyRingError> for ServerError {
+    fn from(error: KeyRingError) -> Self {
+        Self::Signing(error)
     }
 }
 
@@ -69,8 +79,15 @@ pub async fn serve(config: Config) -> Result<(), ServerError> {
 }
 
 async fn serve_with_store(config: &Config, store: Arc<SqlStore>) -> Result<(), ServerError> {
+    let signing_config = config.signing_keys().clone();
+    let keys = tokio::task::spawn_blocking(move || {
+        KeyRing::load_or_bootstrap(&signing_config, unix_now())
+    })
+    .await
+    .map_err(ServerError::Blocking)??;
+    let keys = Arc::new(keys);
     let readiness: Arc<dyn ReadinessProbe> = Arc::new(SqlStoreReadiness::new(store));
-    let app = router(readiness);
+    let app = router(readiness, keys, config.issuer().clone());
     let listener = TcpListener::bind(config.bind_addr())
         .await
         .map_err(ServerError::Bind)?;

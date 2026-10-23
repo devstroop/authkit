@@ -5,8 +5,12 @@
 
 use std::fmt;
 use std::net::SocketAddr;
+use std::path::PathBuf;
 
+use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use url::Url;
+use zeroize::Zeroizing;
 
 /// The deployment environment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -164,6 +168,50 @@ impl fmt::Debug for DatabaseConfig {
     }
 }
 
+/// Validated native signing-key configuration.
+#[derive(Clone, PartialEq, Eq)]
+pub struct SigningKeyConfig {
+    file: PathBuf,
+    kek: Zeroizing<Vec<u8>>,
+    retired_publish_secs: u64,
+}
+
+impl SigningKeyConfig {
+    pub(crate) fn new(file: PathBuf, kek: Vec<u8>, retired_publish_secs: u64) -> Self {
+        Self {
+            file,
+            kek: Zeroizing::new(kek),
+            retired_publish_secs,
+        }
+    }
+
+    /// Returns the encrypted keyring file path.
+    pub fn file(&self) -> &std::path::Path {
+        &self.file
+    }
+
+    /// Returns the 32-byte key-encryption key.
+    pub fn kek(&self) -> &[u8] {
+        self.kek.as_slice()
+    }
+
+    /// Returns how long retired public keys remain published.
+    pub const fn retired_publish_secs(&self) -> u64 {
+        self.retired_publish_secs
+    }
+}
+
+impl fmt::Debug for SigningKeyConfig {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SigningKeyConfig")
+            .field("file", &self.file)
+            .field("kek", &"<redacted>")
+            .field("retired_publish_secs", &self.retired_publish_secs)
+            .finish()
+    }
+}
+
 /// Fully validated server configuration.
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -171,6 +219,7 @@ pub struct Config {
     bind_addr: SocketAddr,
     issuer: Issuer,
     database: DatabaseConfig,
+    signing_keys: SigningKeyConfig,
     log_format: LogFormat,
 }
 
@@ -215,6 +264,33 @@ impl Config {
             None => 5,
         };
 
+        let signing_key_file = get("AUTHKIT_SIGNING_KEY_FILE")
+            .map(|value| value.trim().to_owned())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| "authkit-signing-keys.json".to_owned());
+        if environment == Environment::Production && PathBuf::from(&signing_key_file).is_relative()
+        {
+            return Err(ConfigError::invalid(
+                "AUTHKIT_SIGNING_KEY_FILE",
+                "must be an absolute path in production",
+            ));
+        }
+        let kek = decode_kek(&required(&get, "AUTHKIT_SIGNING_KEY_KEK")?)?;
+        let retired_publish_secs = match get("AUTHKIT_SIGNING_KEY_RETIRED_PUBLISH_SECS") {
+            Some(value) => value
+                .trim()
+                .parse::<u64>()
+                .ok()
+                .filter(|value| (1..=86_400).contains(value))
+                .ok_or_else(|| {
+                    ConfigError::invalid(
+                        "AUTHKIT_SIGNING_KEY_RETIRED_PUBLISH_SECS",
+                        "must be an integer between 1 and 86400",
+                    )
+                })?,
+            None => 900,
+        };
+
         let log_format = match get("AUTHKIT_LOG_FORMAT") {
             Some(value) => LogFormat::parse(&value)?,
             None => {
@@ -235,6 +311,11 @@ impl Config {
                 kind,
                 max_connections,
             },
+            signing_keys: SigningKeyConfig::new(
+                PathBuf::from(signing_key_file),
+                kek,
+                retired_publish_secs,
+            ),
             log_format,
         })
     }
@@ -259,6 +340,11 @@ impl Config {
         &self.database
     }
 
+    /// Returns the signing-key configuration.
+    pub fn signing_keys(&self) -> &SigningKeyConfig {
+        &self.signing_keys
+    }
+
     /// Returns the tracing output format.
     pub const fn log_format(&self) -> LogFormat {
         self.log_format
@@ -272,6 +358,24 @@ fn required(
     get(variable)
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| ConfigError::missing(variable))
+}
+
+fn decode_kek(value: &str) -> Result<Vec<u8>, ConfigError> {
+    let normalized = value
+        .trim()
+        .trim_end_matches('=')
+        .replace('+', "-")
+        .replace('/', "_");
+    let key = URL_SAFE_NO_PAD.decode(normalized).map_err(|_| {
+        ConfigError::invalid("AUTHKIT_SIGNING_KEY_KEK", "must be base64url-encoded")
+    })?;
+    if key.len() != 32 {
+        return Err(ConfigError::invalid(
+            "AUTHKIT_SIGNING_KEY_KEK",
+            "must decode to exactly 32 bytes",
+        ));
+    }
+    Ok(key)
 }
 
 fn database_kind(url: &str) -> Result<DatabaseKind, ConfigError> {
@@ -344,6 +448,14 @@ mod tests {
             ("AUTHKIT_ENV", "production"),
             ("AUTHKIT_ISSUER", "https://auth.example.com"),
             ("AUTHKIT_DATABASE_URL", "sqlite://authkit.db?mode=rwc"),
+            (
+                "AUTHKIT_SIGNING_KEY_KEK",
+                "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+            ),
+            (
+                "AUTHKIT_SIGNING_KEY_FILE",
+                "/var/lib/authkit/signing-keys.json",
+            ),
         ]
     }
 
@@ -352,11 +464,20 @@ mod tests {
         let config = config(&[
             ("AUTHKIT_ISSUER", "https://auth.example.com"),
             ("AUTHKIT_DATABASE_URL", "sqlite::memory:"),
+            (
+                "AUTHKIT_SIGNING_KEY_KEK",
+                "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+            ),
+            (
+                "AUTHKIT_SIGNING_KEY_FILE",
+                "/var/lib/authkit/signing-keys.json",
+            ),
         ])
         .expect("valid config");
         assert_eq!(config.environment(), Environment::Production);
         assert_eq!(config.bind_addr(), "127.0.0.1:3000".parse().unwrap());
         assert_eq!(config.database().max_connections(), 5);
+        assert_eq!(config.signing_keys().retired_publish_secs(), 900);
         assert_eq!(config.log_format(), LogFormat::Json);
     }
 
@@ -435,7 +556,49 @@ mod tests {
         let config = config(&vars).expect("valid Postgres config");
         let debug = format!("{config:?}");
         assert!(!debug.contains("super-secret"));
+        assert!(!debug.contains("AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"));
         assert!(debug.contains("<redacted>"));
+    }
+
+    #[test]
+    fn signing_key_kek_is_required_and_must_be_32_bytes() {
+        let mut vars = base_vars();
+        vars.retain(|(name, _)| *name != "AUTHKIT_SIGNING_KEY_KEK");
+        let error = config(&vars).expect_err("missing KEK");
+        assert_eq!(error.variable(), "AUTHKIT_SIGNING_KEY_KEK");
+
+        let mut vars = base_vars();
+        vars.retain(|(name, _)| *name != "AUTHKIT_SIGNING_KEY_KEK");
+        vars.push(("AUTHKIT_SIGNING_KEY_KEK", "too-short"));
+        let error = config(&vars).expect_err("short KEK");
+        assert_eq!(error.variable(), "AUTHKIT_SIGNING_KEY_KEK");
+    }
+
+    #[test]
+    fn production_requires_an_absolute_signing_key_file() {
+        let mut vars = base_vars();
+        let index = vars
+            .iter()
+            .position(|(name, _)| *name == "AUTHKIT_SIGNING_KEY_FILE")
+            .expect("base signing key file");
+        vars[index] = ("AUTHKIT_SIGNING_KEY_FILE", "authkit-signing-keys.json");
+        let error = config(&vars).expect_err("relative production keyring path");
+        assert_eq!(error.variable(), "AUTHKIT_SIGNING_KEY_FILE");
+
+        let mut vars = base_vars();
+        vars.push((
+            "AUTHKIT_SIGNING_KEY_FILE",
+            "/var/lib/authkit/signing-keys.json",
+        ));
+        config(&vars).expect("absolute production keyring path");
+    }
+
+    #[test]
+    fn retired_publish_window_is_bounded() {
+        let mut vars = base_vars();
+        vars.push(("AUTHKIT_SIGNING_KEY_RETIRED_PUBLISH_SECS", "0"));
+        let error = config(&vars).expect_err("zero publish window");
+        assert_eq!(error.variable(), "AUTHKIT_SIGNING_KEY_RETIRED_PUBLISH_SECS");
     }
 
     #[test]
