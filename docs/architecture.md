@@ -243,7 +243,7 @@ The exact Rust signatures will evolve, but the port categories are stable:
 | `SessionRepository` | Session creation, rotation, idle/absolute expiry, revocation. | Auth-critical reads should target the primary on D1. |
 | `GrantRepository` | Authorization codes, consents, refresh-token families, revocation records. | One-time consumption must be a conditional write. |
 | `AuditSink` | Append-only audit events and export. | Must not block the user response; use an outbox or batch. |
-| `KeyStore` | Active signing key, public JWKS, rotation state. | Backed by encrypted DB rows or platform secret storage. |
+| `KeyStore` | Active signing key, public JWKS, rotation state. | Backed by an encrypted keyring file or platform secret storage. |
 | `Clock`, `IdGenerator` | Deterministic testing and portable IDs. | Injected; no direct `SystemTime` or `Uuid::now_v7()` in domain logic. |
 | `PasswordHasher` | Argon2id and parameter policy. | Native only unless the Workers decision says otherwise. |
 | `TokenSigner`, `TokenHasher` | JWT signing and opaque-token hashing. | Asymmetric signing only for OIDC tokens. |

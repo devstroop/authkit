@@ -12,7 +12,9 @@ use axum::routing::get;
 use axum::{Router, middleware};
 use serde_json::json;
 
+use crate::config::Issuer;
 use crate::http::request_id;
+use crate::signing::KeyRing;
 
 /// A readiness check that can be run without blocking the async runtime.
 pub trait ReadinessProbe: Send + Sync {
@@ -52,22 +54,37 @@ impl ReadinessProbe for SqlStoreReadiness {
 
 #[derive(Clone)]
 pub(crate) struct AppState {
-    readiness: Arc<dyn ReadinessProbe>,
+    pub(crate) readiness: Arc<dyn ReadinessProbe>,
+    pub(crate) keys: Arc<KeyRing>,
+    pub(crate) issuer: Issuer,
 }
 
 impl AppState {
-    fn new(readiness: Arc<dyn ReadinessProbe>) -> Self {
-        Self { readiness }
+    fn new(readiness: Arc<dyn ReadinessProbe>, keys: Arc<KeyRing>, issuer: Issuer) -> Self {
+        Self {
+            readiness,
+            keys,
+            issuer,
+        }
     }
 }
 
 /// Builds the native server router.
-pub fn router(readiness: Arc<dyn ReadinessProbe>) -> Router {
+pub fn router(readiness: Arc<dyn ReadinessProbe>, keys: Arc<KeyRing>, issuer: Issuer) -> Router {
     Router::new()
         .route("/healthz", get(health))
         .route("/readyz", get(ready))
+        .route(
+            "/.well-known/openid-configuration",
+            get(crate::http::metadata::openid_configuration),
+        )
+        .route(
+            "/.well-known/oauth-authorization-server",
+            get(crate::http::metadata::oauth_authorization_server),
+        )
+        .route("/oauth2/jwks", get(crate::http::metadata::jwks))
         .fallback(not_found)
-        .with_state(AppState::new(readiness))
+        .with_state(AppState::new(readiness, keys, issuer))
         .layer(middleware::from_fn(request_id::request_context))
 }
 
