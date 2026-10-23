@@ -316,10 +316,10 @@ sequenceDiagram
     A->>DB: Load consent / prior grant
     alt Consent required
         A-->>B: Consent page
-        B->>A: POST /consent (allow scopes)
+        B->>A: POST /oauth2/authorize/consent (allow scopes)
         A->>DB: Persist consent
     end
-    A->>DB: Store code hash, PKCE challenge, nonce, redirect URI
+    A->>DB: Store code hash, PKCE challenge, nonce, redirect URI, auth_time, session ID
     A-->>B: 302 to exact registered redirect_uri?code=...&state=...
     B->>App: GET /callback?code=...&state=...
     App->>App: Verify state cookie
@@ -344,6 +344,12 @@ Key properties:
   The user must have an active membership in that organization. **Decision pending:**
   whether applications may later be shared across organizations, which would require an
   explicit organization-selection step before consent.
+- The current authorization endpoint milestone does not include login or reauthentication
+  UI. Unauthenticated browser requests receive a local `401`; `prompt=none` returns
+  `login_required`. PKCE `S256` is required for every client, and `nonce` is required for
+  OpenID requests.
+- First-party applications marked by a system administrator are auto-consented and audited
+  with `consent=automatic`; `prompt=consent` still shows the consent screen.
 
 ### 5.2 Token validation by an application resource server
 
@@ -578,19 +584,15 @@ be resolved in ADRs before implementation depends on them.
    always present. V1 derives the tenant from the client's application, which belongs to
    one organization. Whether applications may later be shared across organizations is a
    separate product decision that would change authorization-time tenant selection.
-4. **Consent policy.** Auto-consent for first-party applications owned by the same
-   organization versus a consent screen for every client. The default proposal is
-   auto-consent only for clients marked first-party by a system administrator, with an
-   audit event.
-5. **Signing algorithm and key custody.** ES256 as default; EdDSA support; native KMS
+4. **Signing algorithm and key custody.** ES256 as default; EdDSA support; native KMS
    integration; Workers key rotation mechanics.
-6. **BFF distribution.** Documentation and sample only, or a maintained library.
-7. **System-admin authentication strength.** Separate session audience, WebAuthn, or
+5. **BFF distribution.** Documentation and sample only, or a maintained library.
+6. **System-admin authentication strength.** Separate session audience, WebAuthn, or
    step-up.
-8. **Upstream OIDC federation.** In scope for v1 or deferred.
-9. **Audit tamper evidence.** Hash chain versus append-only table with export.
-10. **Access-token format for Workers-lite.** JWT with local validation versus opaque
-    tokens with introspection, given D1 read-replication behavior.
+7. **Upstream OIDC federation.** In scope for v1 or deferred.
+8. **Audit tamper evidence.** Hash chain versus append-only table with export.
+9. **Access-token format for Workers-lite.** JWT with local validation versus opaque
+   tokens with introspection, given D1 read-replication behavior.
 
 Cross-references: [domain model](domain-model.md), [runtime targets](runtime-targets.md),
 [UI stack](ui-stack.md), [standards](standards.md).

@@ -292,6 +292,7 @@ fn session_applies_to(path: &str) -> bool {
             | "/oauth2/revoke"
             | "/oauth2/device_authorization"
             | "/oauth2/jwks"
+            | "/oauth2/authorize.css"
     )
 }
 
@@ -444,6 +445,7 @@ mod tests {
             "/oauth2/introspect",
             "/oauth2/revoke",
             "/oauth2/jwks",
+            "/oauth2/authorize.css",
         ] {
             assert!(!session_applies_to(path), "{path}");
         }
@@ -452,6 +454,7 @@ mod tests {
             "/account",
             "/admin/users",
             "/oauth2/authorize",
+            "/oauth2/authorize/consent",
             "/logout",
         ] {
             assert!(session_applies_to(path), "{path}");

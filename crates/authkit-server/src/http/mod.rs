@@ -1,5 +1,7 @@
 //! HTTP adapter for the native server.
 
+pub mod authorize;
+
 pub mod error;
 mod metadata;
 mod request_id;

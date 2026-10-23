@@ -1123,7 +1123,7 @@ async fn insert_authorization_code(
     ensure_application_tenant(dialect, tx, tenant, code.application_id()).await?;
     ensure_client_tenant(dialect, tx, tenant, code.client_id()).await?;
     let sql = dialect.placeholders(
-        "INSERT INTO authorization_code (id, org_id, application_id, client_id, user_id, code_hash, redirect_uri, pkce_challenge, nonce, created_at, expires_at, consumed_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO authorization_code (id, org_id, application_id, client_id, user_id, code_hash, redirect_uri, pkce_challenge, nonce, auth_time, session_id, created_at, expires_at, consumed_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     );
     match sqlx::query(&sql)
         .bind(code.id().as_str())
@@ -1135,6 +1135,8 @@ async fn insert_authorization_code(
         .bind(code.redirect_uri().as_str())
         .bind(code.pkce_challenge().as_str())
         .bind(code.nonce().map(|nonce| nonce.as_str()))
+        .bind(db_timestamp(code.auth_time())?)
+        .bind(code.session_id().map(|id| id.as_str()))
         .bind(db_timestamp(code.created_at())?)
         .bind(db_timestamp(code.expires_at())?)
         .bind(code.consumed_at().map(db_timestamp).transpose()?)
@@ -1158,7 +1160,7 @@ async fn update_authorization_code(
     ensure_application_tenant(dialect, tx, tenant, code.application_id()).await?;
     ensure_client_tenant(dialect, tx, tenant, code.client_id()).await?;
     let sql = dialect.placeholders(
-        "UPDATE authorization_code SET application_id = ?, client_id = ?, user_id = ?, code_hash = ?, redirect_uri = ?, pkce_challenge = ?, nonce = ?, expires_at = ?, consumed_at = ?, version = ? WHERE id = ? AND org_id = ? AND version = ?",
+        "UPDATE authorization_code SET application_id = ?, client_id = ?, user_id = ?, code_hash = ?, redirect_uri = ?, pkce_challenge = ?, nonce = ?, auth_time = ?, session_id = ?, expires_at = ?, consumed_at = ?, version = ? WHERE id = ? AND org_id = ? AND version = ?",
     );
     let result = sqlx::query(&sql)
         .bind(code.application_id().as_str())
@@ -1168,6 +1170,8 @@ async fn update_authorization_code(
         .bind(code.redirect_uri().as_str())
         .bind(code.pkce_challenge().as_str())
         .bind(code.nonce().map(|nonce| nonce.as_str()))
+        .bind(db_timestamp(code.auth_time())?)
+        .bind(code.session_id().map(|id| id.as_str()))
         .bind(db_timestamp(code.expires_at())?)
         .bind(code.consumed_at().map(db_timestamp).transpose()?)
         .bind(db_version(code.version())?)

@@ -360,6 +360,8 @@ pub(crate) fn map_authorization_code(
             .map(Nonce::parse)
             .transpose()
             .map_err(|_| invalid_stored_value())?,
+        timestamp(row, "auth_time")?,
+        opt_id::<SessionEntity>(row, "session_id")?,
         timestamp(row, "created_at")?,
         timestamp(row, "expires_at")?,
         opt_timestamp(row, "consumed_at")?,

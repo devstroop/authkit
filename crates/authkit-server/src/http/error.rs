@@ -19,10 +19,18 @@ pub enum OAuthErrorCode {
     UnauthorizedClient,
     /// The grant type is not supported.
     UnsupportedGrantType,
+    /// The authorization response type is not supported.
+    UnsupportedResponseType,
     /// The requested scope is invalid or exceeds the granted scope.
     InvalidScope,
     /// The resource owner or authorization server denied the request.
     AccessDenied,
+    /// The end user must sign in before the request can continue.
+    LoginRequired,
+    /// The end user must grant consent before the request can continue.
+    ConsentRequired,
+    /// The request requires interaction that cannot be completed silently.
+    InteractionRequired,
     /// An unexpected server failure occurred.
     ServerError,
     /// The service is temporarily unavailable.
@@ -38,8 +46,12 @@ impl OAuthErrorCode {
             Self::InvalidGrant => "invalid_grant",
             Self::UnauthorizedClient => "unauthorized_client",
             Self::UnsupportedGrantType => "unsupported_grant_type",
+            Self::UnsupportedResponseType => "unsupported_response_type",
             Self::InvalidScope => "invalid_scope",
             Self::AccessDenied => "access_denied",
+            Self::LoginRequired => "login_required",
+            Self::ConsentRequired => "consent_required",
+            Self::InteractionRequired => "interaction_required",
             Self::ServerError => "server_error",
             Self::TemporarilyUnavailable => "temporarily_unavailable",
         }
@@ -52,9 +64,13 @@ impl OAuthErrorCode {
             | Self::InvalidGrant
             | Self::UnauthorizedClient
             | Self::UnsupportedGrantType
+            | Self::UnsupportedResponseType
             | Self::InvalidScope => StatusCode::BAD_REQUEST,
             Self::InvalidClient => StatusCode::UNAUTHORIZED,
-            Self::AccessDenied => StatusCode::FORBIDDEN,
+            Self::AccessDenied
+            | Self::LoginRequired
+            | Self::ConsentRequired
+            | Self::InteractionRequired => StatusCode::FORBIDDEN,
             Self::ServerError => StatusCode::INTERNAL_SERVER_ERROR,
             Self::TemporarilyUnavailable => StatusCode::SERVICE_UNAVAILABLE,
         }

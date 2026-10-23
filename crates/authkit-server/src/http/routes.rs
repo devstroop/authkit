@@ -8,10 +8,11 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::{Router, middleware};
 use serde_json::json;
 
+use crate::authorization::AuthorizationService;
 use crate::config::Issuer;
 use crate::http::request_id;
 use crate::http::security_headers::{SecurityHeaders, security_headers};
@@ -60,14 +61,21 @@ pub(crate) struct AppState {
     pub(crate) readiness: Arc<dyn ReadinessProbe>,
     pub(crate) keys: Arc<KeyRing>,
     pub(crate) issuer: Issuer,
+    pub(crate) authorization: Option<Arc<AuthorizationService>>,
 }
 
 impl AppState {
-    fn new(readiness: Arc<dyn ReadinessProbe>, keys: Arc<KeyRing>, issuer: Issuer) -> Self {
+    fn new(
+        readiness: Arc<dyn ReadinessProbe>,
+        keys: Arc<KeyRing>,
+        issuer: Issuer,
+        authorization: Option<Arc<AuthorizationService>>,
+    ) -> Self {
         Self {
             readiness,
             keys,
             issuer,
+            authorization,
         }
     }
 }
@@ -78,7 +86,8 @@ impl AppState {
 /// [`router_with_sessions`]; the base router keeps metadata and health tests independent of
 /// session storage.
 pub fn router(readiness: Arc<dyn ReadinessProbe>, keys: Arc<KeyRing>, issuer: Issuer) -> Router {
-    base_router(readiness, keys, issuer).layer(middleware::from_fn(request_id::request_context))
+    base_router(readiness, keys, issuer, None)
+        .layer(middleware::from_fn(request_id::request_context))
 }
 
 /// Builds the production router with session resolution, CSRF checks, and security headers.
@@ -87,10 +96,11 @@ pub fn router_with_sessions(
     keys: Arc<KeyRing>,
     issuer: Issuer,
     sessions: Arc<SessionService>,
+    authorization: Option<Arc<AuthorizationService>>,
     hsts: bool,
 ) -> Router {
     with_session_security(
-        base_router(readiness, keys, issuer.clone()),
+        base_router(readiness, keys, issuer.clone(), authorization),
         sessions,
         issuer,
         hsts,
@@ -120,8 +130,13 @@ pub fn with_session_security(
         .layer(middleware::from_fn(request_id::request_context))
 }
 
-fn base_router(readiness: Arc<dyn ReadinessProbe>, keys: Arc<KeyRing>, issuer: Issuer) -> Router {
-    Router::new()
+fn base_router(
+    readiness: Arc<dyn ReadinessProbe>,
+    keys: Arc<KeyRing>,
+    issuer: Issuer,
+    authorization: Option<Arc<AuthorizationService>>,
+) -> Router {
+    let mut router = Router::new()
         .route("/healthz", get(health))
         .route("/readyz", get(ready))
         .route(
@@ -133,8 +148,21 @@ fn base_router(readiness: Arc<dyn ReadinessProbe>, keys: Arc<KeyRing>, issuer: I
             get(crate::http::metadata::oauth_authorization_server),
         )
         .route("/oauth2/jwks", get(crate::http::metadata::jwks))
+        .route(
+            "/oauth2/authorize.css",
+            get(crate::http::authorize::stylesheet),
+        );
+    if authorization.is_some() {
+        router = router
+            .route("/oauth2/authorize", get(crate::http::authorize::authorize))
+            .route(
+                "/oauth2/authorize/consent",
+                post(crate::http::authorize::consent),
+            );
+    }
+    router
         .fallback(not_found)
-        .with_state(AppState::new(readiness, keys, issuer))
+        .with_state(AppState::new(readiness, keys, issuer, authorization))
 }
 
 async fn health() -> Response {

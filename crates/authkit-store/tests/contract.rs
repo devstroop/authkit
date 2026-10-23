@@ -160,6 +160,8 @@ fn fixture(base: u64) -> Result<Fixture, DomainError> {
         PkceChallenge::parse("A".repeat(43))?,
         Some(Nonce::parse("contract-nonce")?),
         now,
+        None,
+        now,
         expires,
     )?;
     let consent = Consent::new(

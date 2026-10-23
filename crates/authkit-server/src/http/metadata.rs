@@ -36,11 +36,34 @@ pub(crate) async fn jwks(State(state): State<AppState>, headers: HeaderMap) -> R
 
 fn discovery_response(state: &AppState, headers: &HeaderMap) -> Response {
     let issuer = state.issuer.as_str();
-    let document = json!({
+    let mut document = json!({
         "issuer": issuer,
         "jwks_uri": format!("{issuer}/oauth2/jwks"),
         "id_token_signing_alg_values_supported": ["ES256"],
+        "subject_types_supported": ["public"],
+        "claims_parameter_supported": false,
+        "request_parameter_supported": false,
+        "request_uri_parameter_supported": false,
+        "require_request_uri_registration": false,
     });
+    if state.authorization.is_some()
+        && let Some(object) = document.as_object_mut()
+    {
+        object.insert(
+            "authorization_endpoint".to_owned(),
+            json!(format!("{issuer}/oauth2/authorize")),
+        );
+        object.insert("response_types_supported".to_owned(), json!(["code"]));
+        object.insert("response_modes_supported".to_owned(), json!(["query"]));
+        object.insert(
+            "grant_types_supported".to_owned(),
+            json!(["authorization_code"]),
+        );
+        object.insert(
+            "code_challenge_methods_supported".to_owned(),
+            json!(["S256"]),
+        );
+    }
     cacheable_json(&document, headers, METADATA_MAX_AGE)
 }
 

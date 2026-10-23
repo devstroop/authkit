@@ -327,6 +327,30 @@ impl ApplicationRepository for SqlStore {
     }
 }
 
+impl SqlStore {
+    /// Finds an application by its internal identifier without a tenant prefilter.
+    ///
+    /// This is used only while resolving an OAuth client to its owning organization. The
+    /// application identifier is an internal, non-guessable value, and the caller must still
+    /// authorize the resulting tenant before reading or writing tenant-owned state.
+    pub fn find_application_by_id_unscoped(
+        &self,
+        id: &Id<ApplicationEntity>,
+    ) -> Result<Option<Application>, DomainError> {
+        let sql = self.sql(
+            "SELECT id, org_id, slug, name, kind, first_party, status, created_at, updated_at, version FROM application WHERE id = ?",
+        );
+        self.block_on(async {
+            let row = sqlx::query(&sql)
+                .bind(id.as_str())
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            row.as_ref().map(map_application).transpose()
+        })
+    }
+}
+
 impl OAuthClientRepository for SqlStore {
     fn find_by_id(
         &self,
@@ -650,7 +674,7 @@ impl AuthorizationCodeRepository for SqlStore {
         id: &Id<AuthorizationCodeEntity>,
     ) -> Result<Option<AuthorizationCode>, DomainError> {
         let sql = self.sql(
-            "SELECT id, org_id, application_id, client_id, user_id, code_hash, redirect_uri, pkce_challenge, nonce, created_at, expires_at, consumed_at, version FROM authorization_code WHERE id = ? AND org_id = ?",
+            "SELECT id, org_id, application_id, client_id, user_id, code_hash, redirect_uri, pkce_challenge, nonce, auth_time, session_id, created_at, expires_at, consumed_at, version FROM authorization_code WHERE id = ? AND org_id = ?",
         );
         self.find_authorization_code(sql, id.as_str(), Some(tenant.organization_id().as_str()))
     }
@@ -661,7 +685,7 @@ impl AuthorizationCodeRepository for SqlStore {
         hash: &SecretHash,
     ) -> Result<Option<AuthorizationCode>, DomainError> {
         let sql = self.sql(
-            "SELECT id, org_id, application_id, client_id, user_id, code_hash, redirect_uri, pkce_challenge, nonce, created_at, expires_at, consumed_at, version FROM authorization_code WHERE org_id = ? AND code_hash = ?",
+            "SELECT id, org_id, application_id, client_id, user_id, code_hash, redirect_uri, pkce_challenge, nonce, auth_time, session_id, created_at, expires_at, consumed_at, version FROM authorization_code WHERE org_id = ? AND code_hash = ?",
         );
         self.find_authorization_code_by_hash(sql, tenant.organization_id().as_str(), hash.as_str())
     }

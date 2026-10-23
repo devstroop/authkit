@@ -1,7 +1,7 @@
 use crate::domain::DomainError;
 use crate::domain::id::{
     ApplicationEntity, AuthorizationCodeEntity, ConsentEntity, Id, OAuthClientEntity,
-    OrganizationEntity, RefreshFamilyEntity, RefreshTokenEntity, UserEntity,
+    OrganizationEntity, RefreshFamilyEntity, RefreshTokenEntity, SessionEntity, UserEntity,
 };
 use crate::domain::pkce::{Nonce, PkceChallenge};
 use crate::domain::redirect_uri::RedirectUri;
@@ -22,6 +22,8 @@ pub struct AuthorizationCode {
     scopes: ScopeSet,
     pkce_challenge: PkceChallenge,
     nonce: Option<Nonce>,
+    auth_time: Timestamp,
+    session_id: Option<Id<SessionEntity>>,
     created_at: Timestamp,
     expires_at: Timestamp,
     consumed_at: Option<Timestamp>,
@@ -42,12 +44,19 @@ impl AuthorizationCode {
         scopes: ScopeSet,
         pkce_challenge: PkceChallenge,
         nonce: Option<Nonce>,
+        auth_time: Timestamp,
+        session_id: Option<Id<SessionEntity>>,
         now: Timestamp,
         expires_at: Timestamp,
     ) -> Result<Self, DomainError> {
         if !now.is_before(expires_at) {
             return Err(DomainError::invalid(
                 "authorization code expiry must be after creation",
+            ));
+        }
+        if auth_time > now {
+            return Err(DomainError::invalid(
+                "authorization code auth_time must not be after creation",
             ));
         }
 
@@ -62,6 +71,8 @@ impl AuthorizationCode {
             scopes,
             pkce_challenge,
             nonce,
+            auth_time,
+            session_id,
             created_at: now,
             expires_at,
             consumed_at: None,
@@ -85,6 +96,8 @@ impl AuthorizationCode {
         scopes: ScopeSet,
         pkce_challenge: PkceChallenge,
         nonce: Option<Nonce>,
+        auth_time: Timestamp,
+        session_id: Option<Id<SessionEntity>>,
         created_at: Timestamp,
         expires_at: Timestamp,
         consumed_at: Option<Timestamp>,
@@ -101,6 +114,8 @@ impl AuthorizationCode {
             scopes,
             pkce_challenge,
             nonce,
+            auth_time,
+            session_id,
             created_at,
             expires_at,
         )?;
@@ -164,6 +179,16 @@ impl AuthorizationCode {
     /// Returns the OIDC nonce, if supplied.
     pub const fn nonce(&self) -> Option<&Nonce> {
         self.nonce.as_ref()
+    }
+
+    /// Returns the authentication time bound to the code.
+    pub const fn auth_time(&self) -> Timestamp {
+        self.auth_time
+    }
+
+    /// Returns the browser session that authorized the code, when known.
+    pub const fn session_id(&self) -> Option<&Id<SessionEntity>> {
+        self.session_id.as_ref()
     }
 
     /// Returns the creation time.
@@ -347,6 +372,14 @@ impl Consent {
     /// Replaces the consented scopes.
     pub fn replace_scopes(&mut self, scopes: ScopeSet, now: Timestamp) {
         self.scopes = scopes;
+        self.updated_at = now;
+        self.version = self.version.saturating_add(1);
+    }
+
+    /// Grants an updated scope set, reactivating a previously revoked consent.
+    pub fn grant(&mut self, scopes: ScopeSet, now: Timestamp) {
+        self.scopes = scopes;
+        self.revoked_at = None;
         self.updated_at = now;
         self.version = self.version.saturating_add(1);
     }
@@ -653,11 +686,11 @@ mod tests {
             secret(),
             RedirectUri::parse("https://app.example.com/callback").expect("valid uri"),
             scopes(),
-            PkceChallenge::parse(
-                "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_",
-            )
-            .expect("valid challenge"),
+            PkceChallenge::parse("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ")
+                .expect("valid challenge"),
             Some(Nonce::parse("nonce").expect("valid nonce")),
+            Timestamp::from_millis(900),
+            None,
             Timestamp::from_millis(1_000),
             Timestamp::from_millis(2_000),
         )
@@ -692,6 +725,34 @@ mod tests {
         );
         assert!(consent.covers(&ScopeSet::new([Scope::parse("openid").expect("valid")])));
         assert!(!consent.covers(&scopes()));
+    }
+
+    #[test]
+    fn consent_grant_reactivates_and_replaces_scopes() {
+        let mut consent = Consent::new(
+            Id::<ConsentEntity>::from_suffix("2233445566778899").expect("valid id"),
+            organization_id(),
+            user_id(),
+            client_id(),
+            ScopeSet::new([Scope::parse("openid").expect("valid")]),
+            Timestamp::from_millis(1_000),
+        );
+        consent.revoke(Timestamp::from_millis(2_000));
+        assert!(!consent.is_active());
+        consent.grant(
+            ScopeSet::new([
+                Scope::parse("openid").expect("valid"),
+                Scope::parse("profile").expect("valid"),
+            ]),
+            Timestamp::from_millis(3_000),
+        );
+        assert!(consent.is_active());
+        assert_eq!(consent.revoked_at(), None);
+        assert_eq!(consent.updated_at(), Timestamp::from_millis(3_000));
+        assert!(consent.covers(&ScopeSet::new([
+            Scope::parse("openid").expect("valid"),
+            Scope::parse("profile").expect("valid"),
+        ])));
     }
 
     #[test]

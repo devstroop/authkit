@@ -139,6 +139,16 @@ impl OAuthClient {
             ));
         }
 
+        if spec
+            .allowed_grant_types
+            .contains(&GrantType::AuthorizationCode)
+            && !spec.require_pkce
+        {
+            return Err(DomainError::invalid(
+                "every authorization-code client must require PKCE",
+            ));
+        }
+
         match spec.client_type {
             ClientType::Public => {
                 if spec.token_endpoint_auth_method != TokenEndpointAuthMethod::None {
@@ -150,9 +160,6 @@ impl OAuthClient {
                     return Err(DomainError::invalid(
                         "a public client must not have a client secret",
                     ));
-                }
-                if !spec.require_pkce {
-                    return Err(DomainError::invalid("a public client must require PKCE"));
                 }
             }
             ClientType::Confidential => {
@@ -496,6 +503,13 @@ mod tests {
 
         spec.require_pkce = true;
         spec.secret_hash = Some(SecretHash::parse("sha256:0123456789abcdef").expect("valid"));
+        assert!(client(spec).is_err());
+    }
+
+    #[test]
+    fn every_client_requires_pkce() {
+        let mut spec = spec();
+        spec.require_pkce = false;
         assert!(client(spec).is_err());
     }
 
