@@ -30,78 +30,88 @@ macro_rules! entity {
 
 entity!(
     /// A deployment-global user identity.
-    User,
+    UserEntity,
     "usr"
 );
 entity!(
     /// An organization, the tenant boundary.
-    Organization,
+    OrganizationEntity,
     "org"
 );
 entity!(
     /// A product surface owned by one organization.
-    Application,
+    ApplicationEntity,
     "app"
 );
 entity!(
     /// An OAuth client registered under an application.
-    OAuthClient,
+    OAuthClientEntity,
     "cli"
 );
 entity!(
     /// A user's membership in an organization.
-    Membership,
+    MembershipEntity,
     "mem"
 );
 entity!(
     /// A pending organization invitation.
-    Invitation,
+    InvitationEntity,
     "inv"
 );
 entity!(
     /// A role definition.
-    Role,
+    RoleEntity,
     "role"
 );
 entity!(
     /// A permission definition.
-    Permission,
+    PermissionEntity,
     "perm"
 );
 entity!(
     /// An authenticated browser or API session.
-    Session,
+    SessionEntity,
     "ses"
 );
 entity!(
     /// A one-time authorization code.
-    AuthorizationCode,
+    AuthorizationCodeEntity,
     "code"
 );
 entity!(
     /// A refresh-token family.
-    RefreshFamily,
+    RefreshFamilyEntity,
     "rfm"
 );
 entity!(
     /// A refresh token within a family.
-    RefreshToken,
+    RefreshTokenEntity,
     "rtk"
 );
 entity!(
     /// An append-only audit event.
-    AuditEvent,
+    AuditEventEntity,
     "aud"
 );
 entity!(
     /// A signing-key record.
-    SigningKey,
+    SigningKeyEntity,
     "key"
 );
 entity!(
     /// A deployment-level system administrator record.
-    SystemAdministrator,
+    SystemAdministratorEntity,
     "sysadm"
+);
+entity!(
+    /// A password, passkey, or other authentication credential.
+    CredentialEntity,
+    "cred"
+);
+entity!(
+    /// A user's consent to an OAuth client and scope set.
+    ConsentEntity,
+    "cons"
 );
 
 /// A typed, prefix-validated entity identifier.
@@ -245,15 +255,16 @@ mod tests {
 
     #[test]
     fn parses_a_valid_typed_id() {
-        let id = Id::<User>::parse(format!("usr_{VALID_SUFFIX}")).expect("valid id");
+        let id = Id::<UserEntity>::parse(format!("usr_{VALID_SUFFIX}")).expect("valid id");
         assert_eq!(id.as_str(), "usr_0123456789abcdef");
         assert_eq!(id.suffix(), VALID_SUFFIX);
-        assert_eq!(Id::<User>::prefix(), "usr");
+        assert_eq!(Id::<UserEntity>::prefix(), "usr");
     }
 
     #[test]
     fn rejects_the_wrong_prefix() {
-        let error = Id::<User>::parse(format!("org_{VALID_SUFFIX}")).expect_err("wrong prefix");
+        let error =
+            Id::<UserEntity>::parse(format!("org_{VALID_SUFFIX}")).expect_err("wrong prefix");
         assert_eq!(
             error,
             IdError::WrongPrefix {
@@ -266,7 +277,7 @@ mod tests {
     #[test]
     fn rejects_a_missing_separator() {
         assert_eq!(
-            Id::<User>::parse("usrabc").expect_err("missing separator"),
+            Id::<UserEntity>::parse("usrabc").expect_err("missing separator"),
             IdError::MissingSeparator
         );
     }
@@ -274,7 +285,7 @@ mod tests {
     #[test]
     fn rejects_a_short_suffix() {
         assert_eq!(
-            Id::<User>::parse("usr_abc").expect_err("short suffix"),
+            Id::<UserEntity>::parse("usr_abc").expect_err("short suffix"),
             IdError::InvalidLength { actual: 3 }
         );
     }
@@ -282,18 +293,18 @@ mod tests {
     #[test]
     fn rejects_uppercase_and_punctuation() {
         assert_eq!(
-            Id::<User>::parse("usr_0123456789ABCDEF").expect_err("uppercase"),
+            Id::<UserEntity>::parse("usr_0123456789ABCDEF").expect_err("uppercase"),
             IdError::InvalidCharacter
         );
         assert_eq!(
-            Id::<User>::parse("usr_0123456789abc-def").expect_err("punctuation"),
+            Id::<UserEntity>::parse("usr_0123456789abc-def").expect_err("punctuation"),
             IdError::InvalidCharacter
         );
     }
 
     #[test]
     fn builds_from_a_suffix() {
-        let id = Id::<Organization>::from_suffix(VALID_SUFFIX).expect("valid suffix");
+        let id = Id::<OrganizationEntity>::from_suffix(VALID_SUFFIX).expect("valid suffix");
         assert_eq!(id.as_str(), "org_0123456789abcdef");
     }
 }
