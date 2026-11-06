@@ -153,6 +153,11 @@ checklist of values the deployment must define, not a frozen schema.
 | `AUTHKIT_SESSION_ABSOLUTE_SECS` | Account-session absolute lifetime | `43200` default; `300`-`2592000` |
 | `AUTHKIT_ADMIN_SESSION_IDLE_SECS` | Administrator-session idle timeout | `900` default; `60`-`86400`; less than the admin absolute lifetime and account idle timeout |
 | `AUTHKIT_ADMIN_SESSION_ABSOLUTE_SECS` | Administrator-session absolute lifetime | `28800` default; `300`-`2592000`; no greater than the account absolute lifetime |
+| `AUTHKIT_ACCESS_TOKEN_TTL_SECS` | Access-token lifetime | `600` default; `60`-`3600` |
+| `AUTHKIT_ID_TOKEN_TTL_SECS` | ID-token lifetime | `600` default; `60`-`3600` |
+| `AUTHKIT_REFRESH_TOKEN_TTL_SECS` | Refresh-token lifetime | `2592000` default; `300`-`31536000`; no greater than the family lifetime |
+| `AUTHKIT_REFRESH_FAMILY_TTL_SECS` | Refresh-family absolute lifetime | `31536000` default; `3600`-`157680000` |
+| `AUTHKIT_TOKEN_CLOCK_SKEW_SECS` | JWT validation leeway | `60` default; `0`-`300` |
 | `AUTHKIT_EMAIL_TOKEN_PEPPER` | Reset/verification digest protection | Secret manager; versioned |
 | `AUTHKIT_ENCRYPTION_KEK` | Envelope encryption of stored secrets | KMS/secret manager |
 | `AUTHKIT_TRUSTED_PROXIES` | Which peers may set forwarded IP headers | Explicit CIDRs; empty by default |

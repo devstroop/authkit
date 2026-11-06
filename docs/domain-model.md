@@ -483,7 +483,7 @@ it must still be visible in the UI and auditable.
 
 | Entity | Key fields |
 | --- | --- |
-| `refresh_family` | `id` (`rf_...`), `client_id`, `user_id`, `org_id`, `scope`, `created_at`, `revoked_at`, `revocation_reason` |
+| `refresh_family` | `id` (`rf_...`), `client_id`, `user_id`, `org_id`, `scope`, `session_id` nullable, `auth_time`, `created_at`, `absolute_expires_at`, `revoked_at`, `version` |
 | `refresh_token` | `id` (`rt_...`), `family_id`, `token_hash` unique, `parent_id`, `expires_at`, `consumed_at`, `revoked_at`, `created_at` |
 
 Rules:
