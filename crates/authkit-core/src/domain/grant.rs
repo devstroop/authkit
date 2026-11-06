@@ -401,6 +401,9 @@ pub struct RefreshFamily {
     organization_id: Id<OrganizationEntity>,
     client_id: Id<OAuthClientEntity>,
     user_id: Id<UserEntity>,
+    scopes: ScopeSet,
+    session_id: Option<Id<SessionEntity>>,
+    auth_time: Timestamp,
     created_at: Timestamp,
     absolute_expires_at: Timestamp,
     revoked_at: Option<Timestamp>,
@@ -415,6 +418,9 @@ impl RefreshFamily {
         organization_id: Id<OrganizationEntity>,
         client_id: Id<OAuthClientEntity>,
         user_id: Id<UserEntity>,
+        scopes: ScopeSet,
+        session_id: Option<Id<SessionEntity>>,
+        auth_time: Timestamp,
         now: Timestamp,
         absolute_expires_at: Timestamp,
     ) -> Result<Self, DomainError> {
@@ -423,12 +429,25 @@ impl RefreshFamily {
                 "refresh family expiry must be after creation",
             ));
         }
+        if scopes.is_empty() {
+            return Err(DomainError::invalid(
+                "a refresh family must grant at least one scope",
+            ));
+        }
+        if auth_time > now {
+            return Err(DomainError::invalid(
+                "refresh family auth_time must not be after creation",
+            ));
+        }
 
         Ok(Self {
             id,
             organization_id,
             client_id,
             user_id,
+            scopes,
+            session_id,
+            auth_time,
             created_at: now,
             absolute_expires_at,
             revoked_at: None,
@@ -446,6 +465,9 @@ impl RefreshFamily {
         organization_id: Id<OrganizationEntity>,
         client_id: Id<OAuthClientEntity>,
         user_id: Id<UserEntity>,
+        scopes: ScopeSet,
+        session_id: Option<Id<SessionEntity>>,
+        auth_time: Timestamp,
         created_at: Timestamp,
         absolute_expires_at: Timestamp,
         revoked_at: Option<Timestamp>,
@@ -456,6 +478,9 @@ impl RefreshFamily {
             organization_id,
             client_id,
             user_id,
+            scopes,
+            session_id,
+            auth_time,
             created_at,
             absolute_expires_at,
         )?;
@@ -491,6 +516,21 @@ impl RefreshFamily {
         &self.user_id
     }
 
+    /// Returns the scopes granted to the family.
+    pub const fn scopes(&self) -> &ScopeSet {
+        &self.scopes
+    }
+
+    /// Returns the browser session that established the family, if any.
+    pub const fn session_id(&self) -> Option<&Id<SessionEntity>> {
+        self.session_id.as_ref()
+    }
+
+    /// Returns the original authentication time.
+    pub const fn auth_time(&self) -> Timestamp {
+        self.auth_time
+    }
+
     /// Returns the creation time.
     pub const fn created_at(&self) -> Timestamp {
         self.created_at
@@ -522,6 +562,31 @@ impl RefreshFamily {
             self.revoked_at = Some(now);
             self.version = self.version.saturating_add(1);
         }
+    }
+
+    /// Narrows the family scopes to a subset of its current grant.
+    ///
+    /// Refresh requests may reduce scope but never add to the original grant.
+    pub fn narrow_scopes(&mut self, scopes: ScopeSet) -> Result<(), DomainError> {
+        if scopes.is_empty() {
+            return Err(DomainError::invalid(
+                "a refresh family must grant at least one scope",
+            ));
+        }
+        if !scopes
+            .as_slice()
+            .iter()
+            .all(|scope| self.scopes.contains(scope))
+        {
+            return Err(DomainError::invalid(
+                "refresh scope must be a subset of the original grant",
+            ));
+        }
+        if scopes.as_slice() != self.scopes.as_slice() {
+            self.scopes = scopes;
+            self.version = self.version.saturating_add(1);
+        }
+        Ok(())
     }
 }
 
@@ -762,6 +827,9 @@ mod tests {
             organization_id(),
             client_id(),
             user_id(),
+            scopes(),
+            None,
+            Timestamp::from_millis(1_000),
             Timestamp::from_millis(1_000),
             Timestamp::from_millis(10_000),
         )

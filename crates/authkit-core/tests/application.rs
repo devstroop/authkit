@@ -657,6 +657,12 @@ fn refresh_family() -> RefreshFamily {
         organization_id(),
         TypedId::<OAuthClientEntity>::from_suffix("00000000000000ff").expect("valid id"),
         owner().id().clone(),
+        ScopeSet::new([
+            Scope::parse("openid").expect("valid scope"),
+            Scope::parse("offline_access").expect("valid scope"),
+        ]),
+        None,
+        now(),
         now(),
         Timestamp::from_millis(10_000),
     )

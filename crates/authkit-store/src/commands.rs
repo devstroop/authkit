@@ -9,6 +9,7 @@ use authkit_core::domain::membership::Membership;
 use authkit_core::domain::oauth_client::OAuthClient;
 use authkit_core::domain::organization::Organization;
 use authkit_core::domain::role::{Role, RoleBinding};
+use authkit_core::domain::scope::{Scope, ScopeSet};
 use authkit_core::domain::session::Session;
 use authkit_core::domain::tenant::TenantContext;
 use authkit_core::domain::user::User;
@@ -168,6 +169,15 @@ fn ensure_tenant(
         ));
     }
     Ok(())
+}
+
+fn scope_text(scopes: &ScopeSet) -> String {
+    scopes
+        .as_slice()
+        .iter()
+        .map(Scope::as_str)
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn scope_key(application_id: Option<&Id<ApplicationEntity>>) -> String {
@@ -1341,13 +1351,16 @@ async fn insert_refresh_family(
     ensure_tenant(tenant, family.organization_id())?;
     ensure_client_tenant(dialect, tx, tenant, family.client_id()).await?;
     let sql = dialect.placeholders(
-        "INSERT INTO refresh_family (id, org_id, client_id, user_id, created_at, absolute_expires_at, revoked_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO refresh_family (id, org_id, client_id, user_id, scope, session_id, auth_time, created_at, absolute_expires_at, revoked_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     );
     match sqlx::query(&sql)
         .bind(family.id().as_str())
         .bind(family.organization_id().as_str())
         .bind(family.client_id().as_str())
         .bind(family.user_id().as_str())
+        .bind(scope_text(family.scopes()))
+        .bind(family.session_id().map(|id| id.as_str()))
+        .bind(db_timestamp(family.auth_time())?)
         .bind(db_timestamp(family.created_at())?)
         .bind(db_timestamp(family.absolute_expires_at())?)
         .bind(family.revoked_at().map(db_timestamp).transpose()?)
@@ -1370,11 +1383,14 @@ async fn update_refresh_family(
     ensure_tenant(tenant, family.organization_id())?;
     ensure_client_tenant(dialect, tx, tenant, family.client_id()).await?;
     let sql = dialect.placeholders(
-        "UPDATE refresh_family SET client_id = ?, user_id = ?, absolute_expires_at = ?, revoked_at = ?, version = ? WHERE id = ? AND org_id = ? AND version = ?",
+        "UPDATE refresh_family SET client_id = ?, user_id = ?, scope = ?, session_id = ?, auth_time = ?, absolute_expires_at = ?, revoked_at = ?, version = ? WHERE id = ? AND org_id = ? AND version = ?",
     );
     let result = sqlx::query(&sql)
         .bind(family.client_id().as_str())
         .bind(family.user_id().as_str())
+        .bind(scope_text(family.scopes()))
+        .bind(family.session_id().map(|id| id.as_str()))
+        .bind(db_timestamp(family.auth_time())?)
         .bind(db_timestamp(family.absolute_expires_at())?)
         .bind(family.revoked_at().map(db_timestamp).transpose()?)
         .bind(db_version(family.version())?)

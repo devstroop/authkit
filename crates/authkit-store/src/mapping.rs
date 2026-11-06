@@ -389,6 +389,14 @@ pub(crate) fn map_refresh_family(row: &AnyRow) -> Result<RefreshFamily, DomainEr
         id::<OrganizationEntity>(row, "org_id")?,
         id::<OAuthClientEntity>(row, "client_id")?,
         id::<UserEntity>(row, "user_id")?,
+        scope_set(
+            text(row, "scope")?
+                .split_whitespace()
+                .map(str::to_owned)
+                .collect(),
+        )?,
+        opt_id::<SessionEntity>(row, "session_id")?,
+        timestamp(row, "auth_time")?,
         timestamp(row, "created_at")?,
         timestamp(row, "absolute_expires_at")?,
         opt_timestamp(row, "revoked_at")?,

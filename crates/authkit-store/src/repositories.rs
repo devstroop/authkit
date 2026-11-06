@@ -873,7 +873,7 @@ impl RefreshFamilyRepository for SqlStore {
         id: &Id<RefreshFamilyEntity>,
     ) -> Result<Option<RefreshFamily>, DomainError> {
         let sql = self.sql(
-            "SELECT id, org_id, client_id, user_id, created_at, absolute_expires_at, revoked_at, version FROM refresh_family WHERE id = ? AND org_id = ?",
+            "SELECT id, org_id, client_id, user_id, scope, session_id, auth_time, created_at, absolute_expires_at, revoked_at, version FROM refresh_family WHERE id = ? AND org_id = ?",
         );
         self.block_on(async {
             let row = sqlx::query(&sql)
