@@ -1,6 +1,10 @@
 //! HTTP adapter for the native server.
 
 pub mod authorize;
+pub mod logout;
+pub mod revoke;
+pub mod token;
+pub mod userinfo;
 
 pub mod error;
 mod metadata;
@@ -12,6 +16,6 @@ mod session;
 pub use error::{OAuthError, OAuthErrorCode};
 pub use routes::{
     ReadinessError, ReadinessProbe, SqlStoreReadiness, router, router_with_sessions,
-    with_session_security,
+    router_with_sessions_and_tokens, with_session_security,
 };
 pub use session::SessionContext;

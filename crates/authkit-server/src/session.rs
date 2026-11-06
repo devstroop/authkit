@@ -522,7 +522,7 @@ pub struct SystemClock;
 
 impl Clock for SystemClock {
     fn now(&self) -> Timestamp {
-        Timestamp::from_millis(crate::signing::unix_now())
+        Timestamp::from_millis(crate::signing::unix_now().saturating_mul(1_000))
     }
 }
 
@@ -870,6 +870,12 @@ mod tests {
                 .expect("new session");
             assert!(new.is_valid(Timestamp::from_millis(1_001_000)));
         });
+    }
+
+    #[test]
+    fn system_clock_reports_epoch_milliseconds() {
+        let now = SystemClock.now().as_millis();
+        assert!(now > 1_700_000_000_000, "clock returned {now}");
     }
 
     #[test]

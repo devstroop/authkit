@@ -1029,10 +1029,10 @@ impl ProtocolError {
     }
 }
 
-struct Params(Vec<(String, String)>);
+pub(crate) struct Params(Vec<(String, String)>);
 
 impl Params {
-    fn from_query(query: Option<&str>) -> Result<Self, ()> {
+    pub(crate) fn from_query(query: Option<&str>) -> Result<Self, ()> {
         let Some(query) = query else {
             return Ok(Self(Vec::new()));
         };
@@ -1042,7 +1042,7 @@ impl Params {
         Self::from_pairs(url::form_urlencoded::parse(query.as_bytes()))
     }
 
-    fn from_form(body: &[u8]) -> Result<Self, ()> {
+    pub(crate) fn from_form(body: &[u8]) -> Result<Self, ()> {
         Self::from_pairs(url::form_urlencoded::parse(body))
     }
 
@@ -1068,7 +1068,7 @@ impl Params {
         Ok(Self(values))
     }
 
-    fn get(&self, name: &str) -> Option<&str> {
+    pub(crate) fn get(&self, name: &str) -> Option<&str> {
         self.0
             .iter()
             .find(|(candidate, _)| candidate == name)

@@ -19,6 +19,7 @@ use crate::http::security_headers::{SecurityHeaders, security_headers};
 use crate::http::session::{SessionSecurityState, session_context};
 use crate::session::SessionService;
 use crate::signing::KeyRing;
+use crate::tokens::TokenService;
 
 /// A readiness check that can be run without blocking the async runtime.
 pub trait ReadinessProbe: Send + Sync {
@@ -62,6 +63,7 @@ pub(crate) struct AppState {
     pub(crate) keys: Arc<KeyRing>,
     pub(crate) issuer: Issuer,
     pub(crate) authorization: Option<Arc<AuthorizationService>>,
+    pub(crate) tokens: Option<Arc<TokenService>>,
 }
 
 impl AppState {
@@ -70,12 +72,14 @@ impl AppState {
         keys: Arc<KeyRing>,
         issuer: Issuer,
         authorization: Option<Arc<AuthorizationService>>,
+        tokens: Option<Arc<TokenService>>,
     ) -> Self {
         Self {
             readiness,
             keys,
             issuer,
             authorization,
+            tokens,
         }
     }
 }
@@ -86,7 +90,7 @@ impl AppState {
 /// [`router_with_sessions`]; the base router keeps metadata and health tests independent of
 /// session storage.
 pub fn router(readiness: Arc<dyn ReadinessProbe>, keys: Arc<KeyRing>, issuer: Issuer) -> Router {
-    base_router(readiness, keys, issuer, None)
+    base_router(readiness, keys, issuer, None, None)
         .layer(middleware::from_fn(request_id::request_context))
 }
 
@@ -100,7 +104,25 @@ pub fn router_with_sessions(
     hsts: bool,
 ) -> Router {
     with_session_security(
-        base_router(readiness, keys, issuer.clone(), authorization),
+        base_router(readiness, keys, issuer.clone(), authorization, None),
+        sessions,
+        issuer,
+        hsts,
+    )
+}
+
+/// Builds the production router with token endpoints enabled.
+pub fn router_with_sessions_and_tokens(
+    readiness: Arc<dyn ReadinessProbe>,
+    keys: Arc<KeyRing>,
+    issuer: Issuer,
+    sessions: Arc<SessionService>,
+    authorization: Option<Arc<AuthorizationService>>,
+    tokens: Option<Arc<TokenService>>,
+    hsts: bool,
+) -> Router {
+    with_session_security(
+        base_router(readiness, keys, issuer.clone(), authorization, tokens),
         sessions,
         issuer,
         hsts,
@@ -135,6 +157,7 @@ fn base_router(
     keys: Arc<KeyRing>,
     issuer: Issuer,
     authorization: Option<Arc<AuthorizationService>>,
+    tokens: Option<Arc<TokenService>>,
 ) -> Router {
     let mut router = Router::new()
         .route("/healthz", get(health))
@@ -160,9 +183,26 @@ fn base_router(
                 post(crate::http::authorize::consent),
             );
     }
-    router
-        .fallback(not_found)
-        .with_state(AppState::new(readiness, keys, issuer, authorization))
+    if tokens.is_some() {
+        router = router
+            .route("/oauth2/token", post(crate::http::token::token))
+            .route(
+                "/oauth2/userinfo",
+                get(crate::http::userinfo::userinfo).post(crate::http::userinfo::userinfo_post),
+            )
+            .route("/oauth2/revoke", post(crate::http::revoke::revoke))
+            .route(
+                "/oauth2/logout",
+                get(crate::http::logout::logout_get).post(crate::http::logout::logout_post),
+            );
+    }
+    router.fallback(not_found).with_state(AppState::new(
+        readiness,
+        keys,
+        issuer,
+        authorization,
+        tokens,
+    ))
 }
 
 async fn health() -> Response {

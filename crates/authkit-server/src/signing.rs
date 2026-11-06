@@ -142,6 +142,14 @@ impl SigningKey {
         self.publish_until
     }
 
+    fn is_published(&self, now: u64) -> bool {
+        match self.state {
+            KeyState::Active | KeyState::Next => true,
+            KeyState::Retired => self.publish_until.is_some_and(|until| until > now),
+            KeyState::Compromised => false,
+        }
+    }
+
     fn validate(&self) -> Result<(), KeyRingError> {
         self.public_jwk.validate()?;
         if self.public_jwk.kid != self.kid {
@@ -253,15 +261,19 @@ impl KeyRing {
         &self.keys[self.active_index]
     }
 
+    /// Returns a published verification key by identifier.
+    pub fn verification_key(&self, kid: &str, now: u64) -> Option<&PublicJwk> {
+        self.keys
+            .iter()
+            .find(|key| key.kid() == kid && key.is_published(now))
+            .map(SigningKey::public_jwk)
+    }
+
     /// Returns the public keys that may be published at the given time.
     pub fn published_keys(&self, now: u64) -> Vec<&PublicJwk> {
         self.keys
             .iter()
-            .filter(|key| match key.state() {
-                KeyState::Active | KeyState::Next => true,
-                KeyState::Retired => key.publish_until().is_some_and(|until| until > now),
-                KeyState::Compromised => false,
-            })
+            .filter(|key| key.is_published(now))
             .map(SigningKey::public_jwk)
             .collect()
     }

@@ -57,11 +57,51 @@ fn discovery_response(state: &AppState, headers: &HeaderMap) -> Response {
         object.insert("response_modes_supported".to_owned(), json!(["query"]));
         object.insert(
             "grant_types_supported".to_owned(),
-            json!(["authorization_code"]),
+            if state.tokens.is_some() {
+                json!(["authorization_code", "refresh_token", "client_credentials"])
+            } else {
+                json!(["authorization_code"])
+            },
         );
         object.insert(
             "code_challenge_methods_supported".to_owned(),
             json!(["S256"]),
+        );
+    }
+    if state.tokens.is_some()
+        && let Some(object) = document.as_object_mut()
+    {
+        object.insert(
+            "token_endpoint".to_owned(),
+            json!(format!("{issuer}/oauth2/token")),
+        );
+        object.insert(
+            "userinfo_endpoint".to_owned(),
+            json!(format!("{issuer}/oauth2/userinfo")),
+        );
+        object.insert(
+            "revocation_endpoint".to_owned(),
+            json!(format!("{issuer}/oauth2/revoke")),
+        );
+        object.insert(
+            "end_session_endpoint".to_owned(),
+            json!(format!("{issuer}/oauth2/logout")),
+        );
+        object.insert(
+            "token_endpoint_auth_methods_supported".to_owned(),
+            json!(["client_secret_basic", "client_secret_post", "none"]),
+        );
+        object.insert(
+            "revocation_endpoint_auth_methods_supported".to_owned(),
+            json!(["client_secret_basic", "client_secret_post", "none"]),
+        );
+        object.insert(
+            "scopes_supported".to_owned(),
+            json!(["openid", "profile", "email", "offline_access"]),
+        );
+        object.insert(
+            "claims_supported".to_owned(),
+            json!(["sub", "name", "email", "email_verified", "auth_time"]),
         );
     }
     cacheable_json(&document, headers, METADATA_MAX_AGE)

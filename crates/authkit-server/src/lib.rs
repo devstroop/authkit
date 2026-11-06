@@ -11,6 +11,7 @@ pub mod http;
 pub mod session;
 pub mod signing;
 pub mod telemetry;
+pub mod tokens;
 
 mod server;
 
