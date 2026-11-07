@@ -9,6 +9,7 @@ use base64::Engine;
 use authkit_core::domain::invitation::Invitation;
 use authkit_core::ports::{ApplicationRepository, IdGenerator, InvitationRepository, MembershipRepository, OAuthClientRepository, OrganizationRepository, RoleBindingRepository, RoleRepository, UserRepository};
 use authkit_core::application::CreateOrganization;
+use askama::Template;
 use axum::extract::{Extension, Path, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
@@ -16,6 +17,20 @@ use axum::response::{IntoResponse, Response};
 use crate::http::routes::AppState;
 use crate::http::session::SessionContext;
 use crate::session::{SecureIdGenerator, SystemClock};
+
+#[derive(Template)]
+#[template(path = "pages/organizations.html")]
+struct OrganizationsTemplate<'a> {
+    title: &'a str,
+    csrf: &'a str,
+    organizations: Vec<OrganizationView>,
+}
+
+struct OrganizationView {
+    name: String,
+    slug: String,
+    id: String,
+}
 
 pub(crate) async fn organizations_page(
     State(state): State<AppState>,
@@ -40,7 +55,7 @@ pub(crate) async fn organizations_page(
     .and_then(|r| r.ok())
     .unwrap_or_default();
 
-    let mut rows = String::new();
+    let mut organizations = Vec::new();
     for m in memberships {
         if !m.is_active() {
             continue;
@@ -54,30 +69,20 @@ pub(crate) async fn organizations_page(
         .ok()
         .and_then(|r| r.ok().flatten());
         if let Some(org) = org {
-            rows.push_str(&format!(
-                "<li>{} ({}) <a href=\"/organizations/{}/members\">Manage</a></li>",
-                escape(org.name().as_str()),
-                escape(org.slug().as_str()),
-                org.id().as_str()
-            ));
+            organizations.push(OrganizationView {
+                name: org.name().as_str().to_owned(),
+                slug: org.slug().as_str().to_owned(),
+                id: org.id().as_str().to_owned(),
+            });
         }
     }
 
-    let body = format!(
-        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Organizations</title></head><body style="font-family: system-ui, sans-serif; max-width: 40rem; margin: 4rem auto; padding: 0 1rem;">
-<h1>Organizations</h1>
-<ul>{rows}</ul>
-<h2>Create organization</h2>
-<form method="post" action="/organizations">
-<input type="hidden" name="_csrf" value="{csrf}">
-<label>Slug <input name="slug" required></label><br>
-<label>Name <input name="name" required></label><br>
-<button type="submit">Create</button>
-</form>
-</body></html>"#,
-        rows = rows,
-        csrf = escape(&csrf)
-    );
+    let template = OrganizationsTemplate {
+        title: "Organizations",
+        csrf: &csrf,
+        organizations,
+    };
+    let body = template.render().unwrap_or_default();
     html_ok(&body)
 }
 
