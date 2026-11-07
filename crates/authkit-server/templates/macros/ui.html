@@ -1,14 +1,47 @@
-{% macro button(label) %}
-<button type="submit" class="btn btn-primary">{{ label }}</button>
+{% macro button(label, variant="primary") %}
+<button type="submit" class="btn btn-{{ variant }}">{{ label }}</button>
 {% endmacro %}
 
-{% macro text_input(name, label, input_type) %}
+{% macro text_input(name, label, input_type, autocomplete="", required=true, minlength="") %}
 <label class="field">
   <span>{{ label }}</span>
-  <input type="{{ input_type }}" name="{{ name }}" class="input" required>
+  <input
+    type="{{ input_type }}"
+    name="{{ name }}"
+    class="input"
+    {% if required %}required aria-required="true"{% endif %}
+    {% if !autocomplete.is_empty() %}autocomplete="{{ autocomplete }}"{% endif %}
+    {% if !minlength.is_empty() %}minlength="{{ minlength }}"{% endif %}>
+</label>
+{% endmacro %}
+
+{% macro select(name, label, options) %}
+<label class="field">
+  <span>{{ label }}</span>
+  <select name="{{ name }}" class="input" required aria-required="true">
+    {% for option in options %}
+    <option value="{{ option.value }}">{{ option.label }}</option>
+    {% endfor %}
+  </select>
+</label>
+{% endmacro %}
+
+{% macro checkbox(name, label, value="true") %}
+<label class="field field-inline">
+  <input type="checkbox" name="{{ name }}" value="{{ value }}">
+  <span>{{ label }}</span>
 </label>
 {% endmacro %}
 
 {% macro alert(message) %}
 <p class="alert" role="alert">{{ message }}</p>
+{% endmacro %}
+
+{% macro card(title) %}
+<section class="card">
+  {% if !title.is_empty() %}
+  <h2 class="card-title">{{ title }}</h2>
+  {% endif %}
+  {{ caller() }}
+</section>
 {% endmacro %}

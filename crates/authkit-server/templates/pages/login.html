@@ -3,7 +3,7 @@
 {% block content %}
 <h1>Sign in</h1>
 {% if !error.is_empty() %}
-<p class="error">{{ error }}</p>
+{{ ui::alert(error) }}
 {% endif %}
 <form method="post" action="/login">
   {% if !csrf.is_empty() %}
@@ -12,8 +12,8 @@
   {% if !next.is_empty() %}
   <input type="hidden" name="next" value="{{ next }}">
   {% endif %}
-  <label>Email <input type="email" name="email" required autocomplete="email" aria-required="true"></label>
-  <label>Password <input type="password" name="password" type="password" required autocomplete="current-password" aria-required="true"></label>
+  {{ ui::text_input("email", "Email", "email", "email") }}
+  {{ ui::text_input("password", "Password", "password", "current-password", true, "12") }}
   {{ ui::button("Sign in") }}
 </form>
 <p><a href="/register">Create an account</a></p>

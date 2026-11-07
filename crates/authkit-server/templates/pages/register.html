@@ -1,4 +1,5 @@
 {% extends "layouts/base.html" %}
+{% import "macros/ui.html" as ui %}
 {% block content %}
 <h1>Create account</h1>
 <form method="post" action="/register">
@@ -8,9 +9,9 @@
   {% if !next.is_empty() %}
   <input type="hidden" name="next" value="{{ next }}">
   {% endif %}
-  <label>Email <input type="email" name="email" required autocomplete="email" aria-required="true"></label>
-  <label>Password <input type="password" name="password" type="password" required minlength="12" autocomplete="new-password" aria-required="true"></label>
-  <button type="submit">Create account</button>
+  {{ ui::text_input("email", "Email", "email", "email") }}
+  {{ ui::text_input("password", "Password", "password", "new-password", true, "12") }}
+  {{ ui::button("Create account") }}
 </form>
 <p><a href="/login">Sign in instead</a></p>
 {% endblock %}
