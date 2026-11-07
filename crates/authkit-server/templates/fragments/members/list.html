@@ -1,3 +1,4 @@
+{% import "macros/ui.html" as ui %}
 <ul id="members">
 {% for member in members %}
 <li>{{ member.email }} {{ member.status }} ({{ member.id }})</li>
@@ -7,7 +8,7 @@
 <h2>Add member</h2>
 <form method="post" action="/organizations/{{ org_id }}/members" hx-post="/organizations/{{ org_id }}/members" hx-target="#members" hx-swap="beforeend">
   <input type="hidden" name="_csrf" value="{{ csrf }}">
-  <label>User email <input name="email" type="email" required autocomplete="email" aria-required="true"></label>
-  <button type="submit">Add</button>
+  {{ ui::text_input("email", "User email", "email", "email") }}
+  {{ ui::button("Add") }}
 </form>
 {% endif %}
