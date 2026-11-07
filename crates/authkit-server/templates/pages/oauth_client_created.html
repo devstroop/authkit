@@ -1,0 +1,7 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+<h1>OAuth client created</h1>
+<p>Client ID: <code>{{ client_id }}</code></p>
+<p>Client secret: <code>{{ secret }}</code></p>
+<p><a href="/organizations/{{ org_id }}/oauth-clients">Back</a></p>
+{% endblock %}

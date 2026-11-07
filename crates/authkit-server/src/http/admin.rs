@@ -659,4 +659,3 @@ fn html_ok(body: &str) -> Response {
     )
         .into_response()
 }
-

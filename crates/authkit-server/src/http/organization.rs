@@ -1100,12 +1100,13 @@ pub(crate) async fn create_oauth_client(
         return unavailable();
     }
     let secret_text = secret_plain.unwrap_or_else(|| "(public client)".to_owned());
-    let body = format!(
-        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>OAuth client created</title></head><body style="font-family: system-ui, sans-serif; max-width: 40rem; margin: 4rem auto; padding: 0 1rem;"><h1>OAuth client created</h1><p>Client ID: <code>{}</code></p><p>Client secret: <code>{}</code></p><p><a href="/organizations/{}/oauth-clients">Back</a></p></body></html>"#,
-        escape(client.client_id().as_str()),
-        escape(&secret_text),
-        org_id.as_str()
-    );
+    let template = OAuthClientCreatedTemplate {
+        title: "OAuth client created",
+        client_id: client.client_id().as_str(),
+        secret: &secret_text,
+        org_id: org_id.as_str(),
+    };
+    let body = template.render().unwrap_or_default();
     html_ok(&body)
 }
 
@@ -1120,6 +1121,15 @@ struct OAuthClientDetailTemplate<'a> {
     client_id: &'a str,
     redirect_uris: Vec<String>,
     scopes: &'a str,
+}
+
+#[derive(askama::Template)]
+#[template(path = "pages/oauth_client_created.html")]
+struct OAuthClientCreatedTemplate<'a> {
+    title: &'a str,
+    client_id: &'a str,
+    secret: &'a str,
+    org_id: &'a str,
 }
 
 pub(crate) async fn oauth_client_detail(
