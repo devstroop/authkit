@@ -85,6 +85,16 @@
     }
   </style>
   <script src="/static/htmx.min.js" defer></script>
+  <script defer>
+    document.addEventListener("htmx:afterSwap", function (event) {
+      var target = event.detail.target;
+      if (target && target.getAttribute && target.getAttribute("aria-live")) {
+        return;
+      }
+      var heading = document.querySelector("main h1");
+      if (heading) { heading.setAttribute("tabindex", "-1"); heading.focus(); }
+    });
+  </script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
