@@ -21,26 +21,6 @@ use crate::http::rate_limit::client_ip;
 use crate::http::routes::AppState;
 use crate::http::session::SessionContext;
 
-const PAGE: &str = r#"<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{title}</title>
-</head>
-<body style="font-family: system-ui, sans-serif; max-width: 32rem; margin: 4rem auto; padding: 0 1rem;">
-<h1>{title}</h1>
-{error}
-<form method="post" action="{action}">
-<label>Email <input type="email" name="email" required></label><br>
-<label>Password <input type="password" name="password" required minlength="12"></label><br>
-{extra}
-<button type="submit">{button}</button>
-</form>
-<p><a href="{other_href}">{other_text}</a></p>
-</body>
-</html>"#;
-
 #[derive(Template)]
 #[template(path = "pages/login.html")]
 struct LoginTemplate<'a> {
@@ -597,6 +577,18 @@ struct MfaChallengeTemplate<'a> {
     next: &'a str,
 }
 
+#[derive(askama::Template)]
+#[template(path = "pages/login_form.html")]
+struct LoginFormTemplate<'a> {
+    title: &'a str,
+    action: &'a str,
+    button: &'a str,
+    error: &'a str,
+    other_href: &'a str,
+    other_text: &'a str,
+    extra: &'a str,
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn html(
     status: StatusCode,
@@ -608,19 +600,16 @@ pub(crate) fn html(
     other_text: &str,
     extra: &str,
 ) -> Response {
-    let error_html = if error.is_empty() {
-        String::new()
-    } else {
-        format!("<p style=\"color: red;\">{}</p>", escape(error))
+    let template = LoginFormTemplate {
+        title,
+        action,
+        button,
+        error,
+        other_href,
+        other_text,
+        extra,
     };
-    let body = PAGE
-        .replace("{title}", title)
-        .replace("{action}", action)
-        .replace("{button}", button)
-        .replace("{error}", &error_html)
-        .replace("{extra}", extra)
-        .replace("{other_href}", other_href)
-        .replace("{other_text}", other_text);
+    let body = template.render().unwrap_or_default();
     (
         status,
         [
@@ -661,14 +650,6 @@ fn rate_limited(retry_after: u64) -> Response {
         axum::Json(json!({"error": "rate_limited", "retry_after": retry_after})),
     )
         .into_response()
-}
-
-fn escape(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
 }
 
 fn bad_request() -> Response {

@@ -1,0 +1,14 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+<h1>{{ title }}</h1>
+{% if !error.is_empty() %}
+<p style="color: red;">{{ error }}</p>
+{% endif %}
+<form method="post" action="{{ action }}">
+<label>Email <input type="email" name="email" required></label><br>
+<label>Password <input type="password" name="password" required minlength="12"></label><br>
+{{ extra | safe }}
+<button type="submit">{{ button }}</button>
+</form>
+<p><a href="{{ other_href }}">{{ other_text }}</a></p>
+{% endblock %}
