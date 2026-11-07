@@ -14,6 +14,7 @@ use authkit_core::domain::grant::{AuthorizationCode, Consent, RefreshFamily, Ref
 use authkit_core::domain::id::{
     ApplicationEntity, AuditEventEntity, AuthorizationCodeEntity, ConsentEntity, Entity, Id,
     InvitationEntity, MembershipEntity, OAuthClientEntity, OrganizationEntity, RefreshFamilyEntity,
+    RecoveryCodeEntity,
     SystemAdministratorEntity,
     RefreshTokenEntity, RoleBindingEntity, RoleEntity, SessionEntity, UserEntity,
 };
@@ -26,6 +27,7 @@ use authkit_core::domain::oauth_client::{
 use authkit_core::domain::organization::{Organization, OrganizationStatus};
 use authkit_core::domain::permission::{Permission, PermissionSet};
 use authkit_core::domain::pkce::{Nonce, PkceChallenge};
+use authkit_core::domain::recovery_code::RecoveryCode;
 use authkit_core::domain::redirect_uri::RedirectUri;
 use authkit_core::domain::role::{Role, RoleBinding, RoleKind};
 use authkit_core::domain::scope::{Scope, ScopeSet};
@@ -307,6 +309,17 @@ pub(crate) fn map_credential(row: &AnyRow) -> Result<Credential, DomainError> {
         timestamp(row, "created_at")?,
         timestamp(row, "updated_at")?,
         opt_timestamp(row, "last_used_at")?,
+        version(row, "version")?,
+    )
+}
+
+pub(crate) fn map_recovery_code(row: &AnyRow) -> Result<RecoveryCode, DomainError> {
+    RecoveryCode::restore(
+        id::<RecoveryCodeEntity>(row, "id")?,
+        id::<UserEntity>(row, "user_id")?,
+        SecretHash::parse(text(row, "code_hash")?).map_err(|_| invalid_stored_value())?,
+        opt_timestamp(row, "used_at")?,
+        timestamp(row, "created_at")?,
         version(row, "version")?,
     )
 }

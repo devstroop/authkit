@@ -533,6 +533,34 @@ pub trait EmailSender {
     ) -> Result<(), crate::domain::DomainError>;
 }
 
+/// Read and write access to MFA recovery codes.
+pub trait RecoveryCodeRepository {
+    /// Lists recovery codes for a user.
+    fn list_for_user(
+        &self,
+        user_id: &crate::domain::id::Id<crate::domain::id::UserEntity>,
+    ) -> Result<Vec<crate::domain::RecoveryCode>, crate::domain::DomainError>;
+
+    /// Inserts a recovery code.
+    fn insert(
+        &self,
+        code: &crate::domain::RecoveryCode,
+    ) -> Result<crate::domain::WriteOutcome, crate::domain::DomainError>;
+
+    /// Marks a recovery code as used.
+    fn mark_used(
+        &self,
+        id: &crate::domain::id::Id<crate::domain::id::RecoveryCodeEntity>,
+        now: crate::domain::time::Timestamp,
+    ) -> Result<crate::domain::WriteOutcome, crate::domain::DomainError>;
+
+    /// Deletes all recovery codes for a user.
+    fn delete_for_user(
+        &self,
+        user_id: &crate::domain::id::Id<crate::domain::id::UserEntity>,
+    ) -> Result<crate::domain::WriteOutcome, crate::domain::DomainError>;
+}
+
 /// A repository bundle available to use cases.
 pub trait Repositories:
     UserRepository

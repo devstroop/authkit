@@ -5,6 +5,7 @@ use argon2::password_hash::{PasswordHash, PasswordHasher as _, PasswordVerifier 
 use argon2::{Argon2, Params};
 use authkit_core::domain::{DomainError, ErrorCode, ValueError};
 use authkit_core::domain::credential::PasswordVerifier as DomainVerifier;
+use authkit_core::domain::secret::SecretHash;
 
 /// Argon2id work factors matching the domain minimums.
 const MEMORY_KIB: u32 = 19 * 1024;
@@ -57,6 +58,23 @@ pub fn needs_rehash(verifier: &DomainVerifier) -> bool {
         .and_then(|value| value.decimal().ok())
         .unwrap_or(0);
     memory < MEMORY_KIB || time < TIME_COST || parallelism < PARALLELISM
+}
+
+/// Hashes a high-entropy recovery code.
+pub fn hash_recovery_code(code: &str) -> Result<SecretHash, DomainError> {
+    let verifier = hash_password(code)?;
+    SecretHash::parse(verifier.as_str().to_owned())
+        .map_err(|error| DomainError::new(ErrorCode::Internal, error.to_string()))
+}
+
+/// Verifies a recovery code against its stored hash.
+pub fn verify_recovery_code(code: &str, hash: &SecretHash) -> bool {
+    let Ok(parsed) = argon2::password_hash::PasswordHash::new(hash.as_str()) else {
+        return false;
+    };
+    argon2::Argon2::default()
+        .verify_password(code.as_bytes(), &parsed)
+        .is_ok()
 }
 
 #[cfg(test)]

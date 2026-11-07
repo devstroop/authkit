@@ -18,6 +18,7 @@ pub mod oauth_client;
 pub mod organization;
 pub mod permission;
 pub mod pkce;
+pub mod recovery_code;
 pub mod redirect_uri;
 pub mod role;
 pub mod scope;
@@ -53,6 +54,7 @@ pub use oauth_client::{
 pub use organization::{Organization, OrganizationStatus};
 pub use permission::{Permission, PermissionSet};
 pub use pkce::{Nonce, PkceChallenge};
+pub use recovery_code::RecoveryCode;
 pub use redirect_uri::RedirectUri;
 pub use role::{Role, RoleBinding, RoleKind, RoleScope};
 pub use scope::{Scope, ScopeSet};

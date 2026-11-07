@@ -9,6 +9,7 @@ use authkit_core::domain::grant::{AuthorizationCode, Consent, RefreshFamily, Ref
 use authkit_core::domain::id::{
     ApplicationEntity, AuthorizationCodeEntity, ConsentEntity, CredentialEntity, Id,
     InvitationEntity, MembershipEntity, OAuthClientEntity, OneTimeTokenEntity, OrganizationEntity,
+    RecoveryCodeEntity,
     SystemAdministratorEntity,
     RefreshFamilyEntity, RefreshTokenEntity, RoleBindingEntity, RoleEntity, SessionEntity, UserEntity,
 };
@@ -20,6 +21,7 @@ use authkit_core::ports::OneTimeTokenRepository;
 use authkit_core::domain::oauth_client::OAuthClient;
 use authkit_core::domain::organization::Organization;
 use authkit_core::domain::role::{Role, RoleBinding};
+use authkit_core::domain::recovery_code::RecoveryCode;
 use authkit_core::domain::secret::SecretHash;
 use authkit_core::domain::session::Session;
 use authkit_core::domain::slug::Slug;
@@ -31,6 +33,7 @@ use authkit_core::ports::write::{UnitOfWork, WriteBatch, WriteCommand};
 use authkit_core::ports::{
     ApplicationRepository, AuditRepository, AuthorizationCodeRepository, ConsentRepository,
     CredentialRepository, InvitationRepository, MembershipRepository, OAuthClientRepository,
+    RecoveryCodeRepository,
     OrganizationRepository, RateLimiter, RateLimitExceeded, RefreshFamilyRepository,
     RefreshTokenRepository, Repositories, RoleBindingRepository, RoleRepository, SessionRepository,
     SystemAdministratorRepository, UserRepository,
@@ -40,6 +43,7 @@ use sqlx::Any;
 use crate::mapping::{
     id as stored_id, map_application, map_audit_event, map_authorization_code, map_consent,
     map_credential, map_invitation, map_membership, map_oauth_client, map_organization,
+    map_recovery_code,
     map_refresh_family, map_refresh_token, map_role, map_role_binding, map_session, map_system_administrator, map_user, text,
 };
 use crate::{SqlStore, invalid_stored_value, map_db_error};
@@ -1513,6 +1517,52 @@ impl RateLimiter for SqlStore {
                 .await
                 .map_err(map_db_error)?;
             Ok(())
+        })
+    }
+}
+
+
+impl RecoveryCodeRepository for SqlStore {
+    fn list_for_user(&self, user_id: &Id<UserEntity>) -> Result<Vec<RecoveryCode>, DomainError> {
+        let sql = self.sql("SELECT id, user_id, code_hash, used_at, created_at, version FROM recovery_code WHERE user_id = ? ORDER BY created_at, id");
+        self.block_on(async {
+            let rows = sqlx::query(&sql).bind(user_id.as_str()).fetch_all(&self.pool).await.map_err(map_db_error)?;
+            rows.iter().map(map_recovery_code).collect()
+        })
+    }
+    fn insert(&self, code: &RecoveryCode) -> Result<WriteOutcome, DomainError> {
+        let sql = self.sql("INSERT INTO recovery_code (id, user_id, code_hash, used_at, created_at, version) VALUES (?, ?, ?, ?, ?, ?)");
+        self.block_on(async {
+            sqlx::query(&sql)
+                .bind(code.id().as_str())
+                .bind(code.user_id().as_str())
+                .bind(code.code_hash().as_str())
+                .bind(code.used_at().map(|t| t.as_millis() as i64))
+                .bind(code.created_at().as_millis() as i64)
+                .bind(code.version() as i64)
+                .execute(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            Ok(WriteOutcome::Applied)
+        })
+    }
+    fn mark_used(&self, id: &Id<RecoveryCodeEntity>, now: Timestamp) -> Result<WriteOutcome, DomainError> {
+        let sql = self.sql("UPDATE recovery_code SET used_at = ?, version = version + 1 WHERE id = ? AND used_at IS NULL");
+        self.block_on(async {
+            let result = sqlx::query(&sql)
+                .bind(now.as_millis() as i64)
+                .bind(id.as_str())
+                .execute(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            if result.rows_affected() == 0 { Ok(WriteOutcome::NotFound) } else { Ok(WriteOutcome::Applied) }
+        })
+    }
+    fn delete_for_user(&self, user_id: &Id<UserEntity>) -> Result<WriteOutcome, DomainError> {
+        let sql = self.sql("DELETE FROM recovery_code WHERE user_id = ?");
+        self.block_on(async {
+            sqlx::query(&sql).bind(user_id.as_str()).execute(&self.pool).await.map_err(map_db_error)?;
+            Ok(WriteOutcome::Applied)
         })
     }
 }

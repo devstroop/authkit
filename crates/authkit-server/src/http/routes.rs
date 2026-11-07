@@ -212,6 +212,8 @@ fn base_router(
         .route("/account/mfa/enroll", post(mfa::enroll))
         .route("/account/mfa/verify", post(mfa::verify_enrollment))
         .route("/account/mfa/disable", post(mfa::disable))
+        .route("/account/mfa/recovery-codes", get(mfa::recovery_codes_page))
+        .route("/account/mfa/recovery-codes/generate", post(mfa::generate_recovery_codes))
         .route("/admin/login", get(admin::login_page).post(admin::login_submit))
         .route("/admin", get(admin::dashboard))
         .route("/admin/logout", post(admin::logout))

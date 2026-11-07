@@ -119,6 +119,11 @@ entity!(
     "cns"
 );
 entity!(
+    /// A one-time MFA recovery code.
+    RecoveryCodeEntity,
+    "rcv"
+);
+entity!(
     /// A single-use, expiring token for email verification or password reset.
     OneTimeTokenEntity,
     "tok"
