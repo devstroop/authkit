@@ -2,7 +2,7 @@
 
 use authkit_core::domain::WriteOutcome;
 use authkit_core::domain::id::SessionEntity;
-use authkit_core::domain::{DisplayName, TenantContext, User};
+use authkit_core::domain::{DisplayName, TenantContext};
 use authkit_core::domain::id::ConsentEntity;
 use authkit_core::ports::{ConsentRepository, CredentialRepository, OAuthClientRepository, SessionRepository, UserRepository};
 use axum::extract::{Extension, State};
