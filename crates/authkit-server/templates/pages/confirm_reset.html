@@ -1,0 +1,12 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+<h1>Choose new password</h1>
+<form method="post" action="/password-reset/confirm">
+  {% if !csrf.is_empty() %}
+  <input type="hidden" name="_csrf" value="{{ csrf }}">
+  {% endif %}
+  <input type="hidden" name="token" value="{{ token }}">
+  <label>New password <input type="password" name="password" required minlength="12"></label>
+  <button>Reset</button>
+</form>
+{% endblock %}

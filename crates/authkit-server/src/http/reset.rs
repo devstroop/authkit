@@ -4,6 +4,7 @@ use authkit_core::domain::{Email, OneTimeToken, OneTimeTokenPurpose, WriteOutcom
 use authkit_core::domain::id::OneTimeTokenEntity;
 use authkit_core::ports::{
     RateLimiter,CredentialRepository, IdGenerator, OneTimeTokenRepository, UserRepository};
+use askama::Template;
 use axum::extract::{Query, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
@@ -19,26 +20,37 @@ pub(crate) struct TokenQuery {
     token: Option<String>,
 }
 
+#[derive(Template)]
+#[template(path = "pages/request_reset.html")]
+struct RequestResetTemplate<'a> {
+    title: &'a str,
+    csrf: &'a str,
+}
+
 pub(crate) async fn request_reset_page(
     State(state): State<AppState>,
     session: Option<axum::extract::Extension<crate::http::session::SessionContext>>,
 ) -> Response {
-    let csrf_input = if let Some(ext) = session {
+    let csrf_value = if let Some(ext) = session {
         if let Some(sessions) = state.sessions.as_ref() {
-            format!(r#"<input type="hidden" name="_csrf" value="{}">"#, escape(&sessions.csrf_token(ext.0.session())))
+            sessions.csrf_token(ext.0.session()).to_owned()
         } else {
             String::new()
         }
     } else {
         String::new()
     };
-    html_page(
-        "Reset password",
-        &format!(
-            r#"<form method="post" action="/password-reset">{csrf}<label>Email <input type="email" name="email" required></label><button>Send reset link</button></form>"#,
-            csrf = csrf_input
-        ),
+    let template = RequestResetTemplate {
+        title: "Reset password",
+        csrf: &csrf_value,
+    };
+    let body = template.render().unwrap_or_default();
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8"), (header::CACHE_CONTROL, "no-store")],
+        body,
     )
+        .into_response()
 }
 
 pub(crate) async fn request_reset_submit(
@@ -152,29 +164,41 @@ pub(crate) async fn request_reset_submit(
     html_page("Reset password", "<p>If an account exists, a reset link has been sent.</p>")
 }
 
+#[derive(Template)]
+#[template(path = "pages/confirm_reset.html")]
+struct ConfirmResetTemplate<'a> {
+    title: &'a str,
+    csrf: &'a str,
+    token: &'a str,
+}
+
 pub(crate) async fn confirm_reset_page(
     State(state): State<AppState>,
     session: Option<axum::extract::Extension<crate::http::session::SessionContext>>,
     Query(q): Query<TokenQuery>,
 ) -> Response {
     let token = q.token.clone().unwrap_or_default();
-    let csrf_input = if let Some(ext) = session {
+    let csrf_value = if let Some(ext) = session {
         if let Some(sessions) = state.sessions.as_ref() {
-            format!(r#"<input type="hidden" name="_csrf" value="{}">"#, escape(&sessions.csrf_token(ext.0.session())))
+            sessions.csrf_token(ext.0.session()).to_owned()
         } else {
             String::new()
         }
     } else {
         String::new()
     };
-    html_page(
-        "Choose new password",
-        &format!(
-            r#"<form method="post" action="/password-reset/confirm">{csrf}<input type="hidden" name="token" value="{token}"><label>New password <input type="password" name="password" required minlength="12"></label><button>Reset</button></form>"#,
-            csrf = csrf_input,
-            token = escape(&token)
-        ),
+    let template = ConfirmResetTemplate {
+        title: "Choose new password",
+        csrf: &csrf_value,
+        token: &token,
+    };
+    let body = template.render().unwrap_or_default();
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8"), (header::CACHE_CONTROL, "no-store")],
+        body,
     )
+        .into_response()
 }
 
 pub(crate) async fn confirm_reset_submit(
