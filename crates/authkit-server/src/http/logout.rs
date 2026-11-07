@@ -1,5 +1,6 @@
 //! RP-initiated logout endpoint.
 
+use askama::Template;
 use authkit_core::domain::{ClientId, SessionAudience};
 use axum::body::Bytes;
 use axum::extract::{RawQuery, State};
@@ -14,14 +15,11 @@ use crate::tokens::LogoutRequest;
 
 const MAX_QUERY_LEN: usize = 16 * 1024;
 
-const SIGNED_OUT_PAGE: &str = r#"<!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Signed out</title></head>
-<body style="font-family: system-ui, sans-serif; max-width: 32rem; margin: 4rem auto; padding: 0 1rem;">
-<h1>Signed out</h1>
-<p>Your AuthKit session has ended. You can close this window.</p>
-</body>
-</html>"#;
+#[derive(askama::Template)]
+#[template(path = "pages/signed_out.html")]
+struct SignedOutTemplate {
+    title: &'static str,
+}
 
 /// Handles an RP-initiated logout request sent as a query.
 pub(crate) async fn logout_get(
@@ -101,7 +99,11 @@ async fn perform(state: &AppState, headers: &HeaderMap, params: &Params) -> Resp
                             HeaderValue::from_static("text/html; charset=utf-8"),
                         ),
                     ],
-                    SIGNED_OUT_PAGE,
+                    SignedOutTemplate {
+                        title: "Signed out",
+                    }
+                    .render()
+                    .unwrap_or_default(),
                 )
                     .into_response(),
             }
