@@ -39,6 +39,7 @@ fn run(mut args: impl Iterator<Item = String>) -> Result<(), u8> {
         }
         Some("migrate") => migrate(),
         Some("backup") => backup(args.collect()),
+        Some("restore") => restore(args.collect()),
         Some("bootstrap") => bootstrap(),
         Some("doctor") => doctor(),
         Some("key") => match args.next().as_deref() {
@@ -382,6 +383,34 @@ fn backup(args: Vec<String>) -> Result<(), u8> {
         println!("backup written to {output}");
         Ok(())
     })
+}
+
+fn restore(args: Vec<String>) -> Result<(), u8> {
+    let mut input: Option<String> = None;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--input" => {
+                if i + 1 >= args.len() { eprintln!("error: --input requires a value"); return Err(2); }
+                input = Some(args[i + 1].clone());
+                i += 2;
+            }
+            other => { eprintln!("error: unknown argument: {other}"); return Err(2); }
+        }
+    }
+    let input = input.ok_or_else(|| { eprintln!("error: --input is required"); 2 })?;
+    let config = Config::from_env().map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    if config.database().kind() != authkit_server::config::DatabaseKind::Sqlite {
+        eprintln!("error: restore command supports SQLite; use pg_restore for PostgreSQL");
+        return Err(1);
+    }
+    let url = config.database().url();
+    let path = url.strip_prefix("sqlite:").unwrap_or(url);
+    let path = path.split('?').next().unwrap_or(path);
+    let path = path.trim_start_matches("//");
+    std::fs::copy(&input, path).map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    println!("restored {input} to {path}");
+    Ok(())
 }
 
 fn serve() -> Result<(), u8> {
