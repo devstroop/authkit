@@ -37,6 +37,7 @@ fn run(mut args: impl Iterator<Item = String>) -> Result<(), u8> {
         }
         Some("migrate") => migrate(),
         Some("bootstrap") => bootstrap(),
+        Some("doctor") => doctor(),
         Some("key") => match args.next().as_deref() {
             Some("rotate") => key_rotate(),
             _ => {
@@ -227,6 +228,21 @@ fn key_rotate() -> Result<(), u8> {
     let now = authkit_server::signing::unix_now();
     let ring = KeyRing::rotate(config.signing_keys(), now).map_err(|e| { eprintln!("error: {e}"); 1 })?;
     println!("rotated signing key {}", ring.active().kid());
+    Ok(())
+}
+
+fn doctor() -> Result<(), u8> {
+    let config = Config::from_env().map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    println!("config: ok");
+    println!("issuer: {}", config.issuer());
+    let url = config.database().url().to_owned();
+    let max_connections = config.database().max_connections();
+    let store = SqlStore::connect(&url, max_connections).map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    store.ping().map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    println!("database: ok");
+    let now = authkit_server::signing::unix_now();
+    let ring = KeyRing::load_or_bootstrap(config.signing_keys(), now).map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    println!("signing key: ok ({})", ring.active().kid());
     Ok(())
 }
 
