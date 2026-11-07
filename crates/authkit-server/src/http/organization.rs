@@ -1,13 +1,13 @@
 //! Organization administration pages.
 
 use authkit_core::domain::{
-    Application, ApplicationKind, DisplayName, DomainError, Email, Id, Membership, Permission,
-    PermissionSet, Role, RoleBinding, Slug, TenantContext, WriteOutcome,
+    Application, ApplicationKind, ClientId, ClientType, DisplayName, DomainError, Email, GrantType, Id, Membership, OAuthClient, OAuthClientSpec, Permission,
+    PermissionSet, RedirectUri, Role, RoleBinding, Scope, ScopeSet, Slug, TenantContext, TokenEndpointAuthMethod, WriteOutcome,
 };
 use authkit_core::domain::id::{InvitationEntity, OrganizationEntity, RoleBindingEntity, RoleEntity, UserEntity};
 use base64::Engine;
 use authkit_core::domain::invitation::Invitation;
-use authkit_core::ports::{ApplicationRepository, IdGenerator, InvitationRepository, MembershipRepository, OrganizationRepository, RoleBindingRepository, RoleRepository, UserRepository};
+use authkit_core::ports::{ApplicationRepository, IdGenerator, InvitationRepository, MembershipRepository, OAuthClientRepository, OrganizationRepository, RoleBindingRepository, RoleRepository, UserRepository};
 use authkit_core::application::CreateOrganization;
 use axum::extract::{Extension, Path, State};
 use axum::http::{HeaderValue, StatusCode, header};
@@ -751,6 +751,123 @@ pub(crate) async fn create_application(
     } else {
         unavailable()
     }
+}
+
+
+pub(crate) async fn oauth_clients_page(
+    State(state): State<AppState>,
+    session: Option<Extension<SessionContext>>,
+    Path(org_id): Path<String>,
+) -> Response {
+    let Some(Extension(session)) = session else { return redirect("/login"); };
+    let Some(sessions) = state.sessions.as_ref() else { return unavailable(); };
+    let org_id = match Id::<OrganizationEntity>::parse(&org_id) { Ok(v)=>v, Err(_)=>return bad_request() };
+    let user_id = session.session().user_id().clone();
+    let store = sessions.store().clone();
+    let csrf = sessions.csrf_token(session.session());
+    if !can_read_members(&store, &user_id, &org_id) { return forbidden(); }
+    let tenant = TenantContext::new(org_id.clone());
+    let clients = tokio::task::spawn_blocking({
+        let store=store.clone(); let tenant=tenant.clone();
+        move || OAuthClientRepository::list(store.as_ref(), &tenant)
+    }).await.ok().and_then(|r|r.ok()).unwrap_or_default();
+    let apps = tokio::task::spawn_blocking({
+        let store=store.clone(); let tenant=tenant.clone();
+        move || ApplicationRepository::list(store.as_ref(), &tenant)
+    }).await.ok().and_then(|r|r.ok()).unwrap_or_default();
+    let mut rows = String::new();
+    for c in clients {
+        rows.push_str(&format!("<li>{} ({}) - {}</li>", escape(c.name().as_str()), escape(c.client_id().as_str()), if c.status() == authkit_core::domain::oauth_client::ClientStatus::Active { "active" } else { "disabled" }));
+    }
+    let mut app_options = String::new();
+    for a in apps {
+        app_options.push_str(&format!("<option value=\"{}\">{}</option>", a.id().as_str(), escape(a.name().as_str())));
+    }
+    let can_manage = can_manage_members(&store, &user_id, &org_id);
+    let form = if can_manage {
+        format!(r#"<h2>Create OAuth client</h2><form method="post" action="/organizations/{}/oauth-clients"><input type="hidden" name="_csrf" value="{}"><label>Application <select name="application_id">{}</select></label><br><label>Name <input name="name" required></label><br><label>Client type <select name="client_type"><option value="public">public</option><option value="confidential">confidential</option></select></label><br><label>Redirect URI <input name="redirect_uri" required></label><br><label>Scopes <input name="scopes" value="openid profile email"></label><br><button type="submit">Create</button></form>"#, org_id.as_str(), escape(&csrf), app_options)
+    } else { String::new() };
+    let body = format!(r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>OAuth clients</title></head><body style="font-family: system-ui, sans-serif; max-width: 40rem; margin: 4rem auto; padding: 0 1rem;"><h1>OAuth clients</h1><ul>{}</ul>{}<p><a href="/organizations/{}/applications">Applications</a></p></body></html>"#, rows, form, org_id.as_str());
+    html_ok(&body)
+}
+
+pub(crate) async fn create_oauth_client(
+    State(state): State<AppState>,
+    session: Option<Extension<SessionContext>>,
+    Path(org_id): Path<String>,
+    body: axum::body::Bytes,
+) -> Response {
+    let Some(Extension(session)) = session else { return redirect("/login"); };
+    let Some(sessions) = state.sessions.as_ref() else { return unavailable(); };
+    let org_id = match Id::<OrganizationEntity>::parse(&org_id) { Ok(v)=>v, Err(_)=>return bad_request() };
+    let user_id = session.session().user_id().clone();
+    let store = sessions.store().clone();
+    if !can_manage_members(&store, &user_id, &org_id) { return forbidden(); }
+    let mut params = parse_form(&body);
+    let application_id_str = params.remove("application_id").unwrap_or_default();
+    let name_str = params.remove("name").unwrap_or_default();
+    let client_type_str = params.remove("client_type").unwrap_or_default();
+    let redirect_uri_str = params.remove("redirect_uri").unwrap_or_default();
+    let scopes_str = params.remove("scopes").unwrap_or_default();
+    let application_id = match Id::<authkit_core::domain::id::ApplicationEntity>::parse(&application_id_str) { Ok(v)=>v, Err(_)=>return bad_request() };
+    let name = match DisplayName::parse(&name_str) { Ok(v)=>v, Err(_)=>return bad_request() };
+    let redirect_uri = match RedirectUri::parse(&redirect_uri_str) { Ok(v)=>v, Err(_)=>return bad_request() };
+    let scopes: Vec<Scope> = scopes_str.split_whitespace().filter_map(|s| Scope::parse(s).ok()).collect();
+    let allowed_scopes = ScopeSet::new(scopes);
+    let client_type = if client_type_str == "confidential" { ClientType::Confidential } else { ClientType::Public };
+    let pepper = sessions.pepper().to_vec();
+    let (secret_plain, secret_hash) = if client_type == ClientType::Confidential {
+        use rand_core::{OsRng, RngCore};
+        let mut bytes = [0u8; 32];
+        OsRng.fill_bytes(&mut bytes);
+        let secret = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes);
+        let hash = match crate::tokens::hash_client_secret(&pepper, &secret) {
+            Ok(v) => v,
+            Err(_) => return bad_request(),
+        };
+        (Some(secret), Some(hash))
+    } else {
+        (None, None)
+    };
+    // generate client_id
+    use rand_core::{OsRng, RngCore};
+    let mut bytes = [0u8; 24];
+    OsRng.fill_bytes(&mut bytes);
+    let client_id_str: String = bytes.iter().map(|b| format!("{:02x}", b)).collect();
+    let client_id = match ClientId::parse(client_id_str) { Ok(v)=>v, Err(_)=>return bad_request() };
+    let tenant = TenantContext::new(org_id.clone());
+    let now = sessions.clock().now();
+    let spec = OAuthClientSpec {
+        application_id,
+        client_id: client_id.clone(),
+        name,
+        client_type,
+        token_endpoint_auth_method: if client_type == ClientType::Confidential { TokenEndpointAuthMethod::ClientSecretPost } else { TokenEndpointAuthMethod::None },
+        secret_hash,
+        require_pkce: true,
+        redirect_uris: vec![redirect_uri.clone()],
+        post_logout_redirect_uris: Vec::new(),
+        allowed_scopes,
+        allowed_grant_types: vec![GrantType::AuthorizationCode, GrantType::RefreshToken],
+    };
+    let client = match OAuthClient::new(
+        SecureIdGenerator.generate::<authkit_core::domain::id::OAuthClientEntity>().expect("id"),
+        spec,
+        now,
+    ) {
+        Ok(v) => v,
+        Err(_) => return bad_request(),
+    };
+    let outcome = tokio::task::spawn_blocking({
+        let store=store.clone(); let tenant=tenant.clone(); let client=client.clone();
+        move || OAuthClientRepository::insert(store.as_ref(), &tenant, &client)
+    }).await;
+    if outcome.ok().and_then(|r|r.ok()) != Some(WriteOutcome::Applied) {
+        return unavailable();
+    }
+    let secret_text = secret_plain.unwrap_or_else(|| "(public client)".to_owned());
+    let body = format!(r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>OAuth client created</title></head><body style="font-family: system-ui, sans-serif; max-width: 40rem; margin: 4rem auto; padding: 0 1rem;"><h1>OAuth client created</h1><p>Client ID: <code>{}</code></p><p>Client secret: <code>{}</code></p><p><a href="/organizations/{}/oauth-clients">Back</a></p></body></html>"#, escape(client.client_id().as_str()), escape(&secret_text), org_id.as_str());
+    html_ok(&body)
 }
 
 pub(crate) async fn accept_invitation_page(

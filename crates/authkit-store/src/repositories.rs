@@ -499,6 +499,29 @@ impl SqlStore {
 }
 
 impl OAuthClientRepository for SqlStore {
+    fn list(&self, tenant: &TenantContext) -> Result<Vec<OAuthClient>, DomainError> {
+        let sql = self.sql("SELECT id, org_id, application_id, client_id, name, client_type, token_endpoint_auth_method, secret_hash, require_pkce, status, created_at, updated_at, version FROM oauth_client WHERE org_id = ? ORDER BY created_at, id");
+        let redirect_sql = self.sql("SELECT redirect_uri AS value FROM oauth_client_redirect_uri WHERE client_id = ? ORDER BY position");
+        let post_logout_sql = self.sql("SELECT redirect_uri AS value FROM oauth_client_post_logout_redirect_uri WHERE client_id = ? ORDER BY position");
+        let scope_sql = self.sql("SELECT scope AS value FROM oauth_client_scope WHERE client_id = ? ORDER BY position");
+        let grant_sql = self.sql("SELECT grant_type AS value FROM oauth_client_grant_type WHERE client_id = ? ORDER BY position");
+        self.block_on(async {
+            let mut tx = self.pool.begin().await.map_err(map_db_error)?;
+            let rows = sqlx::query(&sql).bind(tenant.organization_id().as_str()).fetch_all(&mut *tx).await.map_err(map_db_error)?;
+            let mut result = Vec::with_capacity(rows.len());
+            for row in &rows {
+                let internal_id = stored_id::<OAuthClientEntity>(row, "id")?;
+                let redirect_uris = fetch_strings(&mut tx, &redirect_sql, internal_id.as_str()).await?;
+                let post_logout = fetch_strings(&mut tx, &post_logout_sql, internal_id.as_str()).await?;
+                let scopes = fetch_strings(&mut tx, &scope_sql, internal_id.as_str()).await?;
+                let grants = fetch_strings(&mut tx, &grant_sql, internal_id.as_str()).await?;
+                result.push(map_oauth_client(row, redirect_uris, post_logout, scopes, grants)?);
+            }
+            tx.commit().await.map_err(map_db_error)?;
+            Ok(result)
+        })
+    }
+
     fn find_by_id(
         &self,
         tenant: &TenantContext,

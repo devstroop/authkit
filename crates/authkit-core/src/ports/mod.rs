@@ -221,6 +221,9 @@ pub trait ApplicationRepository {
 
 /// Read and write access to OAuth clients.
 pub trait OAuthClientRepository {
+    /// Lists OAuth clients in a tenant.
+    fn list(&self, tenant: &TenantContext) -> Result<Vec<OAuthClient>, DomainError>;
+
     /// Finds a client by internal identifier.
     fn find_by_id(
         &self,
