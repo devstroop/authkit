@@ -36,6 +36,22 @@
       color: var(--color-fg);
       line-height: 1.5;
     }
+    .skip-link {
+      position: absolute;
+      left: -9999px;
+      top: auto;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+    }
+    .skip-link:focus {
+      position: static;
+      width: auto;
+      height: auto;
+      padding: var(--space-2);
+      background: var(--color-primary);
+      color: var(--color-primary-fg);
+    }
     main {
       max-width: 32rem;
       margin: var(--space-4) auto;
@@ -60,11 +76,19 @@
     }
     .alert { color: var(--color-danger); }
     a { color: var(--color-primary); }
+    :focus-visible {
+      outline: 2px solid var(--color-primary);
+      outline-offset: 2px;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      * { transition: none !important; animation: none !important; }
+    }
   </style>
   <script src="/static/htmx.min.js" defer></script>
 </head>
 <body>
-  <main>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <main id="main" aria-live="polite">
     {% block content %}{% endblock %}
   </main>
 </body>
