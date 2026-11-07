@@ -44,6 +44,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 url = "2"
 zeroize = "1"
 jsonwebtoken = "9"
+proptest = "1.12"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

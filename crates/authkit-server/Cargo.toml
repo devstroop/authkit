@@ -33,6 +33,7 @@ zeroize.workspace = true
 jsonwebtoken.workspace = true
 
 [dev-dependencies]
+proptest.workspace = true
 tower = { version = "0.5", features = ["util"] }
 
 [lib]
