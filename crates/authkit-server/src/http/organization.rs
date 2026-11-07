@@ -126,6 +126,22 @@ pub(crate) async fn create_organization(
     }
 }
 
+#[derive(askama::Template)]
+#[template(path = "pages/members.html")]
+struct MembersTemplate<'a> {
+    title: &'a str,
+    csrf: &'a str,
+    org_id: &'a str,
+    members: Vec<MemberView>,
+    can_manage: bool,
+}
+
+struct MemberView {
+    email: String,
+    status: String,
+    id: String,
+}
+
 pub(crate) async fn members_page(
     State(state): State<AppState>,
     session: Option<Extension<SessionContext>>,
@@ -158,7 +174,7 @@ pub(crate) async fn members_page(
     .and_then(|r| r.ok())
     .unwrap_or_default();
 
-    let mut rows = String::new();
+    let mut members = Vec::new();
     for m in memberships {
         let email = tokio::task::spawn_blocking({
             let store = store.clone();
@@ -167,37 +183,22 @@ pub(crate) async fn members_page(
         })
         .await
         .unwrap_or_default();
-        rows.push_str(&format!(
-            "<li>{} {} ({})</li>",
-            escape(&email),
-            m.status_label(),
-            m.id().as_str()
-        ));
+        members.push(MemberView {
+            email,
+            status: m.status_label().to_owned(),
+            id: m.id().as_str().to_owned(),
+        });
     }
 
     let can_manage = can_manage_members(&store, &user_id, &org_id);
-    let manage_form = if can_manage {
-        format!(
-            r#"<h2>Add member</h2><form method="post" action="/organizations/{}/members"><input type="hidden" name="_csrf" value="{}"><label>User email <input name="email" type="email" required></label><button type="submit">Add</button></form>"#,
-            org_id.as_str(),
-            escape(&csrf)
-        )
-    } else {
-        String::new()
+    let template = MembersTemplate {
+        title: "Members",
+        csrf: &csrf,
+        org_id: org_id.as_str(),
+        members,
+        can_manage,
     };
-
-    let body = format!(
-        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Members</title></head><body style="font-family: system-ui, sans-serif; max-width: 40rem; margin: 4rem auto; padding: 0 1rem;">
-<h1>Members</h1>
-<ul>{rows}</ul>
-{manage_form}
-<p><a href="/organizations/{org_id}/invitations">Invitations</a> | <a href="/organizations/{org_id2}/roles">Roles</a></p>
-</body></html>"#,
-        rows = rows,
-        manage_form = manage_form,
-        org_id = org_id.as_str(),
-        org_id2 = org_id.as_str()
-    );
+    let body = template.render().unwrap_or_default();
     html_ok(&body)
 }
 
