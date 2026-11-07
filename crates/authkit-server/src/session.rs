@@ -197,6 +197,16 @@ impl SessionService {
         self.clock.as_ref()
     }
 
+    /// Returns the backing store.
+    pub fn store(&self) -> &Arc<SqlStore> {
+        &self.store
+    }
+
+    /// Returns the session pepper.
+    pub fn pepper(&self) -> &[u8] {
+        self.config.pepper()
+    }
+
     /// Returns the cookie name for an audience.
     pub const fn cookie_name(&self, audience: SessionAudience) -> &'static str {
         match (self.environment, audience) {

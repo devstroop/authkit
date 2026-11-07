@@ -118,6 +118,11 @@ entity!(
     ConsentEntity,
     "cns"
 );
+entity!(
+    /// A single-use, expiring token for email verification or password reset.
+    OneTimeTokenEntity,
+    "tok"
+);
 
 /// A typed, prefix-validated entity identifier.
 ///

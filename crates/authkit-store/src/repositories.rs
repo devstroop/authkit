@@ -8,11 +8,14 @@ use authkit_core::domain::email::Email;
 use authkit_core::domain::grant::{AuthorizationCode, Consent, RefreshFamily, RefreshToken};
 use authkit_core::domain::id::{
     ApplicationEntity, AuthorizationCodeEntity, ConsentEntity, CredentialEntity, Id,
-    InvitationEntity, MembershipEntity, OAuthClientEntity, OrganizationEntity, RefreshFamilyEntity,
-    RefreshTokenEntity, RoleBindingEntity, RoleEntity, SessionEntity, UserEntity,
+    InvitationEntity, MembershipEntity, OAuthClientEntity, OneTimeTokenEntity, OrganizationEntity,
+    RefreshFamilyEntity, RefreshTokenEntity, RoleBindingEntity, RoleEntity, SessionEntity, UserEntity,
 };
 use authkit_core::domain::invitation::Invitation;
+use authkit_core::domain::one_time_token::{OneTimeToken, OneTimeTokenPurpose};
 use authkit_core::domain::membership::Membership;
+use authkit_core::domain::time::Timestamp;
+use authkit_core::ports::OneTimeTokenRepository;
 use authkit_core::domain::oauth_client::OAuthClient;
 use authkit_core::domain::organization::Organization;
 use authkit_core::domain::role::{Role, RoleBinding};
@@ -37,6 +40,7 @@ use crate::mapping::{
     map_refresh_family, map_refresh_token, map_role, map_role_binding, map_session, map_user, text,
 };
 use crate::{SqlStore, invalid_stored_value, map_db_error};
+use crate::mapping::db_timestamp;
 
 async fn fetch_strings(
     tx: &mut sqlx::Transaction<'_, Any>,
@@ -49,6 +53,37 @@ async fn fetch_strings(
         .await
         .map_err(map_db_error)?;
     rows.iter().map(|row| text(row, "value")).collect()
+}
+
+fn map_one_time_token(row: &sqlx::any::AnyRow) -> Result<OneTimeToken, DomainError> {
+    use sqlx::Row;
+    let id: String = row.get("id");
+    let user_id: String = row.get("user_id");
+    let purpose: String = row.get("purpose");
+    let token_hash: String = row.get("token_hash");
+    let expires_at: i64 = row.get("expires_at");
+    let consumed_at: Option<i64> = row.get("consumed_at");
+    let created_at: i64 = row.get("created_at");
+    let id = Id::<OneTimeTokenEntity>::parse(id).map_err(|_| invalid_stored_value())?;
+    let user_id = Id::<UserEntity>::parse(user_id).map_err(|_| invalid_stored_value())?;
+    let purpose = OneTimeTokenPurpose::parse(&purpose).map_err(|_| invalid_stored_value())?;
+    let token_hash = SecretHash::parse(token_hash).map_err(|_| invalid_stored_value())?;
+    let expires_at = Timestamp::from_millis(
+        u64::try_from(expires_at).map_err(|_| invalid_stored_value())?,
+    );
+    let consumed_at = consumed_at
+        .map(|value| u64::try_from(value).map_err(|_| invalid_stored_value()))
+        .transpose()?
+        .map(Timestamp::from_millis);
+    let created_at = Timestamp::from_millis(
+        u64::try_from(created_at).map_err(|_| invalid_stored_value())?,
+    );
+    OneTimeToken::new(id, user_id, purpose, token_hash, created_at, expires_at).map(|mut token| {
+        if let Some(consumed) = consumed_at {
+            let _ = token.consume(consumed);
+        }
+        token
+    })
 }
 
 fn parse_role_ids(values: Vec<String>) -> Result<Vec<Id<RoleEntity>>, DomainError> {
@@ -521,6 +556,20 @@ impl SessionRepository for SqlStore {
         })
     }
 
+    fn list_for_user(&self, user_id: &Id<UserEntity>) -> Result<Vec<Session>, DomainError> {
+        let sql = self.sql(
+            "SELECT id, user_id, organization_id, audience, token_hash, status, created_at, last_seen_at, idle_expires_at, absolute_expires_at, revoked_at, rotated_from, version FROM session WHERE user_id = ? ORDER BY created_at, id",
+        );
+        self.block_on(async {
+            let rows = sqlx::query(&sql)
+                .bind(user_id.as_str())
+                .fetch_all(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            rows.iter().map(map_session).collect()
+        })
+    }
+
     fn insert(&self, session: &Session) -> Result<WriteOutcome, DomainError> {
         self.commit(&WriteBatch::new().with(WriteCommand::InsertSession(session.clone())))
     }
@@ -534,6 +583,92 @@ impl SessionRepository for SqlStore {
             session: session.clone(),
             expected_version,
         }))
+    }
+}
+
+impl OneTimeTokenRepository for SqlStore {
+    fn find_by_hash(
+        &self,
+        hash: &SecretHash,
+        purpose: OneTimeTokenPurpose,
+    ) -> Result<Option<OneTimeToken>, DomainError> {
+        let sql = self.sql(
+            "SELECT id, user_id, purpose, token_hash, expires_at, consumed_at, created_at FROM one_time_token WHERE token_hash = ? AND purpose = ?",
+        );
+        self.block_on(async {
+            let row = sqlx::query(&sql)
+                .bind(hash.as_str())
+                .bind(purpose.as_str())
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            row.as_ref().map(|row| map_one_time_token(row)).transpose()
+        })
+    }
+
+    fn insert(&self, token: &OneTimeToken) -> Result<WriteOutcome, DomainError> {
+        let sql = self.sql(
+            "INSERT INTO one_time_token (id, user_id, purpose, token_hash, expires_at, consumed_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        );
+        let now = token.created_at();
+        let _ = now;
+        self.block_on(async {
+            match sqlx::query(&sql)
+                .bind(token.id().as_str())
+                .bind(token.user_id().as_str())
+                .bind(token.purpose().as_str())
+                .bind(token.token_hash().as_str())
+                .bind(db_timestamp(token.expires_at())?)
+                .bind(token.consumed_at().map(db_timestamp).transpose()?)
+                .bind(db_timestamp(token.created_at())?)
+                .execute(&self.pool)
+                .await
+            {
+                Ok(_) => Ok(WriteOutcome::Applied),
+                Err(error) => {
+                    if let sqlx::Error::Database(db) = &error
+                        && db.is_unique_violation()
+                    {
+                        return Ok(WriteOutcome::Conflict);
+                    }
+                    Err(map_db_error(error))
+                }
+            }
+        })
+    }
+
+    fn consume(
+        &self,
+        id: &Id<OneTimeTokenEntity>,
+        now: Timestamp,
+    ) -> Result<WriteOutcome, DomainError> {
+        let sql = self.sql(
+            "UPDATE one_time_token SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL",
+        );
+        self.block_on(async {
+            let result = sqlx::query(&sql)
+                .bind(db_timestamp(now)?)
+                .bind(id.as_str())
+                .execute(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            if result.rows_affected() == 1 {
+                Ok(WriteOutcome::Applied)
+            } else {
+                // determine conflict vs not found
+                let exists_sql = self.sql("SELECT 1 FROM one_time_token WHERE id = ?");
+                let exists = sqlx::query(&exists_sql)
+                    .bind(id.as_str())
+                    .fetch_optional(&self.pool)
+                    .await
+                    .map_err(map_db_error)?;
+                if exists.is_some() {
+                    Ok(WriteOutcome::Conflict)
+                } else {
+                    Ok(WriteOutcome::NotFound)
+                }
+            }
+        })
     }
 }
 

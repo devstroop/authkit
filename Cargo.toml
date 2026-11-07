@@ -20,6 +20,7 @@ license = "MIT OR Apache-2.0"
 authkit-core = { path = "crates/authkit-core" }
 authkit-store = { path = "crates/authkit-store" }
 aes-gcm = "0.10"
+argon2 = { version = "0.5", features = ["std", "password-hash"] }
 axum = "0.8"
 base64 = "0.22"
 cookie = "0.18"

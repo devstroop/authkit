@@ -139,11 +139,14 @@ pub(crate) async fn authorize(
             AuditActor::Anonymous,
         )
         .await;
-        return error_page(
-            StatusCode::UNAUTHORIZED,
-            "Sign in required",
-            "An active AuthKit session is required to authorize this client.",
+        let next = format!(
+            "/oauth2/authorize?{}",
+            query.as_deref().unwrap_or_default()
         );
+        let mut serializer = url::form_urlencoded::Serializer::new(String::new());
+        serializer.append_pair("next", &next);
+        let login_url = format!("/login?{}", serializer.finish());
+        return redirect(&login_url);
     };
 
     if let Some(max_age) = validated.max_age_secs

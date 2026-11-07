@@ -7,6 +7,7 @@
 
 pub mod authorization;
 pub mod config;
+pub mod password;
 pub mod http;
 pub mod session;
 pub mod signing;

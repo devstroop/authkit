@@ -14,7 +14,10 @@ use serde_json::json;
 
 use crate::authorization::AuthorizationService;
 use crate::config::Issuer;
+use crate::http::account;
+use crate::http::login;
 use crate::http::request_id;
+use crate::http::reset;
 use crate::http::security_headers::{SecurityHeaders, security_headers};
 use crate::http::session::{SessionSecurityState, session_context};
 use crate::session::SessionService;
@@ -62,6 +65,7 @@ pub(crate) struct AppState {
     pub(crate) readiness: Arc<dyn ReadinessProbe>,
     pub(crate) keys: Arc<KeyRing>,
     pub(crate) issuer: Issuer,
+    pub(crate) sessions: Option<Arc<SessionService>>,
     pub(crate) authorization: Option<Arc<AuthorizationService>>,
     pub(crate) tokens: Option<Arc<TokenService>>,
 }
@@ -71,6 +75,7 @@ impl AppState {
         readiness: Arc<dyn ReadinessProbe>,
         keys: Arc<KeyRing>,
         issuer: Issuer,
+        sessions: Option<Arc<SessionService>>,
         authorization: Option<Arc<AuthorizationService>>,
         tokens: Option<Arc<TokenService>>,
     ) -> Self {
@@ -78,6 +83,7 @@ impl AppState {
             readiness,
             keys,
             issuer,
+            sessions,
             authorization,
             tokens,
         }
@@ -90,7 +96,7 @@ impl AppState {
 /// [`router_with_sessions`]; the base router keeps metadata and health tests independent of
 /// session storage.
 pub fn router(readiness: Arc<dyn ReadinessProbe>, keys: Arc<KeyRing>, issuer: Issuer) -> Router {
-    base_router(readiness, keys, issuer, None, None)
+    base_router(readiness, keys, issuer, None, None, None)
         .layer(middleware::from_fn(request_id::request_context))
 }
 
@@ -104,7 +110,14 @@ pub fn router_with_sessions(
     hsts: bool,
 ) -> Router {
     with_session_security(
-        base_router(readiness, keys, issuer.clone(), authorization, None),
+        base_router(
+            readiness,
+            keys,
+            issuer.clone(),
+            Some(sessions.clone()),
+            authorization,
+            None,
+        ),
         sessions,
         issuer,
         hsts,
@@ -122,7 +135,14 @@ pub fn router_with_sessions_and_tokens(
     hsts: bool,
 ) -> Router {
     with_session_security(
-        base_router(readiness, keys, issuer.clone(), authorization, tokens),
+        base_router(
+            readiness,
+            keys,
+            issuer.clone(),
+            Some(sessions.clone()),
+            authorization,
+            tokens,
+        ),
         sessions,
         issuer,
         hsts,
@@ -156,12 +176,27 @@ fn base_router(
     readiness: Arc<dyn ReadinessProbe>,
     keys: Arc<KeyRing>,
     issuer: Issuer,
+    sessions: Option<Arc<SessionService>>,
     authorization: Option<Arc<AuthorizationService>>,
     tokens: Option<Arc<TokenService>>,
 ) -> Router {
     let mut router = Router::new()
         .route("/healthz", get(health))
         .route("/readyz", get(ready))
+        .route("/login", get(login::login_page).post(login::login_submit))
+        .route("/register", get(login::register_page).post(login::register_submit))
+        .route("/password-reset", get(reset::request_reset_page).post(reset::request_reset_submit))
+        .route("/password-reset/confirm", get(reset::confirm_reset_page).post(reset::confirm_reset_submit))
+        .route("/verify-email", get(reset::verify_email_page))
+        .route("/verify-email/confirm", post(reset::verify_email_confirm))
+        .route("/account", get(account::account_page))
+        .route("/account/password", post(account::change_password))
+        .route("/account/verify-email", get(reset::request_verify_page))
+        .route("/account/verify-email-request", post(reset::request_verify_submit))
+        .route(
+            "/account/sessions/{id}/revoke",
+            post(account::revoke_session),
+        )
         .route(
             "/.well-known/openid-configuration",
             get(crate::http::metadata::openid_configuration),
@@ -200,6 +235,7 @@ fn base_router(
         readiness,
         keys,
         issuer,
+        sessions,
         authorization,
         tokens,
     ))

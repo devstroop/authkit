@@ -12,6 +12,7 @@ workspace = true
 
 [dependencies]
 aes-gcm.workspace = true
+argon2.workspace = true
 authkit-core.workspace = true
 authkit-store.workspace = true
 axum.workspace = true

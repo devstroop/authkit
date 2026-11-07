@@ -16,11 +16,12 @@ use crate::domain::grant::{AuthorizationCode, Consent, RefreshFamily, RefreshTok
 use crate::domain::id::{
     ApplicationEntity, AuthorizationCodeEntity, ConsentEntity, Entity, Id, IdError,
     InvitationEntity, MembershipEntity, OAuthClientEntity, OrganizationEntity, RefreshFamilyEntity,
-    RefreshTokenEntity, RoleBindingEntity, RoleEntity, SessionEntity, UserEntity,
+    OneTimeTokenEntity, RefreshTokenEntity, RoleBindingEntity, RoleEntity, SessionEntity, UserEntity,
 };
 use crate::domain::invitation::Invitation;
 use crate::domain::membership::Membership;
 use crate::domain::oauth_client::OAuthClient;
+use crate::domain::one_time_token::{OneTimeToken, OneTimeTokenPurpose};
 use crate::domain::organization::Organization;
 use crate::domain::role::{Role, RoleBinding};
 use crate::domain::secret::SecretHash;
@@ -235,6 +236,9 @@ pub trait SessionRepository {
     /// Finds a session by token hash.
     fn find_by_token_hash(&self, token_hash: &SecretHash) -> Result<Option<Session>, DomainError>;
 
+    /// Lists sessions for a user.
+    fn list_for_user(&self, user_id: &Id<UserEntity>) -> Result<Vec<Session>, DomainError>;
+
     /// Inserts a new session.
     fn insert(&self, session: &Session) -> Result<WriteOutcome, DomainError>;
 
@@ -410,6 +414,26 @@ pub trait RefreshTokenRepository {
         tenant: &TenantContext,
         token: &RefreshToken,
         expected_version: u64,
+    ) -> Result<WriteOutcome, DomainError>;
+}
+
+/// Read and write access to one-time tokens.
+pub trait OneTimeTokenRepository {
+    /// Finds a token by its hashed verifier.
+    fn find_by_hash(
+        &self,
+        hash: &SecretHash,
+        purpose: OneTimeTokenPurpose,
+    ) -> Result<Option<OneTimeToken>, DomainError>;
+
+    /// Inserts a new token.
+    fn insert(&self, token: &OneTimeToken) -> Result<WriteOutcome, DomainError>;
+
+    /// Marks a token consumed if it is still unconsumed.
+    fn consume(
+        &self,
+        id: &Id<OneTimeTokenEntity>,
+        now: Timestamp,
     ) -> Result<WriteOutcome, DomainError>;
 }
 
