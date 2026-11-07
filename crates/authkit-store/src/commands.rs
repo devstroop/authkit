@@ -1517,7 +1517,8 @@ async fn insert_audit_row(
     } else {
         "SELECT hash FROM audit_event WHERE org_id IS NULL ORDER BY occurred_at DESC, id DESC LIMIT 1"
     };
-    let mut prev_query = sqlx::query(prev_sql);
+    let prev_sql = dialect.placeholders(prev_sql);
+    let mut prev_query = sqlx::query(&prev_sql);
     if let Some(org) = event.organization_id() {
         prev_query = prev_query.bind(org.as_str());
     }
