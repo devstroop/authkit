@@ -1,0 +1,14 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+<h1>Connected applications</h1>
+<ul>
+{% for app in apps %}
+<li>{{ app.client_name }} (scopes: {{ app.scopes }})
+  <form method="post" action="/account/consents/{{ app.consent_id }}/revoke" style="display:inline">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <button type="submit">Revoke</button>
+  </form>
+</li>
+{% endfor %}
+</ul>
+{% endblock %}

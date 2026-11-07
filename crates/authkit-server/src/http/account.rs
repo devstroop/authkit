@@ -286,12 +286,19 @@ pub(crate) async fn revoke_session(
     }
 }
 
-fn escape(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
+#[derive(Clone)]
+struct ConnectedAppView {
+    client_name: String,
+    scopes: String,
+    consent_id: String,
+}
+
+#[derive(askama::Template)]
+#[template(path = "pages/connected_apps.html")]
+struct ConnectedAppsTemplate<'a> {
+    title: &'a str,
+    csrf: &'a str,
+    apps: Vec<ConnectedAppView>,
 }
 
 pub(crate) async fn connected_apps_page(
@@ -314,7 +321,7 @@ pub(crate) async fn connected_apps_page(
     })
     .await;
 
-    let mut rows = String::new();
+    let mut apps = Vec::new();
     if let Ok(Ok(consents)) = listed {
         for c in consents {
             if c.revoked_at().is_some() {
@@ -336,20 +343,26 @@ pub(crate) async fn connected_apps_page(
             .await
             .unwrap_or_else(|_| "Unknown client".to_owned());
 
-            rows.push_str(&format!(
-                "<li>{} (scopes: {}) <form method=\"post\" action=\"/account/consents/{}/revoke\" style=\"display:inline\"><input type=\"hidden\" name=\"_csrf\" value=\"{}\"><button type=\"submit\">Revoke</button></form></li>",
-                escape(&client_name),
-                escape(&c.scopes().as_slice().iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" ")),
-                c.id().as_str(),
-                escape(&csrf)
-            ));
+            apps.push(ConnectedAppView {
+                client_name,
+                scopes: c
+                    .scopes()
+                    .as_slice()
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                consent_id: c.id().as_str().to_owned(),
+            });
         }
     }
 
-    let body = format!(
-        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Connected applications</title></head><body style="font-family: system-ui, sans-serif; max-width: 32rem; margin: 4rem auto; padding: 0 1rem;"><h1>Connected applications</h1><ul>{rows}</ul></body></html>"#,
-        rows = rows
-    );
+    let template = ConnectedAppsTemplate {
+        title: "Connected applications",
+        csrf: &csrf,
+        apps,
+    };
+    let body = template.render().unwrap_or_default();
     (
         StatusCode::OK,
         [
@@ -405,6 +418,14 @@ pub(crate) async fn revoke_consent(
     }
 }
 
+#[derive(askama::Template)]
+#[template(path = "pages/profile.html")]
+struct ProfileTemplate<'a> {
+    title: &'a str,
+    csrf: &'a str,
+    display_name: &'a str,
+}
+
 pub(crate) async fn profile_page(
     State(state): State<AppState>,
     session: Option<Extension<SessionContext>>,
@@ -429,11 +450,12 @@ pub(crate) async fn profile_page(
     let display_name = user
         .map(|u| u.display_name().as_str().to_owned())
         .unwrap_or_default();
-    let body = format!(
-        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Profile</title></head><body style="font-family: system-ui, sans-serif; max-width: 32rem; margin: 4rem auto; padding: 0 1rem;"><h1>Profile</h1><form method="post" action="/account/profile"><input type="hidden" name="_csrf" value="{}"><label>Display name <input type="text" name="display_name" value="{}" required></label><br><button type="submit">Save</button></form></body></html>"#,
-        escape(&csrf),
-        escape(&display_name)
-    );
+    let template = ProfileTemplate {
+        title: "Profile",
+        csrf: &csrf,
+        display_name: &display_name,
+    };
+    let body = template.render().unwrap_or_default();
     (
         StatusCode::OK,
         [
