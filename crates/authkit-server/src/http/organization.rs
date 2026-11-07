@@ -483,6 +483,22 @@ pub(crate) async fn revoke_invitation(
     }
 }
 
+#[derive(askama::Template)]
+#[template(path = "pages/roles.html")]
+struct RolesTemplate<'a> {
+    title: &'a str,
+    csrf: &'a str,
+    org_id: &'a str,
+    roles: Vec<RoleView>,
+    can_manage: bool,
+}
+
+struct RoleView {
+    name: String,
+    slug: String,
+    permissions: String,
+}
+
 pub(crate) async fn roles_page(
     State(state): State<AppState>,
     session: Option<Extension<SessionContext>>,
@@ -514,36 +530,23 @@ pub(crate) async fn roles_page(
     .ok()
     .and_then(|r| r.ok())
     .unwrap_or_default();
-    let mut rows = String::new();
-    for r in roles {
-        rows.push_str(&format!(
-            "<li>{} ({}) - {}</li>",
-            escape(r.name().as_str()),
-            escape(r.slug().as_str()),
-            escape(&r.permissions().as_slice().iter().map(|p| p.as_str()).collect::<Vec<_>>().join(", "))
-        ));
-    }
+    let role_views: Vec<RoleView> = roles
+        .into_iter()
+        .map(|r| RoleView {
+            name: r.name().as_str().to_owned(),
+            slug: r.slug().as_str().to_owned(),
+            permissions: r.permissions().as_slice().iter().map(|p| p.as_str()).collect::<Vec<_>>().join(", "),
+        })
+        .collect();
     let can_manage = can_manage_members(&store, &user_id, &org_id);
-    let create_form = if can_manage {
-        format!(
-            r#"<h2>Create role</h2><form method="post" action="/organizations/{}/roles"><input type="hidden" name="_csrf" value="{}"><label>Slug <input name="slug" required></label><br><label>Name <input name="name" required></label><br><label>Permissions (space-separated) <input name="permissions"></label><br><button type="submit">Create</button></form>"#,
-            org_id.as_str(),
-            escape(&csrf)
-        )
-    } else {
-        String::new()
+    let template = RolesTemplate {
+        title: "Roles",
+        csrf: &csrf,
+        org_id: org_id.as_str(),
+        roles: role_views,
+        can_manage,
     };
-    let body = format!(
-        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Roles</title></head><body style="font-family: system-ui, sans-serif; max-width: 40rem; margin: 4rem auto; padding: 0 1rem;">
-<h1>Roles</h1>
-<ul>{rows}</ul>
-{create_form}
-<p><a href="/organizations/{org_id}/members">Members</a></p>
-</body></html>"#,
-        rows = rows,
-        create_form = create_form,
-        org_id = org_id.as_str()
-    );
+    let body = template.render().unwrap_or_default();
     html_ok(&body)
 }
 
