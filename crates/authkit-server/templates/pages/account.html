@@ -1,12 +1,13 @@
 {% extends "layouts/base.html" %}
+{% import "macros/ui.html" as ui %}
 {% block content %}
 <h1>Sessions</h1>
-<ul>
+<ul id="sessions">
 {% for session in sessions %}
 <li>{{ session.id }} - {{ session.status }}
-  <form method="post" action="/account/sessions/{{ session.id }}/revoke" style="display:inline">
+  <form method="post" action="/account/sessions/{{ session.id }}/revoke" style="display:inline" hx-post="/account/sessions/{{ session.id }}/revoke" hx-target="#sessions" hx-swap="outerHTML">
     <input type="hidden" name="_csrf" value="{{ csrf }}">
-    <button type="submit">Revoke</button>
+    {{ ui::button("Revoke", "danger") }}
   </form>
 </li>
 {% endfor %}
@@ -14,8 +15,8 @@
 <h1>Change password</h1>
 <form method="post" action="/account/password">
   <input type="hidden" name="_csrf" value="{{ csrf }}">
-  <label>Current password <input type="password" name="current_password" type="password" required autocomplete="current-password" aria-required="true"></label><br>
-  <label>New password <input type="password" name="new_password" type="password" required minlength="12" autocomplete="new-password" aria-required="true"></label><br>
-  <button type="submit">Update password</button>
+  {{ ui::text_input("current_password", "Current password", "password", "current-password") }}
+  {{ ui::text_input("new_password", "New password", "password", "new-password", true, "12") }}
+  {{ ui::button("Update password") }}
 </form>
 {% endblock %}
