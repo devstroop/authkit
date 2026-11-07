@@ -777,7 +777,7 @@ pub(crate) async fn oauth_clients_page(
     }).await.ok().and_then(|r|r.ok()).unwrap_or_default();
     let mut rows = String::new();
     for c in clients {
-        rows.push_str(&format!("<li>{} ({}) - {}</li>", escape(c.name().as_str()), escape(c.client_id().as_str()), if c.status() == authkit_core::domain::oauth_client::ClientStatus::Active { "active" } else { "disabled" }));
+        rows.push_str(&format!("<li>{} ({}) - {} <a href=\"/organizations/{}/oauth-clients/{}\">Manage</a></li>", escape(c.name().as_str()), escape(c.client_id().as_str()), if c.status() == authkit_core::domain::oauth_client::ClientStatus::Active { "active" } else { "disabled" }, org_id.as_str(), c.id().as_str()));
     }
     let mut app_options = String::new();
     for a in apps {
@@ -868,6 +868,149 @@ pub(crate) async fn create_oauth_client(
     let secret_text = secret_plain.unwrap_or_else(|| "(public client)".to_owned());
     let body = format!(r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>OAuth client created</title></head><body style="font-family: system-ui, sans-serif; max-width: 40rem; margin: 4rem auto; padding: 0 1rem;"><h1>OAuth client created</h1><p>Client ID: <code>{}</code></p><p>Client secret: <code>{}</code></p><p><a href="/organizations/{}/oauth-clients">Back</a></p></body></html>"#, escape(client.client_id().as_str()), escape(&secret_text), org_id.as_str());
     html_ok(&body)
+}
+
+
+pub(crate) async fn oauth_client_detail(
+    State(state): State<AppState>,
+    session: Option<Extension<SessionContext>>,
+    Path((org_id, client_id)): Path<(String, String)>,
+) -> Response {
+    let Some(Extension(session)) = session else { return redirect("/login"); };
+    let Some(sessions) = state.sessions.as_ref() else { return unavailable(); };
+    let org_id = match Id::<OrganizationEntity>::parse(&org_id) { Ok(v)=>v, Err(_)=>return bad_request() };
+    let client_id = match Id::<authkit_core::domain::id::OAuthClientEntity>::parse(&client_id) { Ok(v)=>v, Err(_)=>return bad_request() };
+    let user_id = session.session().user_id().clone();
+    let store = sessions.store().clone();
+    let csrf = sessions.csrf_token(session.session());
+    if !can_manage_members(&store, &user_id, &org_id) { return forbidden(); }
+    let tenant = TenantContext::new(org_id.clone());
+    let client = tokio::task::spawn_blocking({
+        let store=store.clone(); let tenant=tenant.clone(); let client_id=client_id.clone();
+        move || OAuthClientRepository::find_by_id(store.as_ref(), &tenant, &client_id)
+    }).await.ok().and_then(|r|r.ok().flatten());
+    let Some(client) = client else { return bad_request(); };
+    let redirect_rows = client.redirect_uris().iter().map(|u| format!("<li>{} <form method=\"post\" action=\"/organizations/{}/oauth-clients/{}/redirect-uris/remove\" style=\"display:inline\"><input type=\"hidden\" name=\"_csrf\" value=\"{}\"><input type=\"hidden\" name=\"uri\" value=\"{}\"><button type=\"submit\">Remove</button></form></li>", escape(u.as_str()), org_id.as_str(), client.id().as_str(), escape(&csrf), escape(u.as_str()))).collect::<Vec<_>>().join("");
+    let body = format!(r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>OAuth client</title></head><body style="font-family: system-ui, sans-serif; max-width: 40rem; margin: 4rem auto; padding: 0 1rem;"><h1>{}</h1><p>Client ID: <code>{}</code></p><h2>Redirect URIs</h2><ul>{}</ul><form method="post" action="/organizations/{}/oauth-clients/{}/redirect-uris"><input type="hidden" name="_csrf" value="{}"><label>Redirect URI <input name="uri" required></label><button type="submit">Add</button></form><h2>Scopes</h2><p>{}</p><form method="post" action="/organizations/{}/oauth-clients/{}/scopes"><input type="hidden" name="_csrf" value="{}"><label>Scopes <input name="scopes" value="{}"></label><button type="submit">Replace</button></form></body></html>"#,
+        escape(client.name().as_str()),
+        escape(client.client_id().as_str()),
+        redirect_rows,
+        org_id.as_str(),
+        client.id().as_str(),
+        escape(&csrf),
+        escape(&client.allowed_scopes().as_slice().iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" ")),
+        org_id.as_str(),
+        client.id().as_str(),
+        escape(&csrf),
+        escape(&client.allowed_scopes().as_slice().iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" "))
+    );
+    html_ok(&body)
+}
+
+pub(crate) async fn add_redirect_uri(
+    State(state): State<AppState>,
+    session: Option<Extension<SessionContext>>,
+    Path((org_id, client_id)): Path<(String, String)>,
+    body: axum::body::Bytes,
+) -> Response {
+    let Some(Extension(session)) = session else { return redirect("/login"); };
+    let Some(sessions) = state.sessions.as_ref() else { return unavailable(); };
+    let org_id = match Id::<OrganizationEntity>::parse(&org_id) { Ok(v)=>v, Err(_)=>return bad_request() };
+    let client_id = match Id::<authkit_core::domain::id::OAuthClientEntity>::parse(&client_id) { Ok(v)=>v, Err(_)=>return bad_request() };
+    let user_id = session.session().user_id().clone();
+    let store = sessions.store().clone();
+    if !can_manage_members(&store, &user_id, &org_id) { return forbidden(); }
+    let mut params = parse_form(&body);
+    let uri_str = params.remove("uri").unwrap_or_default();
+    let uri = match RedirectUri::parse(&uri_str) { Ok(v)=>v, Err(_)=>return bad_request() };
+    let tenant = TenantContext::new(org_id.clone());
+    let now = sessions.clock().now();
+    let outcome = tokio::task::spawn_blocking({
+        let store=store.clone(); let tenant=tenant.clone(); let client_id=client_id.clone(); let uri=uri.clone(); let now=now;
+        move || {
+            let client = OAuthClientRepository::find_by_id(store.as_ref(), &tenant, &client_id)?;
+            let Some(mut client) = client else { return Ok(WriteOutcome::NotFound); };
+            let expected = client.version();
+            client.add_redirect_uri(uri, now)?;
+            OAuthClientRepository::update(store.as_ref(), &tenant, &client, expected)
+        }
+    }).await;
+    if outcome.ok().and_then(|r|r.ok()).map(|o|o.is_applied()).unwrap_or(false) {
+        redirect(&format!("/organizations/{}/oauth-clients/{}", org_id.as_str(), client_id.as_str()))
+    } else {
+        unavailable()
+    }
+}
+
+pub(crate) async fn remove_redirect_uri(
+    State(state): State<AppState>,
+    session: Option<Extension<SessionContext>>,
+    Path((org_id, client_id)): Path<(String, String)>,
+    body: axum::body::Bytes,
+) -> Response {
+    let Some(Extension(session)) = session else { return redirect("/login"); };
+    let Some(sessions) = state.sessions.as_ref() else { return unavailable(); };
+    let org_id = match Id::<OrganizationEntity>::parse(&org_id) { Ok(v)=>v, Err(_)=>return bad_request() };
+    let client_id = match Id::<authkit_core::domain::id::OAuthClientEntity>::parse(&client_id) { Ok(v)=>v, Err(_)=>return bad_request() };
+    let user_id = session.session().user_id().clone();
+    let store = sessions.store().clone();
+    if !can_manage_members(&store, &user_id, &org_id) { return forbidden(); }
+    let mut params = parse_form(&body);
+    let uri_str = params.remove("uri").unwrap_or_default();
+    let uri = match RedirectUri::parse(&uri_str) { Ok(v)=>v, Err(_)=>return bad_request() };
+    let tenant = TenantContext::new(org_id.clone());
+    let now = sessions.clock().now();
+    let outcome = tokio::task::spawn_blocking({
+        let store=store.clone(); let tenant=tenant.clone(); let client_id=client_id.clone(); let uri=uri.clone(); let now=now;
+        move || {
+            let client = OAuthClientRepository::find_by_id(store.as_ref(), &tenant, &client_id)?;
+            let Some(mut client) = client else { return Ok(WriteOutcome::NotFound); };
+            let expected = client.version();
+            client.remove_redirect_uri(&uri, now)?;
+            OAuthClientRepository::update(store.as_ref(), &tenant, &client, expected)
+        }
+    }).await;
+    if outcome.ok().and_then(|r|r.ok()).map(|o|o.is_applied()).unwrap_or(false) {
+        redirect(&format!("/organizations/{}/oauth-clients/{}", org_id.as_str(), client_id.as_str()))
+    } else {
+        unavailable()
+    }
+}
+
+pub(crate) async fn replace_scopes(
+    State(state): State<AppState>,
+    session: Option<Extension<SessionContext>>,
+    Path((org_id, client_id)): Path<(String, String)>,
+    body: axum::body::Bytes,
+) -> Response {
+    let Some(Extension(session)) = session else { return redirect("/login"); };
+    let Some(sessions) = state.sessions.as_ref() else { return unavailable(); };
+    let org_id = match Id::<OrganizationEntity>::parse(&org_id) { Ok(v)=>v, Err(_)=>return bad_request() };
+    let client_id = match Id::<authkit_core::domain::id::OAuthClientEntity>::parse(&client_id) { Ok(v)=>v, Err(_)=>return bad_request() };
+    let user_id = session.session().user_id().clone();
+    let store = sessions.store().clone();
+    if !can_manage_members(&store, &user_id, &org_id) { return forbidden(); }
+    let mut params = parse_form(&body);
+    let scopes_str = params.remove("scopes").unwrap_or_default();
+    let scopes: Vec<Scope> = scopes_str.split_whitespace().filter_map(|s| Scope::parse(s).ok()).collect();
+    let scope_set = ScopeSet::new(scopes);
+    let tenant = TenantContext::new(org_id.clone());
+    let now = sessions.clock().now();
+    let outcome = tokio::task::spawn_blocking({
+        let store=store.clone(); let tenant=tenant.clone(); let client_id=client_id.clone(); let scope_set=scope_set.clone(); let now=now;
+        move || {
+            let client = OAuthClientRepository::find_by_id(store.as_ref(), &tenant, &client_id)?;
+            let Some(mut client) = client else { return Ok(WriteOutcome::NotFound); };
+            let expected = client.version();
+            client.replace_scopes(scope_set, now);
+            OAuthClientRepository::update(store.as_ref(), &tenant, &client, expected)
+        }
+    }).await;
+    if outcome.ok().and_then(|r|r.ok()).map(|o|o.is_applied()).unwrap_or(false) {
+        redirect(&format!("/organizations/{}/oauth-clients/{}", org_id.as_str(), client_id.as_str()))
+    } else {
+        unavailable()
+    }
 }
 
 pub(crate) async fn accept_invitation_page(
