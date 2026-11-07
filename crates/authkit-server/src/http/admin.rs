@@ -180,10 +180,11 @@ pub(crate) async fn dashboard(
     .unwrap_or(false);
 
     if !has_mfa {
-        let body = format!(
-            r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Admin MFA enrollment</title></head><body style="font-family: system-ui, sans-serif; max-width: 32rem; margin: 4rem auto; padding: 0 1rem;"><h1>MFA required</h1><form method="post" action="/admin/mfa/enroll"><input type="hidden" name="_csrf" value="{}"><button type="submit">Generate secret</button></form></body></html>"#,
-            escape(&csrf)
-        );
+        let template = AdminMfaRequiredTemplate {
+            title: "Admin MFA enrollment",
+            csrf: &csrf,
+        };
+        let body = template.render().unwrap_or_default();
         return html_ok(&body);
     }
 
@@ -460,6 +461,21 @@ pub(crate) async fn logout(
     redirect("/admin/login")
 }
 
+#[derive(askama::Template)]
+#[template(path = "pages/admin_mfa_required.html")]
+struct AdminMfaRequiredTemplate<'a> {
+    title: &'a str,
+    csrf: &'a str,
+}
+
+#[derive(askama::Template)]
+#[template(path = "pages/admin_mfa_enroll.html")]
+struct AdminMfaEnrollTemplate<'a> {
+    title: &'a str,
+    secret: &'a str,
+    csrf: &'a str,
+}
+
 pub(crate) async fn mfa_enroll(
     State(state): State<AppState>,
     session: Option<Extension<SessionContext>>,
@@ -499,11 +515,12 @@ pub(crate) async fn mfa_enroll(
     if outcome.ok().and_then(|r| r.ok()) != Some(WriteOutcome::Applied) {
         return unavailable();
     }
-    let body = format!(
-        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Admin MFA enrollment</title></head><body style="font-family: system-ui, sans-serif; max-width: 32rem; margin: 4rem auto; padding: 0 1rem;"><h1>Enroll MFA</h1><p>Secret: <code>{}</code></p><form method="post" action="/admin/mfa/verify"><input type="hidden" name="_csrf" value="{}"><label>Code <input name="code" required></label><button type="submit">Verify</button></form></body></html>"#,
-        escape(&encoded),
-        escape(&csrf)
-    );
+    let template = AdminMfaEnrollTemplate {
+        title: "Admin MFA enrollment",
+        secret: &encoded,
+        csrf: &csrf,
+    };
+    let body = template.render().unwrap_or_default();
     html_ok(&body)
 }
 
@@ -643,10 +660,3 @@ fn html_ok(body: &str) -> Response {
         .into_response()
 }
 
-fn escape(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-}
