@@ -19,8 +19,7 @@ use authkit_core::domain::user::User;
 use authkit_core::domain::{ClientId, DomainError};
 use authkit_core::ports::{
     Clock, IdGenerator, MembershipRepository, RefreshFamilyRepository, RefreshTokenRepository,
-    SessionRepository,
-    UserRepository, write::UnitOfWork, write::WriteBatch, write::WriteCommand,
+    SessionRepository, UserRepository, write::UnitOfWork, write::WriteBatch, write::WriteCommand,
 };
 use authkit_store::SqlStore;
 use base64::Engine;
@@ -398,7 +397,8 @@ impl TokenService {
         if let Some(session_id) = family.session_id() {
             let store = self.store.clone();
             let session_id = session_id.clone();
-            let session = blocking(move || SessionRepository::find_by_id(&*store, &session_id)).await?;
+            let session =
+                blocking(move || SessionRepository::find_by_id(&*store, &session_id)).await?;
             let invalid = session.map(|value| !value.is_valid(now)).unwrap_or(true);
             if invalid {
                 self.revoke_replayed_family(context, &family, now).await?;

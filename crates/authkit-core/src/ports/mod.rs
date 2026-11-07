@@ -15,8 +15,9 @@ use crate::domain::email::Email;
 use crate::domain::grant::{AuthorizationCode, Consent, RefreshFamily, RefreshToken};
 use crate::domain::id::{
     ApplicationEntity, AuthorizationCodeEntity, ConsentEntity, Entity, Id, IdError,
-    InvitationEntity, MembershipEntity, OAuthClientEntity, OrganizationEntity, RefreshFamilyEntity,
-    OneTimeTokenEntity, RefreshTokenEntity, RoleBindingEntity, RoleEntity, SessionEntity, UserEntity,
+    InvitationEntity, MembershipEntity, OAuthClientEntity, OneTimeTokenEntity, OrganizationEntity,
+    RefreshFamilyEntity, RefreshTokenEntity, RoleBindingEntity, RoleEntity, SessionEntity,
+    UserEntity,
 };
 use crate::domain::invitation::Invitation;
 use crate::domain::membership::Membership;

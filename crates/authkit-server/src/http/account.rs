@@ -1,11 +1,14 @@
 //! Minimal account security pages.
 
+use askama::Template;
 use authkit_core::domain::WriteOutcome;
+use authkit_core::domain::id::ConsentEntity;
 use authkit_core::domain::id::SessionEntity;
 use authkit_core::domain::{DisplayName, TenantContext};
-use authkit_core::domain::id::ConsentEntity;
-use authkit_core::ports::{ConsentRepository, CredentialRepository, OAuthClientRepository, SessionRepository, UserRepository};
-use askama::Template;
+use authkit_core::ports::{
+    ConsentRepository, CredentialRepository, OAuthClientRepository, SessionRepository,
+    UserRepository,
+};
 use axum::extract::{Extension, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
@@ -61,7 +64,11 @@ pub(crate) async fn account_page(
         for s in sessions_list {
             session_views.push(SessionView {
                 id: s.id().as_str().to_owned(),
-                status: if s.is_valid(sessions.clock().now()) { "active".to_owned() } else { "inactive".to_owned() },
+                status: if s.is_valid(sessions.clock().now()) {
+                    "active".to_owned()
+                } else {
+                    "inactive".to_owned()
+                },
             });
         }
     }
@@ -74,7 +81,10 @@ pub(crate) async fn account_page(
         let body = fragment.render().unwrap_or_default();
         return (
             StatusCode::OK,
-            [(header::CONTENT_TYPE, "text/html; charset=utf-8"), (header::CACHE_CONTROL, "no-store")],
+            [
+                (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+                (header::CACHE_CONTROL, "no-store"),
+            ],
             body,
         )
             .into_response();
@@ -88,7 +98,10 @@ pub(crate) async fn account_page(
     let body = template.render().unwrap_or_default();
     (
         StatusCode::OK,
-        [(header::CONTENT_TYPE, "text/html; charset=utf-8"), (header::CACHE_CONTROL, "no-store")],
+        [
+            (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
         body,
     )
         .into_response()
@@ -124,11 +137,9 @@ pub(crate) async fn change_password(
         let user_id = user_id.clone();
         move || {
             let credentials = CredentialRepository::list_for_user(store.as_ref(), &user_id)?;
-            Ok::<_, authkit_core::domain::DomainError>(
-                credentials
-                    .into_iter()
-                    .find(|c| c.kind() == authkit_core::domain::CredentialKind::Password && c.is_active()),
-            )
+            Ok::<_, authkit_core::domain::DomainError>(credentials.into_iter().find(|c| {
+                c.kind() == authkit_core::domain::CredentialKind::Password && c.is_active()
+            }))
         }
     })
     .await
@@ -157,7 +168,10 @@ pub(crate) async fn change_password(
 
     let original_version = credential.version();
     let mut updated = credential;
-    if updated.replace_password(new_verifier, sessions.clock().now()).is_err() {
+    if updated
+        .replace_password(new_verifier, sessions.clock().now())
+        .is_err()
+    {
         return bad_request();
     }
 
@@ -177,7 +191,8 @@ pub(crate) async fn change_password(
     let user_id_for_sessions = user_id.clone();
     let now_for_sessions = sessions.clock().now();
     let _ = tokio::task::spawn_blocking(move || {
-        let sessions_list = SessionRepository::list_for_user(store_for_sessions.as_ref(), &user_id_for_sessions)?;
+        let sessions_list =
+            SessionRepository::list_for_user(store_for_sessions.as_ref(), &user_id_for_sessions)?;
         for target in sessions_list {
             if target.id() == &current_session_id || !target.is_valid(now_for_sessions) {
                 continue;
@@ -211,7 +226,10 @@ fn redirect(location: &str) -> Response {
     match axum::http::HeaderValue::from_str(location) {
         Ok(location) => (
             StatusCode::SEE_OTHER,
-            [(header::LOCATION, location), (header::CACHE_CONTROL, HeaderValue::from_static("no-store"))],
+            [
+                (header::LOCATION, location),
+                (header::CACHE_CONTROL, HeaderValue::from_static("no-store")),
+            ],
         )
             .into_response(),
         Err(_) => unavailable(),
@@ -334,7 +352,10 @@ pub(crate) async fn connected_apps_page(
     );
     (
         StatusCode::OK,
-        [(header::CONTENT_TYPE, "text/html; charset=utf-8"), (header::CACHE_CONTROL, "no-store")],
+        [
+            (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
         body,
     )
         .into_response()
@@ -363,7 +384,9 @@ pub(crate) async fn revoke_consent(
         // ConsentRepository is tenant-scoped; use a direct store query via find_consent? Not exposed.
         // Instead, iterate user's consents.
         let consents = ConsentRepository::list_for_user(store.as_ref(), &user_id)?;
-        let consent = consents.into_iter().find(|c| c.id() == &parsed_id && c.is_active());
+        let consent = consents
+            .into_iter()
+            .find(|c| c.id() == &parsed_id && c.is_active());
         let Some(mut consent) = consent else {
             return Ok::<_, authkit_core::domain::DomainError>(false);
         };
@@ -413,7 +436,10 @@ pub(crate) async fn profile_page(
     );
     (
         StatusCode::OK,
-        [(header::CONTENT_TYPE, "text/html; charset=utf-8"), (header::CACHE_CONTROL, "no-store")],
+        [
+            (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
         body,
     )
         .into_response()

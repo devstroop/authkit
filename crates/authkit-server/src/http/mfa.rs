@@ -1,20 +1,18 @@
 //! TOTP MFA pages.
 
-use authkit_core::domain::{Credential, CredentialKind, Id, RecoveryCode, User};
-use authkit_core::domain::id::{CredentialEntity, UserEntity};
-use authkit_core::ports::{CredentialRepository, IdGenerator, RecoveryCodeRepository};
-use authkit_core::domain::WriteOutcome;
 use askama::Template;
+use authkit_core::domain::WriteOutcome;
+use authkit_core::domain::id::{CredentialEntity, UserEntity};
+use authkit_core::domain::{Credential, CredentialKind, Id, RecoveryCode};
+use authkit_core::ports::{CredentialRepository, IdGenerator, RecoveryCodeRepository};
 use axum::extract::{Extension, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 
 use crate::http::routes::AppState;
 use crate::http::session::SessionContext;
-use crate::password::verify_password;
-use authkit_core::domain::SessionAudience;
-use crate::session::SystemClock;
 use crate::totp;
+use authkit_core::domain::SessionAudience;
 
 #[derive(Template)]
 #[template(path = "pages/mfa.html")]
@@ -41,8 +39,11 @@ pub(crate) async fn account_page(
         let store = store.clone();
         let user_id = user_id.clone();
         move || {
-            let creds = CredentialRepository::list_for_user(store.as_ref(), &user_id).unwrap_or_default();
-            creds.into_iter().any(|c| c.kind() == CredentialKind::Totp && c.is_active())
+            let creds =
+                CredentialRepository::list_for_user(store.as_ref(), &user_id).unwrap_or_default();
+            creds
+                .into_iter()
+                .any(|c| c.kind() == CredentialKind::Totp && c.is_active())
         }
     })
     .await
@@ -87,7 +88,9 @@ pub(crate) async fn enroll(
     };
     let now = sessions.clock().now();
     let credential = Credential::totp(
-        crate::session::SecureIdGenerator.generate::<CredentialEntity>().expect("id"),
+        crate::session::SecureIdGenerator
+            .generate::<CredentialEntity>()
+            .expect("id"),
         user_id.clone(),
         encrypted,
         authkit_core::domain::credential::TotpConfig::default(),
@@ -137,7 +140,9 @@ pub(crate) async fn verify_enrollment(
     .ok()
     .and_then(|r| r.ok())
     .unwrap_or_default();
-    let cred = creds.into_iter().find(|c| c.kind() == CredentialKind::Totp && c.is_active());
+    let cred = creds
+        .into_iter()
+        .find(|c| c.kind() == CredentialKind::Totp && c.is_active());
     let Some(mut cred) = cred else {
         return bad_request();
     };
@@ -149,7 +154,12 @@ pub(crate) async fn verify_enrollment(
         Ok(v) => v,
         Err(_) => return unavailable(),
     };
-    let step = match totp::verify_code(&secret, &code, totp.config(), cred.as_totp().unwrap().last_accepted_step()) {
+    let step = match totp::verify_code(
+        &secret,
+        &code,
+        totp.config(),
+        cred.as_totp().unwrap().last_accepted_step(),
+    ) {
         Some(v) => v,
         None => return bad_request(),
     };
@@ -209,7 +219,6 @@ pub(crate) async fn disable(
     redirect("/account/mfa")
 }
 
-
 pub(crate) async fn recovery_codes_page(
     State(state): State<AppState>,
     session: Option<Extension<SessionContext>>,
@@ -267,7 +276,9 @@ pub(crate) async fn generate_recovery_codes(
             Err(_) => return unavailable(),
         };
         let recovery = RecoveryCode::new(
-            crate::session::SecureIdGenerator.generate::<authkit_core::domain::id::RecoveryCodeEntity>().expect("id"),
+            crate::session::SecureIdGenerator
+                .generate::<authkit_core::domain::id::RecoveryCodeEntity>()
+                .expect("id"),
             user_id.clone(),
             hash,
             now,
@@ -306,7 +317,10 @@ fn redirect(location: &str) -> Response {
     match HeaderValue::from_str(location) {
         Ok(location) => (
             StatusCode::SEE_OTHER,
-            [(header::LOCATION, location), (header::CACHE_CONTROL, HeaderValue::from_static("no-store"))],
+            [
+                (header::LOCATION, location),
+                (header::CACHE_CONTROL, HeaderValue::from_static("no-store")),
+            ],
         )
             .into_response(),
         Err(_) => unavailable(),
@@ -334,7 +348,10 @@ fn bad_request() -> Response {
 fn html_ok(body: &str) -> Response {
     (
         StatusCode::OK,
-        [(header::CONTENT_TYPE, "text/html; charset=utf-8"), (header::CACHE_CONTROL, "no-store")],
+        [
+            (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
         body.to_owned(),
     )
         .into_response()
@@ -380,7 +397,10 @@ pub(crate) async fn login_verify(
     .ok()
     .and_then(|r| r.ok())
     .unwrap_or_default();
-    let totp_cred = creds.iter().find(|c| c.kind() == CredentialKind::Totp && c.is_active()).cloned();
+    let totp_cred = creds
+        .iter()
+        .find(|c| c.kind() == CredentialKind::Totp && c.is_active())
+        .cloned();
     let mut used_recovery = false;
     if let Some(mut cred) = totp_cred {
         let totp = match cred.as_totp() {
@@ -391,7 +411,9 @@ pub(crate) async fn login_verify(
             Ok(v) => v,
             Err(_) => return unavailable(),
         };
-        if let Some(step) = crate::totp::verify_code(&secret, &code, totp.config(), totp.last_accepted_step()) {
+        if let Some(step) =
+            crate::totp::verify_code(&secret, &code, totp.config(), totp.last_accepted_step())
+        {
             if cred.accept_totp_step(step, now).is_err() {
                 return bad_request();
             }
@@ -428,7 +450,6 @@ pub(crate) async fn login_verify(
                 let _ = tokio::task::spawn_blocking({
                     let store = store.clone();
                     let id = rc.id().clone();
-                    let now = now;
                     move || RecoveryCodeRepository::mark_used(store.as_ref(), &id, now)
                 })
                 .await;
@@ -456,7 +477,6 @@ pub(crate) async fn login_verify(
                 let _ = tokio::task::spawn_blocking({
                     let store = store.clone();
                     let id = rc.id().clone();
-                    let now = now;
                     move || RecoveryCodeRepository::mark_used(store.as_ref(), &id, now)
                 })
                 .await;
@@ -471,7 +491,10 @@ pub(crate) async fn login_verify(
     }
     let _ = used_recovery;
 
-    let created = match sessions.create(user_id, None, SessionAudience::Account, now).await {
+    let created = match sessions
+        .create(user_id, None, SessionAudience::Account, now)
+        .await
+    {
         Ok(v) => v,
         Err(_) => return unavailable(),
     };

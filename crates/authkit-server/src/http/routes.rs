@@ -25,9 +25,9 @@ use crate::http::security_headers::{SecurityHeaders, security_headers};
 use crate::http::session::{SessionSecurityState, session_context};
 use crate::metrics;
 use crate::session::SessionService;
-use authkit_core::ports::EmailSender;
 use crate::signing::KeyRing;
 use crate::tokens::TokenService;
+use authkit_core::ports::EmailSender;
 
 /// A readiness check that can be run without blocking the async runtime.
 pub trait ReadinessProbe: Send + Sync {
@@ -104,8 +104,16 @@ impl AppState {
 /// [`router_with_sessions`]; the base router keeps metadata and health tests independent of
 /// session storage.
 pub fn router(readiness: Arc<dyn ReadinessProbe>, keys: Arc<KeyRing>, issuer: Issuer) -> Router {
-    base_router(readiness, keys, issuer, None, None, None, Arc::new(crate::email::DevEmailSender))
-        .layer(middleware::from_fn(request_id::request_context))
+    base_router(
+        readiness,
+        keys,
+        issuer,
+        None,
+        None,
+        None,
+        Arc::new(crate::email::DevEmailSender),
+    )
+    .layer(middleware::from_fn(request_id::request_context))
 }
 
 /// Builds the production router with session resolution, CSRF checks, and security headers.
@@ -199,45 +207,114 @@ fn base_router(
         .route("/readyz", get(ready))
         .route("/login", get(login::login_page).post(login::login_submit))
         .route("/login/mfa", post(mfa::login_verify))
-        .route("/register", get(login::register_page).post(login::register_submit))
-        .route("/password-reset", get(reset::request_reset_page).post(reset::request_reset_submit))
-        .route("/password-reset/confirm", get(reset::confirm_reset_page).post(reset::confirm_reset_submit))
+        .route(
+            "/register",
+            get(login::register_page).post(login::register_submit),
+        )
+        .route(
+            "/password-reset",
+            get(reset::request_reset_page).post(reset::request_reset_submit),
+        )
+        .route(
+            "/password-reset/confirm",
+            get(reset::confirm_reset_page).post(reset::confirm_reset_submit),
+        )
         .route("/verify-email", get(reset::verify_email_page))
         .route("/verify-email/confirm", post(reset::verify_email_confirm))
         .route("/account", get(account::account_page))
-        .route("/account/profile", get(account::profile_page).post(account::update_profile))
+        .route(
+            "/account/profile",
+            get(account::profile_page).post(account::update_profile),
+        )
         .route("/account/password", post(account::change_password))
         .route("/account/applications", get(account::connected_apps_page))
-        .route("/account/consents/{id}/revoke", post(account::revoke_consent))
+        .route(
+            "/account/consents/{id}/revoke",
+            post(account::revoke_consent),
+        )
         .route("/account/mfa", get(mfa::account_page))
         .route("/account/mfa/enroll", post(mfa::enroll))
         .route("/account/mfa/verify", post(mfa::verify_enrollment))
         .route("/account/mfa/disable", post(mfa::disable))
         .route("/account/mfa/recovery-codes", get(mfa::recovery_codes_page))
-        .route("/account/mfa/recovery-codes/generate", post(mfa::generate_recovery_codes))
-        .route("/admin/login", get(admin::login_page).post(admin::login_submit))
+        .route(
+            "/account/mfa/recovery-codes/generate",
+            post(mfa::generate_recovery_codes),
+        )
+        .route(
+            "/admin/login",
+            get(admin::login_page).post(admin::login_submit),
+        )
         .route("/admin", get(admin::dashboard))
         .route("/admin/logout", post(admin::logout))
         .route("/admin/administrators", post(admin::grant_admin))
-        .route("/admin/administrators/{id}/disable", post(admin::disable_admin))
-        .route("/admin/signing-keys/rotate", post(admin::rotate_signing_key))
+        .route(
+            "/admin/administrators/{id}/disable",
+            post(admin::disable_admin),
+        )
+        .route(
+            "/admin/signing-keys/rotate",
+            post(admin::rotate_signing_key),
+        )
         .route("/admin/mfa/enroll", post(admin::mfa_enroll))
         .route("/admin/mfa/verify", post(admin::mfa_verify))
-        .route("/organizations", get(organization::organizations_page).post(organization::create_organization))
-        .route("/organizations/{org_id}/members", get(organization::members_page).post(organization::add_member))
-        .route("/organizations/{org_id}/invitations", get(organization::invitations_page).post(organization::create_invitation))
-        .route("/organizations/{org_id}/invitations/{invitation_id}/revoke", post(organization::revoke_invitation))
-        .route("/organizations/{org_id}/roles", get(organization::roles_page).post(organization::create_role))
-        .route("/organizations/{org_id}/applications", get(organization::applications_page).post(organization::create_application))
-        .route("/organizations/{org_id}/oauth-clients", get(organization::oauth_clients_page).post(organization::create_oauth_client))
-        .route("/organizations/{org_id}/oauth-clients/{client_id}", get(organization::oauth_client_detail))
-        .route("/organizations/{org_id}/oauth-clients/{client_id}/redirect-uris", post(organization::add_redirect_uri))
-        .route("/organizations/{org_id}/oauth-clients/{client_id}/redirect-uris/remove", post(organization::remove_redirect_uri))
-        .route("/organizations/{org_id}/oauth-clients/{client_id}/scopes", post(organization::replace_scopes))
-        .route("/organizations/{org_id}/role-bindings", post(organization::bind_role))
-        .route("/invitations/accept", get(organization::accept_invitation_page).post(organization::accept_invitation))
+        .route(
+            "/organizations",
+            get(organization::organizations_page).post(organization::create_organization),
+        )
+        .route(
+            "/organizations/{org_id}/members",
+            get(organization::members_page).post(organization::add_member),
+        )
+        .route(
+            "/organizations/{org_id}/invitations",
+            get(organization::invitations_page).post(organization::create_invitation),
+        )
+        .route(
+            "/organizations/{org_id}/invitations/{invitation_id}/revoke",
+            post(organization::revoke_invitation),
+        )
+        .route(
+            "/organizations/{org_id}/roles",
+            get(organization::roles_page).post(organization::create_role),
+        )
+        .route(
+            "/organizations/{org_id}/applications",
+            get(organization::applications_page).post(organization::create_application),
+        )
+        .route(
+            "/organizations/{org_id}/oauth-clients",
+            get(organization::oauth_clients_page).post(organization::create_oauth_client),
+        )
+        .route(
+            "/organizations/{org_id}/oauth-clients/{client_id}",
+            get(organization::oauth_client_detail),
+        )
+        .route(
+            "/organizations/{org_id}/oauth-clients/{client_id}/redirect-uris",
+            post(organization::add_redirect_uri),
+        )
+        .route(
+            "/organizations/{org_id}/oauth-clients/{client_id}/redirect-uris/remove",
+            post(organization::remove_redirect_uri),
+        )
+        .route(
+            "/organizations/{org_id}/oauth-clients/{client_id}/scopes",
+            post(organization::replace_scopes),
+        )
+        .route(
+            "/organizations/{org_id}/role-bindings",
+            post(organization::bind_role),
+        )
+        .route(
+            "/invitations/accept",
+            get(organization::accept_invitation_page).post(organization::accept_invitation),
+        )
         .route("/account/verify-email", get(reset::request_verify_page))
-        .route("/account/verify-email-request", post(reset::request_verify_submit))
+        .route(
+            "/account/verify-email-request",
+            post(reset::request_verify_submit),
+        )
         .route(
             "/account/sessions/{id}/revoke",
             post(account::revoke_session),
@@ -291,7 +368,13 @@ fn base_router(
 async fn static_htmx() -> Response {
     (
         StatusCode::OK,
-        [(header::CONTENT_TYPE, "application/javascript; charset=utf-8"), (header::CACHE_CONTROL, "public, max-age=31536000, immutable")],
+        [
+            (
+                header::CONTENT_TYPE,
+                "application/javascript; charset=utf-8",
+            ),
+            (header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
+        ],
         include_str!("../../static/htmx.min.js"),
     )
         .into_response()

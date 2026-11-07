@@ -13,8 +13,8 @@ pub mod id;
 pub mod invitation;
 pub mod membership;
 pub mod name;
-pub mod one_time_token;
 pub mod oauth_client;
+pub mod one_time_token;
 pub mod organization;
 pub mod permission;
 pub mod pkce;
@@ -47,10 +47,10 @@ pub use id::{Entity, Id, IdError};
 pub use invitation::{Invitation, InvitationStatus};
 pub use membership::{Membership, MembershipStatus, ensure_owner_remains};
 pub use name::DisplayName;
-pub use one_time_token::{OneTimeToken, OneTimeTokenPurpose};
 pub use oauth_client::{
     ClientStatus, ClientType, GrantType, OAuthClient, OAuthClientSpec, TokenEndpointAuthMethod,
 };
+pub use one_time_token::{OneTimeToken, OneTimeTokenPurpose};
 pub use organization::{Organization, OrganizationStatus};
 pub use permission::{Permission, PermissionSet};
 pub use pkce::{Nonce, PkceChallenge};
@@ -61,7 +61,9 @@ pub use scope::{Scope, ScopeSet};
 pub use secret::SecretHash;
 pub use session::{Session, SessionAudience, SessionStatus};
 pub use slug::Slug;
-pub use system_administrator::{SystemAdministrator, SystemAdministratorStatus, ensure_system_admin_remains};
+pub use system_administrator::{
+    SystemAdministrator, SystemAdministratorStatus, ensure_system_admin_remains,
+};
 pub use tenant::TenantContext;
 pub use time::Timestamp;
 pub use user::{User, UserStatus};

@@ -3,9 +3,9 @@
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::{PasswordHash, PasswordHasher as _, PasswordVerifier as _, SaltString};
 use argon2::{Argon2, Params};
-use authkit_core::domain::{DomainError, ErrorCode, ValueError};
 use authkit_core::domain::credential::PasswordVerifier as DomainVerifier;
 use authkit_core::domain::secret::SecretHash;
+use authkit_core::domain::{DomainError, ErrorCode, ValueError};
 
 /// Argon2id work factors matching the domain minimums.
 const MEMORY_KIB: u32 = 19 * 1024;
@@ -25,7 +25,10 @@ pub fn hash_password(password: &str) -> Result<DomainVerifier, DomainError> {
         .hash_password(password.as_bytes(), &salt)
         .map_err(|_| DomainError::new(ErrorCode::Internal, "password hashing failed"))?;
     DomainVerifier::parse(hash.to_string()).map_err(|error: ValueError| {
-        DomainError::new(ErrorCode::Internal, format!("hashed password is invalid: {error}"))
+        DomainError::new(
+            ErrorCode::Internal,
+            format!("hashed password is invalid: {error}"),
+        )
     })
 }
 

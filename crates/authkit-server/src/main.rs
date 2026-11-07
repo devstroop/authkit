@@ -4,13 +4,13 @@
 
 use std::process::ExitCode;
 
-use authkit_server::config::Config;
 use authkit_core::ports::IdGenerator;
+use authkit_server::config::Config;
 use authkit_server::signing::KeyRing;
-use sha2::Sha256;
-use sha2::Digest;
 use authkit_server::telemetry::init_tracing;
 use authkit_store::SqlStore;
+use sha2::Digest;
+use sha2::Sha256;
 
 fn main() -> ExitCode {
     match run(std::env::args().skip(1)) {
@@ -49,7 +49,7 @@ fn run(mut args: impl Iterator<Item = String>) -> Result<(), u8> {
                 print_help();
                 Err(2)
             }
-        }
+        },
         Some("audit") => match args.next().as_deref() {
             Some("export") => audit_export(args.collect()),
             Some("prune") => audit_prune(args.collect()),
@@ -160,94 +160,164 @@ fn audit_export(args: Vec<String>) -> Result<(), u8> {
 }
 
 fn migrate() -> Result<(), u8> {
-    let config = Config::from_env().map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    let config = Config::from_env().map_err(|e| {
+        eprintln!("error: {e}");
+        1
+    })?;
     let url = config.database().url().to_owned();
     let max_connections = config.database().max_connections();
-    let store = SqlStore::connect(&url, max_connections).map_err(|e| { eprintln!("error: {e}"); 1 })?;
-    store.migrate().map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    let store = SqlStore::connect(&url, max_connections).map_err(|e| {
+        eprintln!("error: {e}");
+        1
+    })?;
+    store.migrate().map_err(|e| {
+        eprintln!("error: {e}");
+        1
+    })?;
     println!("migrated");
     Ok(())
 }
 
 fn bootstrap() -> Result<(), u8> {
     migrate()?;
-    let config = Config::from_env().map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    let config = Config::from_env().map_err(|e| {
+        eprintln!("error: {e}");
+        1
+    })?;
     let now_ts = authkit_core::domain::time::Timestamp::from_millis(
         (authkit_server::signing::unix_now() as u64) * 1000,
     );
     let url = config.database().url().to_owned();
     let max_connections = config.database().max_connections();
-    let store = SqlStore::connect(&url, max_connections).map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    let store = SqlStore::connect(&url, max_connections).map_err(|e| {
+        eprintln!("error: {e}");
+        1
+    })?;
 
-    let existing = authkit_core::ports::SystemAdministratorRepository::list(&store)
-        .map_err(|e| { eprintln!("error list: {e}"); 1 })?;
+    let existing =
+        authkit_core::ports::SystemAdministratorRepository::list(&store).map_err(|e| {
+            eprintln!("error list: {e}");
+            1
+        })?;
     if existing.is_empty() {
         let email_raw = std::env::var("AUTHKIT_ADMIN_EMAIL").unwrap_or_default();
         let password = std::env::var("AUTHKIT_ADMIN_PASSWORD").unwrap_or_default();
         if email_raw.is_empty() || password.is_empty() {
-            eprintln!("error: AUTHKIT_ADMIN_EMAIL and AUTHKIT_ADMIN_PASSWORD are required to bootstrap the first system administrator");
+            eprintln!(
+                "error: AUTHKIT_ADMIN_EMAIL and AUTHKIT_ADMIN_PASSWORD are required to bootstrap the first system administrator"
+            );
             return Err(1);
         }
-        let email = authkit_core::domain::Email::parse(&email_raw).map_err(|e| { eprintln!("error: {e}"); 1 })?;
-        let display_name = authkit_core::domain::DisplayName::parse(email_raw.split('@').next().unwrap_or("admin"))
-            .unwrap_or_else(|_| authkit_core::domain::DisplayName::parse("Admin").expect("valid"));
-        let user = if let Some(existing_user) = authkit_core::ports::UserRepository::find_by_email(&store, &email).map_err(|e| { eprintln!("error find user: {e}"); 1 })? {
+        let email = authkit_core::domain::Email::parse(&email_raw).map_err(|e| {
+            eprintln!("error: {e}");
+            1
+        })?;
+        let display_name = authkit_core::domain::DisplayName::parse(
+            email_raw.split('@').next().unwrap_or("admin"),
+        )
+        .unwrap_or_else(|_| authkit_core::domain::DisplayName::parse("Admin").expect("valid"));
+        let user = if let Some(existing_user) =
+            authkit_core::ports::UserRepository::find_by_email(&store, &email).map_err(|e| {
+                eprintln!("error find user: {e}");
+                1
+            })? {
             existing_user
         } else {
             let user = authkit_core::domain::User::new(
-                authkit_server::session::SecureIdGenerator.generate::<authkit_core::domain::id::UserEntity>().expect("id"),
+                authkit_server::session::SecureIdGenerator
+                    .generate::<authkit_core::domain::id::UserEntity>()
+                    .expect("id"),
                 email.clone(),
                 display_name,
                 now_ts,
             );
-                authkit_core::ports::UserRepository::insert(&store, &user).map_err(|e| { eprintln!("error insert user: {e}"); 1 })?;
+            authkit_core::ports::UserRepository::insert(&store, &user).map_err(|e| {
+                eprintln!("error insert user: {e}");
+                1
+            })?;
             user
         };
-        let verifier = authkit_server::password::hash_password(&password).map_err(|e| { eprintln!("error: {e}"); 1 })?;
+        let verifier = authkit_server::password::hash_password(&password).map_err(|e| {
+            eprintln!("error: {e}");
+            1
+        })?;
         let credential = authkit_core::domain::Credential::password(
-            authkit_server::session::SecureIdGenerator.generate::<authkit_core::domain::id::CredentialEntity>().expect("id"),
+            authkit_server::session::SecureIdGenerator
+                .generate::<authkit_core::domain::id::CredentialEntity>()
+                .expect("id"),
             user.id().clone(),
             verifier,
             now_ts,
         );
-        authkit_core::ports::CredentialRepository::insert(&store, &credential).map_err(|e| { eprintln!("error insert cred: {e}"); 1 })?;
+        authkit_core::ports::CredentialRepository::insert(&store, &credential).map_err(|e| {
+            eprintln!("error insert cred: {e}");
+            1
+        })?;
         let admin = authkit_core::domain::SystemAdministrator::new(
-            authkit_server::session::SecureIdGenerator.generate::<authkit_core::domain::id::SystemAdministratorEntity>().expect("id"),
+            authkit_server::session::SecureIdGenerator
+                .generate::<authkit_core::domain::id::SystemAdministratorEntity>()
+                .expect("id"),
             user.id().clone(),
             None,
             now_ts,
         );
-        authkit_core::ports::SystemAdministratorRepository::insert(&store, &admin).map_err(|e| { eprintln!("error insert admin: {e}"); 1 })?;
+        authkit_core::ports::SystemAdministratorRepository::insert(&store, &admin).map_err(
+            |e| {
+                eprintln!("error insert admin: {e}");
+                1
+            },
+        )?;
         println!("bootstrapped system administrator {}", user.email());
     } else {
         println!("system administrators already exist");
     }
 
     let now = authkit_server::signing::unix_now();
-    let ring = KeyRing::load_or_bootstrap(config.signing_keys(), now).map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    let ring = KeyRing::load_or_bootstrap(config.signing_keys(), now).map_err(|e| {
+        eprintln!("error: {e}");
+        1
+    })?;
     println!("bootstrapped signing key {}", ring.active().kid());
     Ok(())
 }
 
 fn key_rotate() -> Result<(), u8> {
-    let config = Config::from_env().map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    let config = Config::from_env().map_err(|e| {
+        eprintln!("error: {e}");
+        1
+    })?;
     let now = authkit_server::signing::unix_now();
-    let ring = KeyRing::rotate(config.signing_keys(), now).map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    let ring = KeyRing::rotate(config.signing_keys(), now).map_err(|e| {
+        eprintln!("error: {e}");
+        1
+    })?;
     println!("rotated signing key {}", ring.active().kid());
     Ok(())
 }
 
 fn doctor() -> Result<(), u8> {
-    let config = Config::from_env().map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    let config = Config::from_env().map_err(|e| {
+        eprintln!("error: {e}");
+        1
+    })?;
     println!("config: ok");
     println!("issuer: {}", config.issuer());
     let url = config.database().url().to_owned();
     let max_connections = config.database().max_connections();
-    let store = SqlStore::connect(&url, max_connections).map_err(|e| { eprintln!("error: {e}"); 1 })?;
-    store.ping().map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    let store = SqlStore::connect(&url, max_connections).map_err(|e| {
+        eprintln!("error: {e}");
+        1
+    })?;
+    store.ping().map_err(|e| {
+        eprintln!("error: {e}");
+        1
+    })?;
     println!("database: ok");
     let now = authkit_server::signing::unix_now();
-    let ring = KeyRing::load_or_bootstrap(config.signing_keys(), now).map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    let ring = KeyRing::load_or_bootstrap(config.signing_keys(), now).map_err(|e| {
+        eprintln!("error: {e}");
+        1
+    })?;
     println!("signing key: ok ({})", ring.active().kid());
     Ok(())
 }
@@ -259,31 +329,58 @@ fn audit_prune(args: Vec<String>) -> Result<(), u8> {
     while i < args.len() {
         match args[i].as_str() {
             "--days" => {
-                if i + 1 >= args.len() { eprintln!("error: --days requires a value"); return Err(2); }
+                if i + 1 >= args.len() {
+                    eprintln!("error: --days requires a value");
+                    return Err(2);
+                }
                 days = args[i + 1].parse().unwrap_or(90);
                 i += 2;
             }
             "--org" => {
-                if i + 1 >= args.len() { eprintln!("error: --org requires a value"); return Err(2); }
+                if i + 1 >= args.len() {
+                    eprintln!("error: --org requires a value");
+                    return Err(2);
+                }
                 org = Some(args[i + 1].clone());
                 i += 2;
             }
-            other => { eprintln!("error: unknown argument: {other}"); return Err(2); }
+            other => {
+                eprintln!("error: unknown argument: {other}");
+                return Err(2);
+            }
         }
     }
-    let config = Config::from_env().map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    let config = Config::from_env().map_err(|e| {
+        eprintln!("error: {e}");
+        1
+    })?;
     let url = config.database().url().to_owned();
     let max_connections = config.database().max_connections();
-    let store = SqlStore::connect(&url, max_connections).map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    let store = SqlStore::connect(&url, max_connections).map_err(|e| {
+        eprintln!("error: {e}");
+        1
+    })?;
     let cutoff = (authkit_server::signing::unix_now() as i64 - days * 86400) * 1000;
-    let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| {
+            eprintln!("error: {e}");
+            1
+        })?;
     runtime.block_on(async {
-        use sqlx::Row;
         let mut sql = String::from("DELETE FROM audit_event WHERE occurred_at < ?");
-        if org.is_some() { sql.push_str(" AND org_id = ?"); }
+        if org.is_some() {
+            sql.push_str(" AND org_id = ?");
+        }
         let mut query = sqlx::query(&sql).bind(cutoff);
-        if let Some(org) = &org { query = query.bind(org); }
-        let result = query.execute(store.pool()).await.map_err(|e| { eprintln!("error: {e}"); 1u8 })?;
+        if let Some(org) = &org {
+            query = query.bind(org);
+        }
+        let result = query.execute(store.pool()).await.map_err(|e| {
+            eprintln!("error: {e}");
+            1u8
+        })?;
         println!("pruned {} audit events", result.rows_affected());
         Ok(())
     })
@@ -295,18 +392,36 @@ fn audit_verify(args: Vec<String>) -> Result<(), u8> {
     while i < args.len() {
         match args[i].as_str() {
             "--org" => {
-                if i + 1 >= args.len() { eprintln!("error: --org requires a value"); return Err(2); }
+                if i + 1 >= args.len() {
+                    eprintln!("error: --org requires a value");
+                    return Err(2);
+                }
                 org = Some(args[i + 1].clone());
                 i += 2;
             }
-            other => { eprintln!("error: unknown argument: {other}"); return Err(2); }
+            other => {
+                eprintln!("error: unknown argument: {other}");
+                return Err(2);
+            }
         }
     }
-    let config = Config::from_env().map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    let config = Config::from_env().map_err(|e| {
+        eprintln!("error: {e}");
+        1
+    })?;
     let url = config.database().url().to_owned();
     let max_connections = config.database().max_connections();
-    let store = SqlStore::connect(&url, max_connections).map_err(|e| { eprintln!("error: {e}"); 1 })?;
-    let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    let store = SqlStore::connect(&url, max_connections).map_err(|e| {
+        eprintln!("error: {e}");
+        1
+    })?;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| {
+            eprintln!("error: {e}");
+            1
+        })?;
     runtime.block_on(async {
         use sqlx::Row;
         let mut sql = String::from("SELECT id, org_id, actor_type, actor_id, action, target, occurred_at, attributes, prev_hash, hash FROM audit_event");
@@ -357,29 +472,50 @@ fn backup(args: Vec<String>) -> Result<(), u8> {
     while i < args.len() {
         match args[i].as_str() {
             "--output" => {
-                if i + 1 >= args.len() { eprintln!("error: --output requires a value"); return Err(2); }
+                if i + 1 >= args.len() {
+                    eprintln!("error: --output requires a value");
+                    return Err(2);
+                }
                 output = Some(args[i + 1].clone());
                 i += 2;
             }
-            other => { eprintln!("error: unknown argument: {other}"); return Err(2); }
+            other => {
+                eprintln!("error: unknown argument: {other}");
+                return Err(2);
+            }
         }
     }
     let output = output.unwrap_or_else(|| "authkit-backup.db".to_owned());
-    let config = Config::from_env().map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    let config = Config::from_env().map_err(|e| {
+        eprintln!("error: {e}");
+        1
+    })?;
     if config.database().kind() != authkit_server::config::DatabaseKind::Sqlite {
         eprintln!("error: backup command supports SQLite; use pg_dump for PostgreSQL");
         return Err(1);
     }
     let url = config.database().url().to_owned();
     let max_connections = config.database().max_connections();
-    let store = SqlStore::connect(&url, max_connections).map_err(|e| { eprintln!("error: {e}"); 1 })?;
-    let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    let store = SqlStore::connect(&url, max_connections).map_err(|e| {
+        eprintln!("error: {e}");
+        1
+    })?;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| {
+            eprintln!("error: {e}");
+            1
+        })?;
     runtime.block_on(async {
         sqlx::query("VACUUM INTO ?")
             .bind(&output)
             .execute(store.pool())
             .await
-            .map_err(|e| { eprintln!("error: {e}"); 1u8 })?;
+            .map_err(|e| {
+                eprintln!("error: {e}");
+                1u8
+            })?;
         println!("backup written to {output}");
         Ok(())
     })
@@ -391,15 +527,27 @@ fn restore(args: Vec<String>) -> Result<(), u8> {
     while i < args.len() {
         match args[i].as_str() {
             "--input" => {
-                if i + 1 >= args.len() { eprintln!("error: --input requires a value"); return Err(2); }
+                if i + 1 >= args.len() {
+                    eprintln!("error: --input requires a value");
+                    return Err(2);
+                }
                 input = Some(args[i + 1].clone());
                 i += 2;
             }
-            other => { eprintln!("error: unknown argument: {other}"); return Err(2); }
+            other => {
+                eprintln!("error: unknown argument: {other}");
+                return Err(2);
+            }
         }
     }
-    let input = input.ok_or_else(|| { eprintln!("error: --input is required"); 2 })?;
-    let config = Config::from_env().map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    let input = input.ok_or_else(|| {
+        eprintln!("error: --input is required");
+        2
+    })?;
+    let config = Config::from_env().map_err(|e| {
+        eprintln!("error: {e}");
+        1
+    })?;
     if config.database().kind() != authkit_server::config::DatabaseKind::Sqlite {
         eprintln!("error: restore command supports SQLite; use pg_restore for PostgreSQL");
         return Err(1);
@@ -408,7 +556,10 @@ fn restore(args: Vec<String>) -> Result<(), u8> {
     let path = url.strip_prefix("sqlite:").unwrap_or(url);
     let path = path.split('?').next().unwrap_or(path);
     let path = path.trim_start_matches("//");
-    std::fs::copy(&input, path).map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    std::fs::copy(&input, path).map_err(|e| {
+        eprintln!("error: {e}");
+        1
+    })?;
     println!("restored {input} to {path}");
     Ok(())
 }

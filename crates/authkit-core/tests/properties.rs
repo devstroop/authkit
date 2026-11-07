@@ -1,6 +1,4 @@
-use authkit_core::domain::{
-    AuditAction, AuditTarget, DisplayName, Email, Permission, Scope, Slug,
-};
+use authkit_core::domain::{AuditAction, AuditTarget, DisplayName, Email, Permission, Scope, Slug};
 use proptest::prelude::*;
 
 proptest! {

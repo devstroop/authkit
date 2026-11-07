@@ -2,20 +2,16 @@
 
 use std::sync::Arc;
 
-use authkit_core::application::CreateUser;
-use authkit_core::domain::{
-    Credential, DisplayName, Email, Id, User, WriteOutcome,
-};
-use authkit_core::domain::id::{CredentialEntity, UserEntity};
-use authkit_core::ports::{
-    CredentialRepository, IdGenerator, RateLimiter, UserRepository,
-};
 use crate::password::verify_password;
-use authkit_core::domain::SessionAudience;
-use authkit_core::domain::CredentialKind;
-use crate::session::{SystemClock, SecureIdGenerator};
-use axum::Json;
+use crate::session::{SecureIdGenerator, SystemClock};
 use askama::Template;
+use authkit_core::application::CreateUser;
+use authkit_core::domain::CredentialKind;
+use authkit_core::domain::SessionAudience;
+use authkit_core::domain::id::{CredentialEntity, UserEntity};
+use authkit_core::domain::{Credential, DisplayName, Email, Id, User, WriteOutcome};
+use authkit_core::ports::{CredentialRepository, IdGenerator, RateLimiter, UserRepository};
+use axum::Json;
 use axum::extract::{Extension, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
@@ -81,7 +77,10 @@ pub(crate) async fn login_page(
     let body = template.render().unwrap_or_default();
     (
         StatusCode::OK,
-        [(header::CONTENT_TYPE, "text/html; charset=utf-8"), (header::CACHE_CONTROL, "no-store")],
+        [
+            (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
         body,
     )
         .into_response()
@@ -121,7 +120,10 @@ pub(crate) async fn register_page(
     let body = template.render().unwrap_or_default();
     (
         StatusCode::OK,
-        [(header::CONTENT_TYPE, "text/html; charset=utf-8"), (header::CACHE_CONTROL, "no-store")],
+        [
+            (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
         body,
     )
         .into_response()
@@ -141,12 +143,17 @@ pub(crate) async fn login_submit(
     };
     let email = params.get("email").cloned().unwrap_or_default();
     let password = params.get("password").cloned().unwrap_or_default();
-    let trusted = std::env::var("AUTHKIT_TRUSTED_PROXIES").unwrap_or_default()
+    let trusted = std::env::var("AUTHKIT_TRUSTED_PROXIES")
+        .unwrap_or_default()
         .split(',')
         .filter_map(|v| v.trim().parse().ok())
         .collect::<Vec<_>>();
     // wildcard support
-    let trusted = if trusted.is_empty() && std::env::var("AUTHKIT_TRUSTED_PROXIES").unwrap_or_default().contains('*') {
+    let trusted = if trusted.is_empty()
+        && std::env::var("AUTHKIT_TRUSTED_PROXIES")
+            .unwrap_or_default()
+            .contains('*')
+    {
         vec!["0.0.0.0".parse().unwrap()]
     } else {
         trusted
@@ -160,9 +167,9 @@ pub(crate) async fn login_submit(
         let ip_result = tokio::task::spawn_blocking({
             let store = store.clone();
             let ip_key = ip_key.clone();
-            let now = now;
             move || RateLimiter::check(store.as_ref(), &ip_key, 20, 300, now)
-        }).await;
+        })
+        .await;
         if let Ok(Err(err)) = ip_result {
             return rate_limited(err.retry_after_secs);
         }
@@ -193,45 +200,49 @@ pub(crate) async fn login_submit(
                 "/register",
                 "Create an account",
                 "",
-            )
+            );
         }
     };
 
     let store_clone = store.clone();
     let email_for_lookup = email_parsed.clone();
-    let user = match tokio::task::spawn_blocking(move || find_user_by_email(&store_clone, &email_for_lookup))
-        .await
-        .ok()
-        .and_then(|result| result.ok().flatten())
+    let user = match tokio::task::spawn_blocking(move || {
+        find_user_by_email(&store_clone, &email_for_lookup)
+    })
+    .await
+    .ok()
+    .and_then(|result| result.ok().flatten())
     {
         Some(user) => user,
         None => {
             // Spend comparable work to avoid trivial user enumeration via timing.
-            let _ = tokio::task::spawn_blocking(|| crate::password::hash_password("dummy-password-for-timing"))
-                .await;
+            let _ = tokio::task::spawn_blocking(|| {
+                crate::password::hash_password("dummy-password-for-timing")
+            })
+            .await;
             if let Some(sessions) = state.sessions.as_ref() {
                 let store = sessions.store().clone();
                 let now = sessions.clock().now();
                 let account_key = format!("login:account:{}", email.to_lowercase());
                 let account_result = tokio::task::spawn_blocking({
-                let store = store.clone();
-                let account_key = account_key.clone();
-                let now = now;
-                move || RateLimiter::check(store.as_ref(), &account_key, 5, 300, now)
-            }).await;
-            if let Ok(Err(err)) = account_result {
-                return rate_limited(err.retry_after_secs);
-            }
+                    let store = store.clone();
+                    let account_key = account_key.clone();
+                    move || RateLimiter::check(store.as_ref(), &account_key, 5, 300, now)
+                })
+                .await;
+                if let Ok(Err(err)) = account_result {
+                    return rate_limited(err.retry_after_secs);
+                }
                 let ip_key = format!("login:ip:{ip}");
                 let ip_result = tokio::task::spawn_blocking({
-                let store = store.clone();
-                let ip_key = ip_key.clone();
-                let now = now;
-                move || RateLimiter::check(store.as_ref(), &ip_key, 20, 300, now)
-            }).await;
-            if let Ok(Err(err)) = ip_result {
-                return rate_limited(err.retry_after_secs);
-            }
+                    let store = store.clone();
+                    let ip_key = ip_key.clone();
+                    move || RateLimiter::check(store.as_ref(), &ip_key, 20, 300, now)
+                })
+                .await;
+                if let Ok(Err(err)) = ip_result {
+                    return rate_limited(err.retry_after_secs);
+                }
             }
             return html(
                 StatusCode::UNAUTHORIZED,
@@ -242,31 +253,32 @@ pub(crate) async fn login_submit(
                 "/register",
                 "Create an account",
                 "",
-            )
+            );
         }
     };
 
     let store_clone = store.clone();
     let user_id = user.id().clone();
-    let credential = match tokio::task::spawn_blocking(move || find_password_credential(&store_clone, &user_id))
-        .await
-        .ok()
-        .and_then(|result| result.ok().flatten())
-    {
-        Some(credential) => credential,
-        None => {
-            return html(
-                StatusCode::UNAUTHORIZED,
-                "Sign in",
-                "/login",
-                "Sign in",
-                "Invalid email or password.",
-                "/register",
-                "Create an account",
-                "",
-            )
-        }
-    };
+    let credential =
+        match tokio::task::spawn_blocking(move || find_password_credential(&store_clone, &user_id))
+            .await
+            .ok()
+            .and_then(|result| result.ok().flatten())
+        {
+            Some(credential) => credential,
+            None => {
+                return html(
+                    StatusCode::UNAUTHORIZED,
+                    "Sign in",
+                    "/login",
+                    "Sign in",
+                    "Invalid email or password.",
+                    "/register",
+                    "Create an account",
+                    "",
+                );
+            }
+        };
 
     let verifier = match credential.as_password() {
         Some(value) => value.clone(),
@@ -280,7 +292,7 @@ pub(crate) async fn login_submit(
                 "/register",
                 "Create an account",
                 "",
-            )
+            );
         }
     };
 
@@ -292,9 +304,9 @@ pub(crate) async fn login_submit(
             let account_result = tokio::task::spawn_blocking({
                 let store = store.clone();
                 let account_key = account_key.clone();
-                let now = now;
                 move || RateLimiter::check(store.as_ref(), &account_key, 5, 300, now)
-            }).await;
+            })
+            .await;
             if let Ok(Err(err)) = account_result {
                 return rate_limited(err.retry_after_secs);
             }
@@ -302,9 +314,9 @@ pub(crate) async fn login_submit(
             let ip_result = tokio::task::spawn_blocking({
                 let store = store.clone();
                 let ip_key = ip_key.clone();
-                let now = now;
                 move || RateLimiter::check(store.as_ref(), &ip_key, 20, 300, now)
-            }).await;
+            })
+            .await;
             if let Ok(Err(err)) = ip_result {
                 return rate_limited(err.retry_after_secs);
             }
@@ -321,7 +333,10 @@ pub(crate) async fn login_submit(
         );
     }
 
-    let redirect_to = params.get("next").cloned().unwrap_or_else(|| "/".to_owned());
+    let redirect_to = params
+        .get("next")
+        .cloned()
+        .unwrap_or_else(|| "/".to_owned());
     let redirect_to = safe_redirect(&redirect_to);
     let totp_cred = tokio::task::spawn_blocking({
         let store = store.clone();
@@ -356,19 +371,22 @@ pub(crate) async fn login_submit(
         );
     }
 
-    if crate::password::needs_rehash(&verifier) {
-        if let Ok(new_verifier) = crate::password::hash_password(&password) {
-            let original_version = credential.version();
-            let mut updated = credential.clone();
-            if updated.replace_password(new_verifier, sessions.clock().now()).is_ok() {
-                let store_clone = store.clone();
-                let updated_clone = updated.clone();
-                let _ = tokio::task::spawn_blocking(move || {
-                    CredentialRepository::update(store_clone.as_ref(), &updated_clone, original_version)
-                })
-                .await;
-                let _ = updated;
-            }
+    if crate::password::needs_rehash(&verifier)
+        && let Ok(new_verifier) = crate::password::hash_password(&password)
+    {
+        let original_version = credential.version();
+        let mut updated = credential.clone();
+        if updated
+            .replace_password(new_verifier, sessions.clock().now())
+            .is_ok()
+        {
+            let store_clone = store.clone();
+            let updated_clone = updated.clone();
+            let _ = tokio::task::spawn_blocking(move || {
+                CredentialRepository::update(store_clone.as_ref(), &updated_clone, original_version)
+            })
+            .await;
+            let _ = updated;
         }
     }
 
@@ -376,7 +394,9 @@ pub(crate) async fn login_submit(
     let store = sessions.store().clone();
     let key = format!("login:account:{}", email.to_lowercase());
     let _ = tokio::task::spawn_blocking(move || RateLimiter::reset(store.as_ref(), &key)).await;
-    let created = match sessions.create(user.id().clone(), None, SessionAudience::Account, now).await
+    let created = match sessions
+        .create(user.id().clone(), None, SessionAudience::Account, now)
+        .await
     {
         Ok(value) => value,
         Err(_) => return unavailable(),
@@ -430,7 +450,7 @@ pub(crate) async fn register_submit(
                 "/login",
                 "Sign in instead",
                 "",
-            )
+            );
         }
     };
 
@@ -446,7 +466,7 @@ pub(crate) async fn register_submit(
                 "/login",
                 "Sign in instead",
                 "",
-            )
+            );
         }
     };
 
@@ -479,12 +499,14 @@ pub(crate) async fn register_submit(
                 "/login",
                 "Sign in instead",
                 "",
-            )
+            );
         }
     };
 
     let credential = Credential::password(
-        SecureIdGenerator.generate::<CredentialEntity>().expect("id"),
+        SecureIdGenerator
+            .generate::<CredentialEntity>()
+            .expect("id"),
         user.id().clone(),
         verifier,
         now,
@@ -507,7 +529,10 @@ pub(crate) async fn register_submit(
     };
 
     let cookie = sessions.set_cookie(created.session(), created.token(), now);
-    let redirect_to = params.get("next").cloned().unwrap_or_else(|| "/".to_owned());
+    let redirect_to = params
+        .get("next")
+        .cloned()
+        .unwrap_or_else(|| "/".to_owned());
     let redirect_to = safe_redirect(&redirect_to);
     let mut response = redirect(&redirect_to);
     if let Ok(value) = axum::http::HeaderValue::from_str(&cookie) {
@@ -533,10 +558,12 @@ fn find_password_credential(
     store: &Arc<SqlStore>,
     user_id: &Id<UserEntity>,
 ) -> Result<Option<Credential>, authkit_core::domain::DomainError> {
-    let credentials = authkit_core::ports::CredentialRepository::list_for_user(store.as_ref(), user_id)?;
-    Ok(credentials
-        .into_iter()
-        .find(|credential| credential.kind() == authkit_core::domain::CredentialKind::Password && credential.is_active()))
+    let credentials =
+        authkit_core::ports::CredentialRepository::list_for_user(store.as_ref(), user_id)?;
+    Ok(credentials.into_iter().find(|credential| {
+        credential.kind() == authkit_core::domain::CredentialKind::Password
+            && credential.is_active()
+    }))
 }
 
 fn parse_form(body: &[u8]) -> Result<std::collections::HashMap<String, String>, ()> {
@@ -551,13 +578,18 @@ fn parse_form(body: &[u8]) -> Result<std::collections::HashMap<String, String>, 
 }
 
 pub(crate) fn safe_redirect(value: &str) -> String {
-    if value.starts_with('/') && !value.starts_with("//") && !value.contains('\n') && !value.contains('\r') {
+    if value.starts_with('/')
+        && !value.starts_with("//")
+        && !value.contains('\n')
+        && !value.contains('\r')
+    {
         value.to_owned()
     } else {
         "/".to_owned()
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn html(
     status: StatusCode,
     title: &str,
@@ -583,7 +615,10 @@ pub(crate) fn html(
         .replace("{other_text}", other_text);
     (
         status,
-        [(header::CONTENT_TYPE, "text/html; charset=utf-8"), (header::CACHE_CONTROL, "no-store")],
+        [
+            (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
         body,
     )
         .into_response()
@@ -593,7 +628,10 @@ fn redirect(location: &str) -> Response {
     match axum::http::HeaderValue::from_str(location) {
         Ok(location) => (
             StatusCode::SEE_OTHER,
-            [(header::LOCATION, location), (header::CACHE_CONTROL, HeaderValue::from_static("no-store"))],
+            [
+                (header::LOCATION, location),
+                (header::CACHE_CONTROL, HeaderValue::from_static("no-store")),
+            ],
         )
             .into_response(),
         Err(_) => (
@@ -608,7 +646,10 @@ fn redirect(location: &str) -> Response {
 fn rate_limited(retry_after: u64) -> Response {
     (
         StatusCode::TOO_MANY_REQUESTS,
-        [(header::RETRY_AFTER, retry_after.to_string()), (header::CACHE_CONTROL, "no-store".to_owned())],
+        [
+            (header::RETRY_AFTER, retry_after.to_string()),
+            (header::CACHE_CONTROL, "no-store".to_owned()),
+        ],
         axum::Json(json!({"error": "rate_limited", "retry_after": retry_after})),
     )
         .into_response()

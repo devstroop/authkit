@@ -9,45 +9,43 @@ use authkit_core::domain::grant::{AuthorizationCode, Consent, RefreshFamily, Ref
 use authkit_core::domain::id::{
     ApplicationEntity, AuthorizationCodeEntity, ConsentEntity, CredentialEntity, Id,
     InvitationEntity, MembershipEntity, OAuthClientEntity, OneTimeTokenEntity, OrganizationEntity,
-    RecoveryCodeEntity,
-    SystemAdministratorEntity,
-    RefreshFamilyEntity, RefreshTokenEntity, RoleBindingEntity, RoleEntity, SessionEntity, UserEntity,
+    RecoveryCodeEntity, RefreshFamilyEntity, RefreshTokenEntity, RoleBindingEntity, RoleEntity,
+    SessionEntity, SystemAdministratorEntity, UserEntity,
 };
 use authkit_core::domain::invitation::Invitation;
-use authkit_core::domain::one_time_token::{OneTimeToken, OneTimeTokenPurpose};
 use authkit_core::domain::membership::Membership;
-use authkit_core::domain::time::Timestamp;
-use authkit_core::ports::OneTimeTokenRepository;
 use authkit_core::domain::oauth_client::OAuthClient;
+use authkit_core::domain::one_time_token::{OneTimeToken, OneTimeTokenPurpose};
 use authkit_core::domain::organization::Organization;
-use authkit_core::domain::role::{Role, RoleBinding};
 use authkit_core::domain::recovery_code::RecoveryCode;
+use authkit_core::domain::role::{Role, RoleBinding};
 use authkit_core::domain::secret::SecretHash;
 use authkit_core::domain::session::Session;
 use authkit_core::domain::slug::Slug;
 use authkit_core::domain::system_administrator::SystemAdministrator;
 use authkit_core::domain::tenant::TenantContext;
+use authkit_core::domain::time::Timestamp;
 use authkit_core::domain::user::User;
 use authkit_core::domain::write::WriteOutcome;
+use authkit_core::ports::OneTimeTokenRepository;
 use authkit_core::ports::write::{UnitOfWork, WriteBatch, WriteCommand};
 use authkit_core::ports::{
     ApplicationRepository, AuditRepository, AuthorizationCodeRepository, ConsentRepository,
     CredentialRepository, InvitationRepository, MembershipRepository, OAuthClientRepository,
-    RecoveryCodeRepository,
-    OrganizationRepository, RateLimiter, RateLimitExceeded, RefreshFamilyRepository,
-    RefreshTokenRepository, Repositories, RoleBindingRepository, RoleRepository, SessionRepository,
-    SystemAdministratorRepository, UserRepository,
+    OrganizationRepository, RateLimitExceeded, RateLimiter, RecoveryCodeRepository,
+    RefreshFamilyRepository, RefreshTokenRepository, Repositories, RoleBindingRepository,
+    RoleRepository, SessionRepository, SystemAdministratorRepository, UserRepository,
 };
 use sqlx::Any;
 
+use crate::mapping::db_timestamp;
 use crate::mapping::{
     id as stored_id, map_application, map_audit_event, map_authorization_code, map_consent,
     map_credential, map_invitation, map_membership, map_oauth_client, map_organization,
-    map_recovery_code,
-    map_refresh_family, map_refresh_token, map_role, map_role_binding, map_session, map_system_administrator, map_user, text,
+    map_recovery_code, map_refresh_family, map_refresh_token, map_role, map_role_binding,
+    map_session, map_system_administrator, map_user, text,
 };
 use crate::{SqlStore, invalid_stored_value, map_db_error};
-use crate::mapping::db_timestamp;
 
 async fn fetch_strings(
     tx: &mut sqlx::Transaction<'_, Any>,
@@ -75,16 +73,14 @@ fn map_one_time_token(row: &sqlx::any::AnyRow) -> Result<OneTimeToken, DomainErr
     let user_id = Id::<UserEntity>::parse(user_id).map_err(|_| invalid_stored_value())?;
     let purpose = OneTimeTokenPurpose::parse(&purpose).map_err(|_| invalid_stored_value())?;
     let token_hash = SecretHash::parse(token_hash).map_err(|_| invalid_stored_value())?;
-    let expires_at = Timestamp::from_millis(
-        u64::try_from(expires_at).map_err(|_| invalid_stored_value())?,
-    );
+    let expires_at =
+        Timestamp::from_millis(u64::try_from(expires_at).map_err(|_| invalid_stored_value())?);
     let consumed_at = consumed_at
         .map(|value| u64::try_from(value).map_err(|_| invalid_stored_value()))
         .transpose()?
         .map(Timestamp::from_millis);
-    let created_at = Timestamp::from_millis(
-        u64::try_from(created_at).map_err(|_| invalid_stored_value())?,
-    );
+    let created_at =
+        Timestamp::from_millis(u64::try_from(created_at).map_err(|_| invalid_stored_value())?);
     OneTimeToken::new(id, user_id, purpose, token_hash, created_at, expires_at).map(|mut token| {
         if let Some(consumed) = consumed_at {
             let _ = token.consume(consumed);
@@ -308,7 +304,10 @@ impl InvitationRepository for SqlStore {
         })
     }
 
-    fn find_by_token_hash(&self, token_hash: &SecretHash) -> Result<Option<Invitation>, DomainError> {
+    fn find_by_token_hash(
+        &self,
+        token_hash: &SecretHash,
+    ) -> Result<Option<Invitation>, DomainError> {
         let sql = self.sql(
             "SELECT id, org_id, email, token_hash, invited_by, status, expires_at, accepted_at, created_at, updated_at, version FROM invitation WHERE token_hash = ?",
         );
@@ -406,7 +405,11 @@ impl ApplicationRepository for SqlStore {
     fn list(&self, tenant: &TenantContext) -> Result<Vec<Application>, DomainError> {
         let sql = self.sql("SELECT id, org_id, slug, name, kind, first_party, status, created_at, updated_at, version FROM application WHERE org_id = ? ORDER BY created_at, id");
         self.block_on(async {
-            let rows = sqlx::query(&sql).bind(tenant.organization_id().as_str()).fetch_all(&self.pool).await.map_err(map_db_error)?;
+            let rows = sqlx::query(&sql)
+                .bind(tenant.organization_id().as_str())
+                .fetch_all(&self.pool)
+                .await
+                .map_err(map_db_error)?;
             rows.iter().map(map_application).collect()
         })
     }
@@ -503,19 +506,33 @@ impl OAuthClientRepository for SqlStore {
         let sql = self.sql("SELECT id, org_id, application_id, client_id, name, client_type, token_endpoint_auth_method, secret_hash, require_pkce, status, created_at, updated_at, version FROM oauth_client WHERE org_id = ? ORDER BY created_at, id");
         let redirect_sql = self.sql("SELECT redirect_uri AS value FROM oauth_client_redirect_uri WHERE client_id = ? ORDER BY position");
         let post_logout_sql = self.sql("SELECT redirect_uri AS value FROM oauth_client_post_logout_redirect_uri WHERE client_id = ? ORDER BY position");
-        let scope_sql = self.sql("SELECT scope AS value FROM oauth_client_scope WHERE client_id = ? ORDER BY position");
+        let scope_sql = self.sql(
+            "SELECT scope AS value FROM oauth_client_scope WHERE client_id = ? ORDER BY position",
+        );
         let grant_sql = self.sql("SELECT grant_type AS value FROM oauth_client_grant_type WHERE client_id = ? ORDER BY position");
         self.block_on(async {
             let mut tx = self.pool.begin().await.map_err(map_db_error)?;
-            let rows = sqlx::query(&sql).bind(tenant.organization_id().as_str()).fetch_all(&mut *tx).await.map_err(map_db_error)?;
+            let rows = sqlx::query(&sql)
+                .bind(tenant.organization_id().as_str())
+                .fetch_all(&mut *tx)
+                .await
+                .map_err(map_db_error)?;
             let mut result = Vec::with_capacity(rows.len());
             for row in &rows {
                 let internal_id = stored_id::<OAuthClientEntity>(row, "id")?;
-                let redirect_uris = fetch_strings(&mut tx, &redirect_sql, internal_id.as_str()).await?;
-                let post_logout = fetch_strings(&mut tx, &post_logout_sql, internal_id.as_str()).await?;
+                let redirect_uris =
+                    fetch_strings(&mut tx, &redirect_sql, internal_id.as_str()).await?;
+                let post_logout =
+                    fetch_strings(&mut tx, &post_logout_sql, internal_id.as_str()).await?;
                 let scopes = fetch_strings(&mut tx, &scope_sql, internal_id.as_str()).await?;
                 let grants = fetch_strings(&mut tx, &grant_sql, internal_id.as_str()).await?;
-                result.push(map_oauth_client(row, redirect_uris, post_logout, scopes, grants)?);
+                result.push(map_oauth_client(
+                    row,
+                    redirect_uris,
+                    post_logout,
+                    scopes,
+                    grants,
+                )?);
             }
             tx.commit().await.map_err(map_db_error)?;
             Ok(result)
@@ -737,7 +754,7 @@ impl OneTimeTokenRepository for SqlStore {
                 .fetch_optional(&self.pool)
                 .await
                 .map_err(map_db_error)?;
-            row.as_ref().map(|row| map_one_time_token(row)).transpose()
+            row.as_ref().map(map_one_time_token).transpose()
         })
     }
 
@@ -777,9 +794,8 @@ impl OneTimeTokenRepository for SqlStore {
         id: &Id<OneTimeTokenEntity>,
         now: Timestamp,
     ) -> Result<WriteOutcome, DomainError> {
-        let sql = self.sql(
-            "UPDATE one_time_token SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL",
-        );
+        let sql = self
+            .sql("UPDATE one_time_token SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL");
         self.block_on(async {
             let result = sqlx::query(&sql)
                 .bind(db_timestamp(now)?)
@@ -1097,9 +1113,8 @@ impl ConsentRepository for SqlStore {
         let sql = self.sql(
             "SELECT id, org_id, user_id, client_id, created_at, updated_at, revoked_at, version FROM consent WHERE user_id = ? ORDER BY created_at, id",
         );
-        let scopes_sql = self.sql(
-            "SELECT scope AS value FROM consent_scope WHERE consent_id = ? ORDER BY position",
-        );
+        let scopes_sql = self
+            .sql("SELECT scope AS value FROM consent_scope WHERE consent_id = ? ORDER BY position");
         self.block_on(async {
             let rows = sqlx::query(&sql)
                 .bind(user_id.as_str())
@@ -1429,10 +1444,7 @@ impl SystemAdministratorRepository for SqlStore {
         })
     }
 
-    fn insert(
-        &self,
-        admin: &SystemAdministrator,
-    ) -> Result<WriteOutcome, DomainError> {
+    fn insert(&self, admin: &SystemAdministrator) -> Result<WriteOutcome, DomainError> {
         let sql = self.sql(
             "INSERT INTO system_administrator (id, user_id, created_by, status, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?)",
         );
@@ -1495,7 +1507,6 @@ impl SystemAdministratorRepository for SqlStore {
     }
 }
 
-
 impl RateLimiter for SqlStore {
     fn check(
         &self,
@@ -1531,7 +1542,7 @@ impl RateLimiter for SqlStore {
         let count: i64 = row.get("count");
         let expires: i64 = row.get("expires_at");
         if count as u32 > limit {
-            let retry = ((expires - now_ms).max(0) as u64 + 999) / 1000;
+            let retry = ((expires - now_ms).max(0) as u64).div_ceil(1000);
             return Err(RateLimitExceeded {
                 retry_after_secs: retry.max(1),
             });
@@ -1552,12 +1563,15 @@ impl RateLimiter for SqlStore {
     }
 }
 
-
 impl RecoveryCodeRepository for SqlStore {
     fn list_for_user(&self, user_id: &Id<UserEntity>) -> Result<Vec<RecoveryCode>, DomainError> {
         let sql = self.sql("SELECT id, user_id, code_hash, used_at, created_at, version FROM recovery_code WHERE user_id = ? ORDER BY created_at, id");
         self.block_on(async {
-            let rows = sqlx::query(&sql).bind(user_id.as_str()).fetch_all(&self.pool).await.map_err(map_db_error)?;
+            let rows = sqlx::query(&sql)
+                .bind(user_id.as_str())
+                .fetch_all(&self.pool)
+                .await
+                .map_err(map_db_error)?;
             rows.iter().map(map_recovery_code).collect()
         })
     }
@@ -1577,7 +1591,11 @@ impl RecoveryCodeRepository for SqlStore {
             Ok(WriteOutcome::Applied)
         })
     }
-    fn mark_used(&self, id: &Id<RecoveryCodeEntity>, now: Timestamp) -> Result<WriteOutcome, DomainError> {
+    fn mark_used(
+        &self,
+        id: &Id<RecoveryCodeEntity>,
+        now: Timestamp,
+    ) -> Result<WriteOutcome, DomainError> {
         let sql = self.sql("UPDATE recovery_code SET used_at = ?, version = version + 1 WHERE id = ? AND used_at IS NULL");
         self.block_on(async {
             let result = sqlx::query(&sql)
@@ -1586,13 +1604,21 @@ impl RecoveryCodeRepository for SqlStore {
                 .execute(&self.pool)
                 .await
                 .map_err(map_db_error)?;
-            if result.rows_affected() == 0 { Ok(WriteOutcome::NotFound) } else { Ok(WriteOutcome::Applied) }
+            if result.rows_affected() == 0 {
+                Ok(WriteOutcome::NotFound)
+            } else {
+                Ok(WriteOutcome::Applied)
+            }
         })
     }
     fn delete_for_user(&self, user_id: &Id<UserEntity>) -> Result<WriteOutcome, DomainError> {
         let sql = self.sql("DELETE FROM recovery_code WHERE user_id = ?");
         self.block_on(async {
-            sqlx::query(&sql).bind(user_id.as_str()).execute(&self.pool).await.map_err(map_db_error)?;
+            sqlx::query(&sql)
+                .bind(user_id.as_str())
+                .execute(&self.pool)
+                .await
+                .map_err(map_db_error)?;
             Ok(WriteOutcome::Applied)
         })
     }

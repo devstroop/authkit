@@ -47,7 +47,9 @@ impl SystemAdministrator {
         version: u64,
     ) -> Result<Self, DomainError> {
         if updated_at < created_at {
-            return Err(DomainError::invalid("system administrator updated_at must not precede created_at"));
+            return Err(DomainError::invalid(
+                "system administrator updated_at must not precede created_at",
+            ));
         }
         Ok(Self {
             id,
@@ -102,9 +104,14 @@ impl SystemAdministrator {
     }
 }
 
-pub fn ensure_system_admin_remains(active_count: u64, target_is_active: bool) -> Result<(), DomainError> {
+pub fn ensure_system_admin_remains(
+    active_count: u64,
+    target_is_active: bool,
+) -> Result<(), DomainError> {
     if target_is_active && active_count <= 1 {
-        return Err(DomainError::conflict("the last active system administrator cannot be disabled"));
+        return Err(DomainError::conflict(
+            "the last active system administrator cannot be disabled",
+        ));
     }
     Ok(())
 }

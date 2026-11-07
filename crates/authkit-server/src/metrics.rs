@@ -1,8 +1,8 @@
 //! Lightweight Prometheus-style metrics.
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use axum::extract::Request;
@@ -38,7 +38,9 @@ pub async fn middleware(request: Request, next: Next) -> Response {
     let started = Instant::now();
     let response = next.run(request).await;
     let elapsed = started.elapsed().as_millis() as u64;
-    metrics.latency_ms_total.fetch_add(elapsed, Ordering::Relaxed);
+    metrics
+        .latency_ms_total
+        .fetch_add(elapsed, Ordering::Relaxed);
     metrics.latency_observations.fetch_add(1, Ordering::Relaxed);
     match response.status().as_u16() {
         200..=299 => {
@@ -90,7 +92,10 @@ pub fn render() -> String {
 pub async fn handler() -> Response {
     (
         axum::http::StatusCode::OK,
-        [(axum::http::header::CONTENT_TYPE, "text/plain; version=0.0.4")],
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "text/plain; version=0.0.4",
+        )],
         render(),
     )
         .into_response()

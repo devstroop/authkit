@@ -1,10 +1,11 @@
 //! Password reset and email verification flows (dev email delivery is logged).
 
-use authkit_core::domain::{Email, OneTimeToken, OneTimeTokenPurpose, WriteOutcome};
-use authkit_core::domain::id::OneTimeTokenEntity;
-use authkit_core::ports::{
-    RateLimiter,CredentialRepository, IdGenerator, OneTimeTokenRepository, UserRepository};
 use askama::Template;
+use authkit_core::domain::id::OneTimeTokenEntity;
+use authkit_core::domain::{Email, OneTimeToken, OneTimeTokenPurpose, WriteOutcome};
+use authkit_core::ports::{
+    CredentialRepository, IdGenerator, OneTimeTokenRepository, RateLimiter, UserRepository,
+};
 use axum::extract::{Query, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
@@ -47,7 +48,10 @@ pub(crate) async fn request_reset_page(
     let body = template.render().unwrap_or_default();
     (
         StatusCode::OK,
-        [(header::CONTENT_TYPE, "text/html; charset=utf-8"), (header::CACHE_CONTROL, "no-store")],
+        [
+            (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
         body,
     )
         .into_response()
@@ -62,11 +66,20 @@ pub(crate) async fn request_reset_submit(
     for (k, v) in url::form_urlencoded::parse(&body) {
         params.insert(k.into_owned(), v.into_owned());
     }
-    let trusted = std::env::var("AUTHKIT_TRUSTED_PROXIES").unwrap_or_default()
-        .split(',').filter_map(|v| v.trim().parse().ok()).collect::<Vec<_>>();
-    let trusted = if trusted.is_empty() && std::env::var("AUTHKIT_TRUSTED_PROXIES").unwrap_or_default().contains('*') {
+    let trusted = std::env::var("AUTHKIT_TRUSTED_PROXIES")
+        .unwrap_or_default()
+        .split(',')
+        .filter_map(|v| v.trim().parse().ok())
+        .collect::<Vec<_>>();
+    let trusted = if trusted.is_empty()
+        && std::env::var("AUTHKIT_TRUSTED_PROXIES")
+            .unwrap_or_default()
+            .contains('*')
+    {
         vec!["0.0.0.0".parse().unwrap()]
-    } else { trusted };
+    } else {
+        trusted
+    };
     let ip = client_ip(&headers, None, &trusted);
     if let Some(sessions) = state.sessions.as_ref() {
         let store = sessions.store().clone();
@@ -75,9 +88,9 @@ pub(crate) async fn request_reset_submit(
         let result = tokio::task::spawn_blocking({
             let store = store.clone();
             let key = key.clone();
-            let now = now;
             move || RateLimiter::check(store.as_ref(), &key, 20, 3600, now)
-        }).await;
+        })
+        .await;
         if let Ok(Err(err)) = result {
             return rate_limited_response(err.retry_after_secs);
         }
@@ -91,9 +104,9 @@ pub(crate) async fn request_reset_submit(
             let result = tokio::task::spawn_blocking({
                 let store = store.clone();
                 let key = key.clone();
-                let now = now;
                 move || RateLimiter::check(store.as_ref(), &key, 5, 900, now)
-            }).await;
+            })
+            .await;
             if let Ok(Err(err)) = result {
                 return rate_limited_response(err.retry_after_secs);
             }
@@ -123,7 +136,7 @@ pub(crate) async fn request_reset_submit(
                 .sessions
                 .as_ref()
                 .map(|s| s.clock().now())
-                .unwrap_or_else(|| authkit_server_now());
+                .unwrap_or_else(authkit_server_now);
             let expires = authkit_core::domain::time::Timestamp::from_millis(
                 now.as_millis().saturating_add(15 * 60 * 1000),
             );
@@ -161,7 +174,10 @@ pub(crate) async fn request_reset_submit(
         }
     }
     // Generic response to avoid account enumeration.
-    html_page("Reset password", "<p>If an account exists, a reset link has been sent.</p>")
+    html_page(
+        "Reset password",
+        "<p>If an account exists, a reset link has been sent.</p>",
+    )
 }
 
 #[derive(Template)]
@@ -195,7 +211,10 @@ pub(crate) async fn confirm_reset_page(
     let body = template.render().unwrap_or_default();
     (
         StatusCode::OK,
-        [(header::CONTENT_TYPE, "text/html; charset=utf-8"), (header::CACHE_CONTROL, "no-store")],
+        [
+            (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
         body,
     )
         .into_response()
@@ -229,7 +248,11 @@ pub(crate) async fn confirm_reset_submit(
         let store = store.clone();
         let hash = hash.clone();
         move || {
-            OneTimeTokenRepository::find_by_hash(store.as_ref(), &hash, OneTimeTokenPurpose::PasswordReset)
+            OneTimeTokenRepository::find_by_hash(
+                store.as_ref(),
+                &hash,
+                OneTimeTokenPurpose::PasswordReset,
+            )
         }
     })
     .await;
@@ -283,10 +306,7 @@ pub(crate) async fn confirm_reset_submit(
     let outcome = if let Some(cred) = password_cred {
         let original_version = cred.version();
         let mut updated = cred;
-        if updated
-            .replace_password(new_verifier, now)
-            .is_err()
-        {
+        if updated.replace_password(new_verifier, now).is_err() {
             return bad_request();
         }
         tokio::task::spawn_blocking(move || {
@@ -304,7 +324,8 @@ pub(crate) async fn confirm_reset_submit(
             now,
         );
         let sc = store.clone();
-        tokio::task::spawn_blocking(move || CredentialRepository::insert(sc.as_ref(), &credential)).await
+        tokio::task::spawn_blocking(move || CredentialRepository::insert(sc.as_ref(), &credential))
+            .await
     };
 
     if outcome.ok().and_then(|r| r.ok()) != Some(WriteOutcome::Applied) {
@@ -319,7 +340,10 @@ pub(crate) async fn confirm_reset_submit(
     })
     .await;
 
-    html_page("Password reset", "<p>Your password has been reset. You can now sign in.</p>")
+    html_page(
+        "Password reset",
+        "<p>Your password has been reset. You can now sign in.</p>",
+    )
 }
 
 #[derive(askama::Template)]
@@ -328,15 +352,22 @@ struct RequestVerifyTemplate {
     title: &'static str,
 }
 
-pub(crate) async fn request_verify_page(session: Option<axum::extract::Extension<crate::http::session::SessionContext>>) -> Response {
+pub(crate) async fn request_verify_page(
+    session: Option<axum::extract::Extension<crate::http::session::SessionContext>>,
+) -> Response {
     if session.is_none() {
         return redirect("/login");
     }
-    let template = RequestVerifyTemplate { title: "Verify email" };
+    let template = RequestVerifyTemplate {
+        title: "Verify email",
+    };
     let body = template.render().unwrap_or_default();
     (
         StatusCode::OK,
-        [(header::CONTENT_TYPE, "text/html; charset=utf-8"), (header::CACHE_CONTROL, "no-store")],
+        [
+            (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
         body,
     )
         .into_response()
@@ -354,22 +385,36 @@ pub(crate) async fn request_verify_submit(
         Some(s) => s,
         None => return unavailable(),
     };
-    let trusted = std::env::var("AUTHKIT_TRUSTED_PROXIES").unwrap_or_default()
-        .split(',').filter_map(|v| v.trim().parse().ok()).collect::<Vec<_>>();
-    let trusted = if trusted.is_empty() && std::env::var("AUTHKIT_TRUSTED_PROXIES").unwrap_or_default().contains('*') {
+    let trusted = std::env::var("AUTHKIT_TRUSTED_PROXIES")
+        .unwrap_or_default()
+        .split(',')
+        .filter_map(|v| v.trim().parse().ok())
+        .collect::<Vec<_>>();
+    let trusted = if trusted.is_empty()
+        && std::env::var("AUTHKIT_TRUSTED_PROXIES")
+            .unwrap_or_default()
+            .contains('*')
+    {
         vec!["0.0.0.0".parse().unwrap()]
-    } else { trusted };
+    } else {
+        trusted
+    };
     let ip = client_ip(&headers, None, &trusted);
     let store = sessions.store().clone();
     let now = sessions.clock().now();
-    let user_key = format!("verify:user:{}",
-        session.as_ref().map(|s| s.0.session().user_id().as_str().to_owned()).unwrap_or_else(|| "unknown".to_owned()));
+    let user_key = format!(
+        "verify:user:{}",
+        session
+            .as_ref()
+            .map(|s| s.0.session().user_id().as_str().to_owned())
+            .unwrap_or_else(|| "unknown".to_owned())
+    );
     let user_result = tokio::task::spawn_blocking({
         let store = store.clone();
         let user_key = user_key.clone();
-        let now = now;
         move || RateLimiter::check(store.as_ref(), &user_key, 5, 3600, now)
-    }).await;
+    })
+    .await;
     if let Ok(Err(err)) = user_result {
         return rate_limited_response(err.retry_after_secs);
     }
@@ -377,9 +422,9 @@ pub(crate) async fn request_verify_submit(
     let ip_result = tokio::task::spawn_blocking({
         let store = store.clone();
         let ip_key = ip_key.clone();
-        let now = now;
         move || RateLimiter::check(store.as_ref(), &ip_key, 20, 3600, now)
-    }).await;
+    })
+    .await;
     if let Ok(Err(err)) = ip_result {
         return rate_limited_response(err.retry_after_secs);
     }
@@ -453,7 +498,10 @@ pub(crate) async fn verify_email_page(Query(q): Query<TokenQuery>) -> Response {
     let body = template.render().unwrap_or_default();
     (
         StatusCode::OK,
-        [(header::CONTENT_TYPE, "text/html; charset=utf-8"), (header::CACHE_CONTROL, "no-store")],
+        [
+            (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
         body,
     )
         .into_response()
@@ -468,11 +516,20 @@ pub(crate) async fn verify_email_confirm(
     for (k, v) in url::form_urlencoded::parse(&body) {
         params.insert(k.into_owned(), v.into_owned());
     }
-    let trusted = std::env::var("AUTHKIT_TRUSTED_PROXIES").unwrap_or_default()
-        .split(',').filter_map(|v| v.trim().parse().ok()).collect::<Vec<_>>();
-    let trusted = if trusted.is_empty() && std::env::var("AUTHKIT_TRUSTED_PROXIES").unwrap_or_default().contains('*') {
+    let trusted = std::env::var("AUTHKIT_TRUSTED_PROXIES")
+        .unwrap_or_default()
+        .split(',')
+        .filter_map(|v| v.trim().parse().ok())
+        .collect::<Vec<_>>();
+    let trusted = if trusted.is_empty()
+        && std::env::var("AUTHKIT_TRUSTED_PROXIES")
+            .unwrap_or_default()
+            .contains('*')
+    {
         vec!["0.0.0.0".parse().unwrap()]
-    } else { trusted };
+    } else {
+        trusted
+    };
     let ip = client_ip(&headers, None, &trusted);
     if let Some(sessions) = state.sessions.as_ref() {
         let store = sessions.store().clone();
@@ -481,9 +538,9 @@ pub(crate) async fn verify_email_confirm(
         let result = tokio::task::spawn_blocking({
             let store = store.clone();
             let key = key.clone();
-            let now = now;
             move || RateLimiter::check(store.as_ref(), &key, 20, 300, now)
-        }).await;
+        })
+        .await;
         if let Ok(Err(err)) = result {
             return rate_limited_response(err.retry_after_secs);
         }
@@ -505,7 +562,13 @@ pub(crate) async fn verify_email_confirm(
     let found = tokio::task::spawn_blocking({
         let store = store.clone();
         let hash = hash.clone();
-        move || OneTimeTokenRepository::find_by_hash(store.as_ref(), &hash, OneTimeTokenPurpose::EmailVerification)
+        move || {
+            OneTimeTokenRepository::find_by_hash(
+                store.as_ref(),
+                &hash,
+                OneTimeTokenPurpose::EmailVerification,
+            )
+        }
     })
     .await;
     let token = match found {
@@ -560,7 +623,13 @@ fn redirect(location: &str) -> Response {
     match axum::http::HeaderValue::from_str(location) {
         Ok(location) => (
             StatusCode::SEE_OTHER,
-            [(header::LOCATION, location), (header::CACHE_CONTROL, axum::http::HeaderValue::from_static("no-store"))],
+            [
+                (header::LOCATION, location),
+                (
+                    header::CACHE_CONTROL,
+                    axum::http::HeaderValue::from_static("no-store"),
+                ),
+            ],
         )
             .into_response(),
         Err(_) => unavailable(),
@@ -575,7 +644,10 @@ fn html_page(title: &str, body: &str) -> Response {
     );
     (
         StatusCode::OK,
-        [(header::CONTENT_TYPE, "text/html; charset=utf-8"), (header::CACHE_CONTROL, "no-store")],
+        [
+            (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
         html,
     )
         .into_response()
@@ -599,10 +671,6 @@ fn unavailable() -> Response {
         .into_response()
 }
 
-fn escape(value: &str) -> String {
-    value.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
-}
-
 fn random_token() -> String {
     use rand_core::{OsRng, RngCore};
     let mut bytes = [0u8; 32];
@@ -617,8 +685,8 @@ fn hash_token(value: &str, pepper: &[u8]) -> authkit_core::domain::SecretHash {
     let mut mac = Hmac::<Sha256>::new_from_slice(pepper).expect("hmac");
     mac.update(b"authkit.reset.v1\0");
     mac.update(value.as_bytes());
-    let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .encode(mac.finalize().into_bytes());
+    let encoded =
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes());
     authkit_core::domain::SecretHash::parse(format!("hmac-sha256:{encoded}")).expect("hash")
 }
 
@@ -635,7 +703,9 @@ fn rate_limited_response(retry_after: u64) -> Response {
     )
         .into_response();
     if let Ok(value) = axum::http::HeaderValue::from_str(&retry_after.to_string()) {
-        response.headers_mut().insert(axum::http::header::RETRY_AFTER, value);
+        response
+            .headers_mut()
+            .insert(axum::http::header::RETRY_AFTER, value);
     }
     response
 }

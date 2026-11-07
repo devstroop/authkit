@@ -1,20 +1,22 @@
 //! System administration pages.
 
-use authkit_core::domain::{Credential, CredentialKind, Email, Id, SystemAdministrator, SystemAdministratorStatus};
-use authkit_core::domain::id::{CredentialEntity, SystemAdministratorEntity};
-use authkit_core::ports::{CredentialRepository, IdGenerator, SystemAdministratorRepository, UserRepository};
-use authkit_core::domain::WriteOutcome;
 use askama::Template;
+use authkit_core::domain::WriteOutcome;
+use authkit_core::domain::id::{CredentialEntity, SystemAdministratorEntity};
+use authkit_core::domain::{Credential, CredentialKind, Email, Id, SystemAdministrator};
+use authkit_core::ports::{
+    CredentialRepository, IdGenerator, SystemAdministratorRepository, UserRepository,
+};
 use axum::extract::{Extension, Path, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 
+use crate::config::Config;
 use crate::http::routes::AppState;
 use crate::http::session::SessionContext;
 use crate::password::verify_password;
 use crate::totp;
 use authkit_core::domain::SessionAudience;
-use crate::config::Config;
 
 #[derive(Template)]
 #[template(path = "pages/admin_login.html")]
@@ -23,7 +25,9 @@ struct AdminLoginTemplate {
 }
 
 pub(crate) async fn login_page() -> Response {
-    let template = AdminLoginTemplate { title: "Admin sign in" };
+    let template = AdminLoginTemplate {
+        title: "Admin sign in",
+    };
     let body = template.render().unwrap_or_default();
     html_ok(&body)
 }
@@ -63,9 +67,9 @@ pub(crate) async fn login_submit(
         let user_id = user.id().clone();
         move || {
             let creds = CredentialRepository::list_for_user(store.as_ref(), &user_id)?;
-            Ok::<_, authkit_core::domain::DomainError>(
-                creds.into_iter().find(|c| c.kind() == authkit_core::domain::CredentialKind::Password && c.is_active()),
-            )
+            Ok::<_, authkit_core::domain::DomainError>(creds.into_iter().find(|c| {
+                c.kind() == authkit_core::domain::CredentialKind::Password && c.is_active()
+            }))
         }
     })
     .await
@@ -95,11 +99,14 @@ pub(crate) async fn login_submit(
     if !admin.is_active() {
         return unauthorized();
     }
-    let created = match sessions.create(user.id().clone(), None, SessionAudience::Admin, now).await {
+    let created = match sessions
+        .create(user.id().clone(), None, SessionAudience::Admin, now)
+        .await
+    {
         Ok(v) => v,
         Err(_) => return unavailable(),
     };
-    let cookie = sessions.set_cookie(&created.session(), created.token(), now);
+    let cookie = sessions.set_cookie(created.session(), created.token(), now);
     let mut response = redirect("/admin");
     append_cookie(&mut response, cookie);
     response
@@ -193,14 +200,24 @@ pub(crate) async fn dashboard(
         let email = tokio::task::spawn_blocking({
             let store = store.clone();
             let uid = a.user_id().clone();
-            move || UserRepository::find_by_id(store.as_ref(), &uid).ok().flatten().map(|u| u.email().as_str().to_owned()).unwrap_or_default()
+            move || {
+                UserRepository::find_by_id(store.as_ref(), &uid)
+                    .ok()
+                    .flatten()
+                    .map(|u| u.email().as_str().to_owned())
+                    .unwrap_or_default()
+            }
         })
         .await
         .unwrap_or_default();
         admin_views.push(AdminView {
             email,
             id: a.id().as_str().to_owned(),
-            status: if a.is_active() { "active".to_owned() } else { "disabled".to_owned() },
+            status: if a.is_active() {
+                "active".to_owned()
+            } else {
+                "disabled".to_owned()
+            },
             active: a.is_active(),
         });
     }
@@ -212,7 +229,11 @@ pub(crate) async fn dashboard(
         .map(|k| KeyView {
             kid: k.kid().to_owned(),
             state: format!("{:?}", k.state()),
-            published: if k.publish_until().is_some() { "published".to_owned() } else { String::new() },
+            published: if k.publish_until().is_some() {
+                "published".to_owned()
+            } else {
+                String::new()
+            },
         })
         .collect();
 
@@ -229,7 +250,10 @@ pub(crate) async fn dashboard(
         .map(|e| EventView {
             occurred_at: e.occurred_at().as_millis() as i64,
             action: e.action().as_str().to_owned(),
-            org: e.organization_id().map(|o| o.as_str().to_owned()).unwrap_or_else(|| "-".to_owned()),
+            org: e
+                .organization_id()
+                .map(|o| o.as_str().to_owned())
+                .unwrap_or_else(|| "-".to_owned()),
         })
         .collect();
 
@@ -265,7 +289,7 @@ pub(crate) async fn grant_admin(
     .await
     .ok()
     .and_then(|r| r.ok().flatten());
-    if caller.map(|a| a.is_active()).unwrap_or(false) == false {
+    if !caller.map(|a| a.is_active()).unwrap_or(false) {
         return forbidden();
     }
     let mut params = parse_form(&body);
@@ -288,7 +312,9 @@ pub(crate) async fn grant_admin(
     let now = sessions.clock().now();
     let created_by = session.session().user_id().clone();
     let admin = SystemAdministrator::new(
-        crate::session::SecureIdGenerator.generate::<SystemAdministratorEntity>().expect("id"),
+        crate::session::SecureIdGenerator
+            .generate::<SystemAdministratorEntity>()
+            .expect("id"),
         target_user.id().clone(),
         Some(created_by),
         now,
@@ -299,7 +325,12 @@ pub(crate) async fn grant_admin(
         move || SystemAdministratorRepository::insert(store.as_ref(), &admin)
     })
     .await;
-    if outcome.ok().and_then(|r| r.ok()).map(|o| o.is_applied()).unwrap_or(false) {
+    if outcome
+        .ok()
+        .and_then(|r| r.ok())
+        .map(|o| o.is_applied())
+        .unwrap_or(false)
+    {
         redirect("/admin")
     } else {
         unavailable()
@@ -328,7 +359,7 @@ pub(crate) async fn disable_admin(
     .await
     .ok()
     .and_then(|r| r.ok().flatten());
-    if caller.map(|a| a.is_active()).unwrap_or(false) == false {
+    if !caller.map(|a| a.is_active()).unwrap_or(false) {
         return forbidden();
     }
     let parsed_id = match Id::<SystemAdministratorEntity>::parse(&id) {
@@ -339,7 +370,6 @@ pub(crate) async fn disable_admin(
     let outcome = tokio::task::spawn_blocking({
         let store = store.clone();
         let parsed_id = parsed_id.clone();
-        let now = now;
         move || {
             let admin = SystemAdministratorRepository::find_by_id(store.as_ref(), &parsed_id)?;
             let Some(mut admin) = admin else {
@@ -356,7 +386,12 @@ pub(crate) async fn disable_admin(
         }
     })
     .await;
-    if outcome.ok().and_then(|r| r.ok()).map(|o| o.is_applied()).unwrap_or(false) {
+    if outcome
+        .ok()
+        .and_then(|r| r.ok())
+        .map(|o| o.is_applied())
+        .unwrap_or(false)
+    {
         redirect("/admin")
     } else {
         unavailable()
@@ -384,7 +419,7 @@ pub(crate) async fn rotate_signing_key(
     .await
     .ok()
     .and_then(|r| r.ok().flatten());
-    if caller.map(|a| a.is_active()).unwrap_or(false) == false {
+    if !caller.map(|a| a.is_active()).unwrap_or(false) {
         return forbidden();
     }
     let config = match Config::from_env() {
@@ -403,25 +438,27 @@ pub(crate) async fn logout(
     session: Option<Extension<SessionContext>>,
     _body: axum::body::Bytes,
 ) -> Response {
-    if let Some(Extension(session)) = session {
-        if let Some(sessions) = state.sessions.as_ref() {
-            let store = sessions.store().clone();
-            let sid = session.session().id().clone();
-            let now = sessions.clock().now();
-            let _ = tokio::task::spawn_blocking(move || {
-                if let Some(mut s) = authkit_core::ports::SessionRepository::find_by_id(store.as_ref(), &sid)? {
-                    let expected = s.version();
-                    s.revoke(now);
-                    let _ = authkit_core::ports::SessionRepository::update(store.as_ref(), &s, expected);
-                }
-                Ok::<_, authkit_core::domain::DomainError>(())
-            })
-            .await;
-        }
+    if let Some(Extension(session)) = session
+        && let Some(sessions) = state.sessions.as_ref()
+    {
+        let store = sessions.store().clone();
+        let sid = session.session().id().clone();
+        let now = sessions.clock().now();
+        let _ = tokio::task::spawn_blocking(move || {
+            if let Some(mut s) =
+                authkit_core::ports::SessionRepository::find_by_id(store.as_ref(), &sid)?
+            {
+                let expected = s.version();
+                s.revoke(now);
+                let _ =
+                    authkit_core::ports::SessionRepository::update(store.as_ref(), &s, expected);
+            }
+            Ok::<_, authkit_core::domain::DomainError>(())
+        })
+        .await;
     }
     redirect("/admin/login")
 }
-
 
 pub(crate) async fn mfa_enroll(
     State(state): State<AppState>,
@@ -445,7 +482,9 @@ pub(crate) async fn mfa_enroll(
     };
     let now = sessions.clock().now();
     let credential = Credential::totp(
-        crate::session::SecureIdGenerator.generate::<CredentialEntity>().expect("id"),
+        crate::session::SecureIdGenerator
+            .generate::<CredentialEntity>()
+            .expect("id"),
         user_id.clone(),
         encrypted,
         authkit_core::domain::credential::TotpConfig::default(),
@@ -494,7 +533,10 @@ pub(crate) async fn mfa_verify(
     .ok()
     .and_then(|r| r.ok())
     .unwrap_or_default();
-    let mut cred = match creds.into_iter().find(|c| c.kind() == CredentialKind::Totp && c.is_active()) {
+    let mut cred = match creds
+        .into_iter()
+        .find(|c| c.kind() == CredentialKind::Totp && c.is_active())
+    {
         Some(c) => c,
         None => return bad_request(),
     };
@@ -543,7 +585,10 @@ fn redirect(location: &str) -> Response {
     match HeaderValue::from_str(location) {
         Ok(location) => (
             StatusCode::SEE_OTHER,
-            [(header::LOCATION, location), (header::CACHE_CONTROL, HeaderValue::from_static("no-store"))],
+            [
+                (header::LOCATION, location),
+                (header::CACHE_CONTROL, HeaderValue::from_static("no-store")),
+            ],
         )
             .into_response(),
         Err(_) => unavailable(),
@@ -589,7 +634,10 @@ fn forbidden() -> Response {
 fn html_ok(body: &str) -> Response {
     (
         StatusCode::OK,
-        [(header::CONTENT_TYPE, "text/html; charset=utf-8"), (header::CACHE_CONTROL, "no-store")],
+        [
+            (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
         body.to_owned(),
     )
         .into_response()

@@ -1,19 +1,26 @@
 //! Organization administration pages.
 
-use authkit_core::domain::{
-    Application, ApplicationKind, ClientId, ClientType, DisplayName, DomainError, Email, GrantType, Id, Membership, OAuthClient, OAuthClientSpec, Permission,
-    PermissionSet, RedirectUri, Role, RoleBinding, Scope, ScopeSet, Slug, TenantContext, TokenEndpointAuthMethod, WriteOutcome,
-};
-use authkit_core::domain::id::{InvitationEntity, OrganizationEntity, RoleBindingEntity, RoleEntity, UserEntity};
-use base64::Engine;
-use authkit_core::domain::invitation::Invitation;
-use authkit_core::ports::{ApplicationRepository, IdGenerator, InvitationRepository, MembershipRepository, OAuthClientRepository, OrganizationRepository, RoleBindingRepository, RoleRepository, UserRepository};
-use authkit_core::application::CreateOrganization;
 use askama::Template;
+use authkit_core::application::CreateOrganization;
+use authkit_core::domain::id::{
+    InvitationEntity, OrganizationEntity, RoleBindingEntity, RoleEntity, UserEntity,
+};
+use authkit_core::domain::invitation::Invitation;
+use authkit_core::domain::{
+    ApplicationKind, ClientId, ClientType, DisplayName, DomainError, Email, GrantType, Id,
+    Membership, OAuthClient, OAuthClientSpec, Permission, PermissionSet, RedirectUri, Role,
+    RoleBinding, Scope, ScopeSet, Slug, TenantContext, TokenEndpointAuthMethod, WriteOutcome,
+};
+use authkit_core::ports::{
+    ApplicationRepository, IdGenerator, InvitationRepository, MembershipRepository,
+    OAuthClientRepository, OrganizationRepository, RoleBindingRepository, RoleRepository,
+    UserRepository,
+};
 use axum::extract::{Extension, Path, State};
 use axum::http::HeaderMap;
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
+use base64::Engine;
 
 use crate::http::routes::AppState;
 use crate::http::session::SessionContext;
@@ -179,7 +186,9 @@ pub(crate) async fn members_page(
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
     let csrf = sessions.csrf_token(session.session());
-    if !can_manage_members(&store, &user_id, &org_id) && !can_read_members(&store, &user_id, &org_id) {
+    if !can_manage_members(&store, &user_id, &org_id)
+        && !can_read_members(&store, &user_id, &org_id)
+    {
         return forbidden();
     }
     let tenant = TenantContext::new(org_id.clone());
@@ -198,7 +207,13 @@ pub(crate) async fn members_page(
         let email = tokio::task::spawn_blocking({
             let store = store.clone();
             let uid = m.user_id().clone();
-            move || UserRepository::find_by_id(store.as_ref(), &uid).ok().flatten().map(|u| u.email().as_str().to_owned()).unwrap_or_default()
+            move || {
+                UserRepository::find_by_id(store.as_ref(), &uid)
+                    .ok()
+                    .flatten()
+                    .map(|u| u.email().as_str().to_owned())
+                    .unwrap_or_default()
+            }
         })
         .await
         .unwrap_or_default();
@@ -420,12 +435,12 @@ pub(crate) async fn create_invitation(
         let token_hash = token_hash.clone();
         let role_id = role_id.clone();
         let user_id = user_id.clone();
-        let now = now;
-        let expires = expires;
         let org_id = org_id_for_task.clone();
         move || {
             let invitation = Invitation::new(
-                SecureIdGenerator.generate::<InvitationEntity>().expect("id"),
+                SecureIdGenerator
+                    .generate::<InvitationEntity>()
+                    .expect("id"),
                 org_id.clone(),
                 email,
                 token_hash,
@@ -483,9 +498,10 @@ pub(crate) async fn revoke_invitation(
         let store = store.clone();
         let tenant = tenant.clone();
         let invitation_id = invitation_id.clone();
-        let now = now;
         move || {
-            if let Some(mut inv) = InvitationRepository::find_by_id(store.as_ref(), &tenant, &invitation_id)? {
+            if let Some(mut inv) =
+                InvitationRepository::find_by_id(store.as_ref(), &tenant, &invitation_id)?
+            {
                 let expected = inv.version();
                 inv.revoke(now)?;
                 InvitationRepository::update(store.as_ref(), &tenant, &inv, expected)
@@ -495,7 +511,12 @@ pub(crate) async fn revoke_invitation(
         }
     })
     .await;
-    if outcome.ok().and_then(|r| r.ok()).map(|o| o.is_applied()).unwrap_or(false) {
+    if outcome
+        .ok()
+        .and_then(|r| r.ok())
+        .map(|o| o.is_applied())
+        .unwrap_or(false)
+    {
         redirect(&format!("/organizations/{}/invitations", org_id.as_str()))
     } else {
         unavailable()
@@ -554,7 +575,13 @@ pub(crate) async fn roles_page(
         .map(|r| RoleView {
             name: r.name().as_str().to_owned(),
             slug: r.slug().as_str().to_owned(),
-            permissions: r.permissions().as_slice().iter().map(|p| p.as_str()).collect::<Vec<_>>().join(", "),
+            permissions: r
+                .permissions()
+                .as_slice()
+                .iter()
+                .map(|p| p.as_str())
+                .collect::<Vec<_>>()
+                .join(", "),
         })
         .collect();
     let can_manage = can_manage_members(&store, &user_id, &org_id);
@@ -616,7 +643,6 @@ pub(crate) async fn create_role(
         let slug = slug.clone();
         let name = name.clone();
         let permission_set = permission_set.clone();
-        let now = now;
         let org_id = org_id_for_task.clone();
         move || {
             let role = Role::custom(
@@ -634,7 +660,12 @@ pub(crate) async fn create_role(
         }
     })
     .await;
-    if result.ok().and_then(|r| r.ok()).map(|o| o.is_applied()).unwrap_or(false) {
+    if result
+        .ok()
+        .and_then(|r| r.ok())
+        .map(|o| o.is_applied())
+        .unwrap_or(false)
+    {
         redirect(&format!("/organizations/{}/roles", org_id.as_str()))
     } else {
         unavailable()
@@ -693,11 +724,12 @@ pub(crate) async fn bind_role(
         let tenant = tenant.clone();
         let role_id = role_id.clone();
         let target_id = target_user.id().clone();
-        let now = now;
         let org_id = org_id_for_task.clone();
         move || {
             let binding = RoleBinding::organization(
-                SecureIdGenerator.generate::<RoleBindingEntity>().expect("id"),
+                SecureIdGenerator
+                    .generate::<RoleBindingEntity>()
+                    .expect("id"),
                 org_id.clone(),
                 role_id,
                 target_id,
@@ -707,13 +739,17 @@ pub(crate) async fn bind_role(
         }
     })
     .await;
-    if outcome.ok().and_then(|r| r.ok()).map(|o| o.is_applied()).unwrap_or(false) {
+    if outcome
+        .ok()
+        .and_then(|r| r.ok())
+        .map(|o| o.is_applied())
+        .unwrap_or(false)
+    {
         redirect(&format!("/organizations/{}/roles", org_id.as_str()))
     } else {
         unavailable()
     }
 }
-
 
 #[derive(askama::Template)]
 #[template(path = "pages/applications.html")]
@@ -737,25 +773,43 @@ pub(crate) async fn applications_page(
     session: Option<Extension<SessionContext>>,
     Path(org_id): Path<String>,
 ) -> Response {
-    let Some(Extension(session)) = session else { return redirect("/login"); };
-    let Some(sessions) = state.sessions.as_ref() else { return unavailable(); };
-    let org_id = match Id::<OrganizationEntity>::parse(&org_id) { Ok(v)=>v, Err(_)=>return bad_request() };
+    let Some(Extension(session)) = session else {
+        return redirect("/login");
+    };
+    let Some(sessions) = state.sessions.as_ref() else {
+        return unavailable();
+    };
+    let org_id = match Id::<OrganizationEntity>::parse(&org_id) {
+        Ok(v) => v,
+        Err(_) => return bad_request(),
+    };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
     let csrf = sessions.csrf_token(session.session());
-    if !can_read_members(&store, &user_id, &org_id) { return forbidden(); }
+    if !can_read_members(&store, &user_id, &org_id) {
+        return forbidden();
+    }
     let tenant = TenantContext::new(org_id.clone());
     let apps = tokio::task::spawn_blocking({
-        let store=store.clone(); let tenant=tenant.clone();
+        let store = store.clone();
+        let tenant = tenant.clone();
         move || ApplicationRepository::list(store.as_ref(), &tenant)
-    }).await.ok().and_then(|r|r.ok()).unwrap_or_default();
+    })
+    .await
+    .ok()
+    .and_then(|r| r.ok())
+    .unwrap_or_default();
     let app_views: Vec<ApplicationView> = apps
         .into_iter()
         .map(|a| ApplicationView {
             name: a.name().as_str().to_owned(),
             slug: a.slug().as_str().to_owned(),
             kind: format!("{:?}", a.kind()),
-            status: if a.is_active() { "active".to_owned() } else { "disabled".to_owned() },
+            status: if a.is_active() {
+                "active".to_owned()
+            } else {
+                "disabled".to_owned()
+            },
         })
         .collect();
     let can_manage = can_manage_members(&store, &user_id, &org_id);
@@ -776,19 +830,34 @@ pub(crate) async fn create_application(
     Path(org_id): Path<String>,
     body: axum::body::Bytes,
 ) -> Response {
-    let Some(Extension(session)) = session else { return redirect("/login"); };
-    let Some(sessions) = state.sessions.as_ref() else { return unavailable(); };
-    let org_id = match Id::<OrganizationEntity>::parse(&org_id) { Ok(v)=>v, Err(_)=>return bad_request() };
+    let Some(Extension(session)) = session else {
+        return redirect("/login");
+    };
+    let Some(sessions) = state.sessions.as_ref() else {
+        return unavailable();
+    };
+    let org_id = match Id::<OrganizationEntity>::parse(&org_id) {
+        Ok(v) => v,
+        Err(_) => return bad_request(),
+    };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
-    if !can_manage_members(&store, &user_id, &org_id) { return forbidden(); }
+    if !can_manage_members(&store, &user_id, &org_id) {
+        return forbidden();
+    }
     let mut params = parse_form(&body);
     let slug_str = params.remove("slug").unwrap_or_default();
     let name_str = params.remove("name").unwrap_or_default();
     let kind_str = params.remove("kind").unwrap_or_default();
     let first_party = params.remove("first_party").unwrap_or_default() == "true";
-    let slug = match Slug::parse(&slug_str) { Ok(v)=>v, Err(_)=>return bad_request() };
-    let name = match DisplayName::parse(&name_str) { Ok(v)=>v, Err(_)=>return bad_request() };
+    let slug = match Slug::parse(&slug_str) {
+        Ok(v) => v,
+        Err(_) => return bad_request(),
+    };
+    let name = match DisplayName::parse(&name_str) {
+        Ok(v) => v,
+        Err(_) => return bad_request(),
+    };
     let kind = match kind_str.as_str() {
         "web" => ApplicationKind::Web,
         "admin" => ApplicationKind::Admin,
@@ -799,19 +868,28 @@ pub(crate) async fn create_application(
     };
     let tenant = TenantContext::new(org_id.clone());
     let result = tokio::task::spawn_blocking({
-        let store=store.clone(); let tenant=tenant.clone(); let slug=slug.clone(); let name=name.clone();
+        let store = store.clone();
+        let tenant = tenant.clone();
+        let slug = slug.clone();
+        let name = name.clone();
         move || {
-            let uc = authkit_core::application::CreateApplication { tenant, slug, name, kind, first_party };
+            let uc = authkit_core::application::CreateApplication {
+                tenant,
+                slug,
+                name,
+                kind,
+                first_party,
+            };
             uc.execute(store.as_ref(), &SystemClock, &SecureIdGenerator)
         }
-    }).await;
-    if result.ok().and_then(|r|r.ok()).is_some() {
+    })
+    .await;
+    if result.ok().and_then(|r| r.ok()).is_some() {
         redirect(&format!("/organizations/{}/applications", org_id.as_str()))
     } else {
         unavailable()
     }
 }
-
 
 #[derive(askama::Template)]
 #[template(path = "pages/oauth_clients.html")]
@@ -841,28 +919,51 @@ pub(crate) async fn oauth_clients_page(
     session: Option<Extension<SessionContext>>,
     Path(org_id): Path<String>,
 ) -> Response {
-    let Some(Extension(session)) = session else { return redirect("/login"); };
-    let Some(sessions) = state.sessions.as_ref() else { return unavailable(); };
-    let org_id = match Id::<OrganizationEntity>::parse(&org_id) { Ok(v)=>v, Err(_)=>return bad_request() };
+    let Some(Extension(session)) = session else {
+        return redirect("/login");
+    };
+    let Some(sessions) = state.sessions.as_ref() else {
+        return unavailable();
+    };
+    let org_id = match Id::<OrganizationEntity>::parse(&org_id) {
+        Ok(v) => v,
+        Err(_) => return bad_request(),
+    };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
     let csrf = sessions.csrf_token(session.session());
-    if !can_read_members(&store, &user_id, &org_id) { return forbidden(); }
+    if !can_read_members(&store, &user_id, &org_id) {
+        return forbidden();
+    }
     let tenant = TenantContext::new(org_id.clone());
     let clients = tokio::task::spawn_blocking({
-        let store=store.clone(); let tenant=tenant.clone();
+        let store = store.clone();
+        let tenant = tenant.clone();
         move || OAuthClientRepository::list(store.as_ref(), &tenant)
-    }).await.ok().and_then(|r|r.ok()).unwrap_or_default();
+    })
+    .await
+    .ok()
+    .and_then(|r| r.ok())
+    .unwrap_or_default();
     let apps = tokio::task::spawn_blocking({
-        let store=store.clone(); let tenant=tenant.clone();
+        let store = store.clone();
+        let tenant = tenant.clone();
         move || ApplicationRepository::list(store.as_ref(), &tenant)
-    }).await.ok().and_then(|r|r.ok()).unwrap_or_default();
+    })
+    .await
+    .ok()
+    .and_then(|r| r.ok())
+    .unwrap_or_default();
     let client_views: Vec<OAuthClientView> = clients
         .into_iter()
         .map(|c| OAuthClientView {
             name: c.name().as_str().to_owned(),
             client_id: c.client_id().as_str().to_owned(),
-            status: if c.status() == authkit_core::domain::oauth_client::ClientStatus::Active { "active".to_owned() } else { "disabled".to_owned() },
+            status: if c.status() == authkit_core::domain::oauth_client::ClientStatus::Active {
+                "active".to_owned()
+            } else {
+                "disabled".to_owned()
+            },
             id: c.id().as_str().to_owned(),
         })
         .collect();
@@ -892,24 +993,50 @@ pub(crate) async fn create_oauth_client(
     Path(org_id): Path<String>,
     body: axum::body::Bytes,
 ) -> Response {
-    let Some(Extension(session)) = session else { return redirect("/login"); };
-    let Some(sessions) = state.sessions.as_ref() else { return unavailable(); };
-    let org_id = match Id::<OrganizationEntity>::parse(&org_id) { Ok(v)=>v, Err(_)=>return bad_request() };
+    let Some(Extension(session)) = session else {
+        return redirect("/login");
+    };
+    let Some(sessions) = state.sessions.as_ref() else {
+        return unavailable();
+    };
+    let org_id = match Id::<OrganizationEntity>::parse(&org_id) {
+        Ok(v) => v,
+        Err(_) => return bad_request(),
+    };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
-    if !can_manage_members(&store, &user_id, &org_id) { return forbidden(); }
+    if !can_manage_members(&store, &user_id, &org_id) {
+        return forbidden();
+    }
     let mut params = parse_form(&body);
     let application_id_str = params.remove("application_id").unwrap_or_default();
     let name_str = params.remove("name").unwrap_or_default();
     let client_type_str = params.remove("client_type").unwrap_or_default();
     let redirect_uri_str = params.remove("redirect_uri").unwrap_or_default();
     let scopes_str = params.remove("scopes").unwrap_or_default();
-    let application_id = match Id::<authkit_core::domain::id::ApplicationEntity>::parse(&application_id_str) { Ok(v)=>v, Err(_)=>return bad_request() };
-    let name = match DisplayName::parse(&name_str) { Ok(v)=>v, Err(_)=>return bad_request() };
-    let redirect_uri = match RedirectUri::parse(&redirect_uri_str) { Ok(v)=>v, Err(_)=>return bad_request() };
-    let scopes: Vec<Scope> = scopes_str.split_whitespace().filter_map(|s| Scope::parse(s).ok()).collect();
+    let application_id =
+        match Id::<authkit_core::domain::id::ApplicationEntity>::parse(&application_id_str) {
+            Ok(v) => v,
+            Err(_) => return bad_request(),
+        };
+    let name = match DisplayName::parse(&name_str) {
+        Ok(v) => v,
+        Err(_) => return bad_request(),
+    };
+    let redirect_uri = match RedirectUri::parse(&redirect_uri_str) {
+        Ok(v) => v,
+        Err(_) => return bad_request(),
+    };
+    let scopes: Vec<Scope> = scopes_str
+        .split_whitespace()
+        .filter_map(|s| Scope::parse(s).ok())
+        .collect();
     let allowed_scopes = ScopeSet::new(scopes);
-    let client_type = if client_type_str == "confidential" { ClientType::Confidential } else { ClientType::Public };
+    let client_type = if client_type_str == "confidential" {
+        ClientType::Confidential
+    } else {
+        ClientType::Public
+    };
     let pepper = sessions.pepper().to_vec();
     let (secret_plain, secret_hash) = if client_type == ClientType::Confidential {
         use rand_core::{OsRng, RngCore};
@@ -929,7 +1056,10 @@ pub(crate) async fn create_oauth_client(
     let mut bytes = [0u8; 24];
     OsRng.fill_bytes(&mut bytes);
     let client_id_str: String = bytes.iter().map(|b| format!("{:02x}", b)).collect();
-    let client_id = match ClientId::parse(client_id_str) { Ok(v)=>v, Err(_)=>return bad_request() };
+    let client_id = match ClientId::parse(client_id_str) {
+        Ok(v) => v,
+        Err(_) => return bad_request(),
+    };
     let tenant = TenantContext::new(org_id.clone());
     let now = sessions.clock().now();
     let spec = OAuthClientSpec {
@@ -937,7 +1067,11 @@ pub(crate) async fn create_oauth_client(
         client_id: client_id.clone(),
         name,
         client_type,
-        token_endpoint_auth_method: if client_type == ClientType::Confidential { TokenEndpointAuthMethod::ClientSecretPost } else { TokenEndpointAuthMethod::None },
+        token_endpoint_auth_method: if client_type == ClientType::Confidential {
+            TokenEndpointAuthMethod::ClientSecretPost
+        } else {
+            TokenEndpointAuthMethod::None
+        },
         secret_hash,
         require_pkce: true,
         redirect_uris: vec![redirect_uri.clone()],
@@ -946,7 +1080,9 @@ pub(crate) async fn create_oauth_client(
         allowed_grant_types: vec![GrantType::AuthorizationCode, GrantType::RefreshToken],
     };
     let client = match OAuthClient::new(
-        SecureIdGenerator.generate::<authkit_core::domain::id::OAuthClientEntity>().expect("id"),
+        SecureIdGenerator
+            .generate::<authkit_core::domain::id::OAuthClientEntity>()
+            .expect("id"),
         spec,
         now,
     ) {
@@ -954,17 +1090,24 @@ pub(crate) async fn create_oauth_client(
         Err(_) => return bad_request(),
     };
     let outcome = tokio::task::spawn_blocking({
-        let store=store.clone(); let tenant=tenant.clone(); let client=client.clone();
+        let store = store.clone();
+        let tenant = tenant.clone();
+        let client = client.clone();
         move || OAuthClientRepository::insert(store.as_ref(), &tenant, &client)
-    }).await;
-    if outcome.ok().and_then(|r|r.ok()) != Some(WriteOutcome::Applied) {
+    })
+    .await;
+    if outcome.ok().and_then(|r| r.ok()) != Some(WriteOutcome::Applied) {
         return unavailable();
     }
     let secret_text = secret_plain.unwrap_or_else(|| "(public client)".to_owned());
-    let body = format!(r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>OAuth client created</title></head><body style="font-family: system-ui, sans-serif; max-width: 40rem; margin: 4rem auto; padding: 0 1rem;"><h1>OAuth client created</h1><p>Client ID: <code>{}</code></p><p>Client secret: <code>{}</code></p><p><a href="/organizations/{}/oauth-clients">Back</a></p></body></html>"#, escape(client.client_id().as_str()), escape(&secret_text), org_id.as_str());
+    let body = format!(
+        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>OAuth client created</title></head><body style="font-family: system-ui, sans-serif; max-width: 40rem; margin: 4rem auto; padding: 0 1rem;"><h1>OAuth client created</h1><p>Client ID: <code>{}</code></p><p>Client secret: <code>{}</code></p><p><a href="/organizations/{}/oauth-clients">Back</a></p></body></html>"#,
+        escape(client.client_id().as_str()),
+        escape(&secret_text),
+        org_id.as_str()
+    );
     html_ok(&body)
 }
-
 
 #[derive(askama::Template)]
 #[template(path = "pages/oauth_client.html")]
@@ -984,22 +1127,51 @@ pub(crate) async fn oauth_client_detail(
     session: Option<Extension<SessionContext>>,
     Path((org_id, client_id)): Path<(String, String)>,
 ) -> Response {
-    let Some(Extension(session)) = session else { return redirect("/login"); };
-    let Some(sessions) = state.sessions.as_ref() else { return unavailable(); };
-    let org_id = match Id::<OrganizationEntity>::parse(&org_id) { Ok(v)=>v, Err(_)=>return bad_request() };
-    let client_id = match Id::<authkit_core::domain::id::OAuthClientEntity>::parse(&client_id) { Ok(v)=>v, Err(_)=>return bad_request() };
+    let Some(Extension(session)) = session else {
+        return redirect("/login");
+    };
+    let Some(sessions) = state.sessions.as_ref() else {
+        return unavailable();
+    };
+    let org_id = match Id::<OrganizationEntity>::parse(&org_id) {
+        Ok(v) => v,
+        Err(_) => return bad_request(),
+    };
+    let client_id = match Id::<authkit_core::domain::id::OAuthClientEntity>::parse(&client_id) {
+        Ok(v) => v,
+        Err(_) => return bad_request(),
+    };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
     let csrf = sessions.csrf_token(session.session());
-    if !can_manage_members(&store, &user_id, &org_id) { return forbidden(); }
+    if !can_manage_members(&store, &user_id, &org_id) {
+        return forbidden();
+    }
     let tenant = TenantContext::new(org_id.clone());
     let client = tokio::task::spawn_blocking({
-        let store=store.clone(); let tenant=tenant.clone(); let client_id=client_id.clone();
+        let store = store.clone();
+        let tenant = tenant.clone();
+        let client_id = client_id.clone();
         move || OAuthClientRepository::find_by_id(store.as_ref(), &tenant, &client_id)
-    }).await.ok().and_then(|r|r.ok().flatten());
-    let Some(client) = client else { return bad_request(); };
-    let redirect_uris: Vec<String> = client.redirect_uris().iter().map(|u| u.as_str().to_owned()).collect();
-    let scopes = client.allowed_scopes().as_slice().iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" ");
+    })
+    .await
+    .ok()
+    .and_then(|r| r.ok().flatten());
+    let Some(client) = client else {
+        return bad_request();
+    };
+    let redirect_uris: Vec<String> = client
+        .redirect_uris()
+        .iter()
+        .map(|u| u.as_str().to_owned())
+        .collect();
+    let scopes = client
+        .allowed_scopes()
+        .as_slice()
+        .iter()
+        .map(|s| s.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
     let template = OAuthClientDetailTemplate {
         title: "OAuth client",
         csrf: &csrf,
@@ -1020,30 +1192,60 @@ pub(crate) async fn add_redirect_uri(
     Path((org_id, client_id)): Path<(String, String)>,
     body: axum::body::Bytes,
 ) -> Response {
-    let Some(Extension(session)) = session else { return redirect("/login"); };
-    let Some(sessions) = state.sessions.as_ref() else { return unavailable(); };
-    let org_id = match Id::<OrganizationEntity>::parse(&org_id) { Ok(v)=>v, Err(_)=>return bad_request() };
-    let client_id = match Id::<authkit_core::domain::id::OAuthClientEntity>::parse(&client_id) { Ok(v)=>v, Err(_)=>return bad_request() };
+    let Some(Extension(session)) = session else {
+        return redirect("/login");
+    };
+    let Some(sessions) = state.sessions.as_ref() else {
+        return unavailable();
+    };
+    let org_id = match Id::<OrganizationEntity>::parse(&org_id) {
+        Ok(v) => v,
+        Err(_) => return bad_request(),
+    };
+    let client_id = match Id::<authkit_core::domain::id::OAuthClientEntity>::parse(&client_id) {
+        Ok(v) => v,
+        Err(_) => return bad_request(),
+    };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
-    if !can_manage_members(&store, &user_id, &org_id) { return forbidden(); }
+    if !can_manage_members(&store, &user_id, &org_id) {
+        return forbidden();
+    }
     let mut params = parse_form(&body);
     let uri_str = params.remove("uri").unwrap_or_default();
-    let uri = match RedirectUri::parse(&uri_str) { Ok(v)=>v, Err(_)=>return bad_request() };
+    let uri = match RedirectUri::parse(&uri_str) {
+        Ok(v) => v,
+        Err(_) => return bad_request(),
+    };
     let tenant = TenantContext::new(org_id.clone());
     let now = sessions.clock().now();
     let outcome = tokio::task::spawn_blocking({
-        let store=store.clone(); let tenant=tenant.clone(); let client_id=client_id.clone(); let uri=uri.clone(); let now=now;
+        let store = store.clone();
+        let tenant = tenant.clone();
+        let client_id = client_id.clone();
+        let uri = uri.clone();
         move || {
             let client = OAuthClientRepository::find_by_id(store.as_ref(), &tenant, &client_id)?;
-            let Some(mut client) = client else { return Ok(WriteOutcome::NotFound); };
+            let Some(mut client) = client else {
+                return Ok(WriteOutcome::NotFound);
+            };
             let expected = client.version();
             client.add_redirect_uri(uri, now)?;
             OAuthClientRepository::update(store.as_ref(), &tenant, &client, expected)
         }
-    }).await;
-    if outcome.ok().and_then(|r|r.ok()).map(|o|o.is_applied()).unwrap_or(false) {
-        redirect(&format!("/organizations/{}/oauth-clients/{}", org_id.as_str(), client_id.as_str()))
+    })
+    .await;
+    if outcome
+        .ok()
+        .and_then(|r| r.ok())
+        .map(|o| o.is_applied())
+        .unwrap_or(false)
+    {
+        redirect(&format!(
+            "/organizations/{}/oauth-clients/{}",
+            org_id.as_str(),
+            client_id.as_str()
+        ))
     } else {
         unavailable()
     }
@@ -1055,30 +1257,60 @@ pub(crate) async fn remove_redirect_uri(
     Path((org_id, client_id)): Path<(String, String)>,
     body: axum::body::Bytes,
 ) -> Response {
-    let Some(Extension(session)) = session else { return redirect("/login"); };
-    let Some(sessions) = state.sessions.as_ref() else { return unavailable(); };
-    let org_id = match Id::<OrganizationEntity>::parse(&org_id) { Ok(v)=>v, Err(_)=>return bad_request() };
-    let client_id = match Id::<authkit_core::domain::id::OAuthClientEntity>::parse(&client_id) { Ok(v)=>v, Err(_)=>return bad_request() };
+    let Some(Extension(session)) = session else {
+        return redirect("/login");
+    };
+    let Some(sessions) = state.sessions.as_ref() else {
+        return unavailable();
+    };
+    let org_id = match Id::<OrganizationEntity>::parse(&org_id) {
+        Ok(v) => v,
+        Err(_) => return bad_request(),
+    };
+    let client_id = match Id::<authkit_core::domain::id::OAuthClientEntity>::parse(&client_id) {
+        Ok(v) => v,
+        Err(_) => return bad_request(),
+    };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
-    if !can_manage_members(&store, &user_id, &org_id) { return forbidden(); }
+    if !can_manage_members(&store, &user_id, &org_id) {
+        return forbidden();
+    }
     let mut params = parse_form(&body);
     let uri_str = params.remove("uri").unwrap_or_default();
-    let uri = match RedirectUri::parse(&uri_str) { Ok(v)=>v, Err(_)=>return bad_request() };
+    let uri = match RedirectUri::parse(&uri_str) {
+        Ok(v) => v,
+        Err(_) => return bad_request(),
+    };
     let tenant = TenantContext::new(org_id.clone());
     let now = sessions.clock().now();
     let outcome = tokio::task::spawn_blocking({
-        let store=store.clone(); let tenant=tenant.clone(); let client_id=client_id.clone(); let uri=uri.clone(); let now=now;
+        let store = store.clone();
+        let tenant = tenant.clone();
+        let client_id = client_id.clone();
+        let uri = uri.clone();
         move || {
             let client = OAuthClientRepository::find_by_id(store.as_ref(), &tenant, &client_id)?;
-            let Some(mut client) = client else { return Ok(WriteOutcome::NotFound); };
+            let Some(mut client) = client else {
+                return Ok(WriteOutcome::NotFound);
+            };
             let expected = client.version();
             client.remove_redirect_uri(&uri, now)?;
             OAuthClientRepository::update(store.as_ref(), &tenant, &client, expected)
         }
-    }).await;
-    if outcome.ok().and_then(|r|r.ok()).map(|o|o.is_applied()).unwrap_or(false) {
-        redirect(&format!("/organizations/{}/oauth-clients/{}", org_id.as_str(), client_id.as_str()))
+    })
+    .await;
+    if outcome
+        .ok()
+        .and_then(|r| r.ok())
+        .map(|o| o.is_applied())
+        .unwrap_or(false)
+    {
+        redirect(&format!(
+            "/organizations/{}/oauth-clients/{}",
+            org_id.as_str(),
+            client_id.as_str()
+        ))
     } else {
         unavailable()
     }
@@ -1090,31 +1322,61 @@ pub(crate) async fn replace_scopes(
     Path((org_id, client_id)): Path<(String, String)>,
     body: axum::body::Bytes,
 ) -> Response {
-    let Some(Extension(session)) = session else { return redirect("/login"); };
-    let Some(sessions) = state.sessions.as_ref() else { return unavailable(); };
-    let org_id = match Id::<OrganizationEntity>::parse(&org_id) { Ok(v)=>v, Err(_)=>return bad_request() };
-    let client_id = match Id::<authkit_core::domain::id::OAuthClientEntity>::parse(&client_id) { Ok(v)=>v, Err(_)=>return bad_request() };
+    let Some(Extension(session)) = session else {
+        return redirect("/login");
+    };
+    let Some(sessions) = state.sessions.as_ref() else {
+        return unavailable();
+    };
+    let org_id = match Id::<OrganizationEntity>::parse(&org_id) {
+        Ok(v) => v,
+        Err(_) => return bad_request(),
+    };
+    let client_id = match Id::<authkit_core::domain::id::OAuthClientEntity>::parse(&client_id) {
+        Ok(v) => v,
+        Err(_) => return bad_request(),
+    };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
-    if !can_manage_members(&store, &user_id, &org_id) { return forbidden(); }
+    if !can_manage_members(&store, &user_id, &org_id) {
+        return forbidden();
+    }
     let mut params = parse_form(&body);
     let scopes_str = params.remove("scopes").unwrap_or_default();
-    let scopes: Vec<Scope> = scopes_str.split_whitespace().filter_map(|s| Scope::parse(s).ok()).collect();
+    let scopes: Vec<Scope> = scopes_str
+        .split_whitespace()
+        .filter_map(|s| Scope::parse(s).ok())
+        .collect();
     let scope_set = ScopeSet::new(scopes);
     let tenant = TenantContext::new(org_id.clone());
     let now = sessions.clock().now();
     let outcome = tokio::task::spawn_blocking({
-        let store=store.clone(); let tenant=tenant.clone(); let client_id=client_id.clone(); let scope_set=scope_set.clone(); let now=now;
+        let store = store.clone();
+        let tenant = tenant.clone();
+        let client_id = client_id.clone();
+        let scope_set = scope_set.clone();
         move || {
             let client = OAuthClientRepository::find_by_id(store.as_ref(), &tenant, &client_id)?;
-            let Some(mut client) = client else { return Ok(WriteOutcome::NotFound); };
+            let Some(mut client) = client else {
+                return Ok(WriteOutcome::NotFound);
+            };
             let expected = client.version();
             client.replace_scopes(scope_set, now);
             OAuthClientRepository::update(store.as_ref(), &tenant, &client, expected)
         }
-    }).await;
-    if outcome.ok().and_then(|r|r.ok()).map(|o|o.is_applied()).unwrap_or(false) {
-        redirect(&format!("/organizations/{}/oauth-clients/{}", org_id.as_str(), client_id.as_str()))
+    })
+    .await;
+    if outcome
+        .ok()
+        .and_then(|r| r.ok())
+        .map(|o| o.is_applied())
+        .unwrap_or(false)
+    {
+        redirect(&format!(
+            "/organizations/{}/oauth-clients/{}",
+            org_id.as_str(),
+            client_id.as_str()
+        ))
     } else {
         unavailable()
     }
@@ -1208,7 +1470,8 @@ pub(crate) async fn accept_invitation(
                 tenant: tenant.clone(),
                 user_id: user_id.clone(),
             };
-            uc.execute(store.as_ref(), &SystemClock, &SecureIdGenerator).map(|_| ())
+            uc.execute(store.as_ref(), &SystemClock, &SecureIdGenerator)
+                .map(|_| ())
         }
     })
     .await;
@@ -1223,11 +1486,12 @@ pub(crate) async fn accept_invitation(
             let tenant = tenant.clone();
             let role_id = role_id.clone();
             let user_id = user_id.clone();
-            let now = now;
             let org_id = org_id.clone();
             move || {
                 let binding = RoleBinding::organization(
-                    SecureIdGenerator.generate::<RoleBindingEntity>().expect("id"),
+                    SecureIdGenerator
+                        .generate::<RoleBindingEntity>()
+                        .expect("id"),
                     org_id,
                     role_id,
                     user_id,
@@ -1248,11 +1512,22 @@ pub(crate) async fn accept_invitation(
         let store = store.clone();
         let tenant = tenant.clone();
         let updated_invitation = updated_invitation.clone();
-        let original_version = original_version;
-        move || InvitationRepository::update(store.as_ref(), &tenant, &updated_invitation, original_version)
+        move || {
+            InvitationRepository::update(
+                store.as_ref(),
+                &tenant,
+                &updated_invitation,
+                original_version,
+            )
+        }
     })
     .await;
-    if update_result.ok().and_then(|r| r.ok()).map(|o| o.is_applied()).unwrap_or(false) {
+    if update_result
+        .ok()
+        .and_then(|r| r.ok())
+        .map(|o| o.is_applied())
+        .unwrap_or(false)
+    {
         redirect("/account")
     } else {
         unavailable()
@@ -1260,36 +1535,52 @@ pub(crate) async fn accept_invitation(
 }
 
 // helpers
-fn can_read_members(store: &std::sync::Arc<authkit_store::SqlStore>, user_id: &authkit_core::domain::Id<UserEntity>, org_id: &authkit_core::domain::Id<OrganizationEntity>) -> bool {
+fn can_read_members(
+    store: &std::sync::Arc<authkit_store::SqlStore>,
+    user_id: &authkit_core::domain::Id<UserEntity>,
+    org_id: &authkit_core::domain::Id<OrganizationEntity>,
+) -> bool {
     let tenant = TenantContext::new(org_id.clone());
-    let membership = MembershipRepository::find_by_user(store.as_ref(), &tenant, user_id).ok().flatten();
+    let membership = MembershipRepository::find_by_user(store.as_ref(), &tenant, user_id)
+        .ok()
+        .flatten();
     if !membership.map(|m| m.is_active()).unwrap_or(false) {
         return false;
     }
-    let bindings = RoleBindingRepository::list_for_user(store.as_ref(), &tenant, user_id).ok().unwrap_or_default();
+    let bindings = RoleBindingRepository::list_for_user(store.as_ref(), &tenant, user_id)
+        .ok()
+        .unwrap_or_default();
     for b in bindings {
-        if let Ok(Some(role)) = RoleRepository::find_by_id(store.as_ref(), &tenant, b.role_id()) {
-            if role.grants(&Permission::parse("org.member.read").expect("perm"))
-                || role.grants(&Permission::parse("org.member.manage").expect("perm")) {
-                return true;
-            }
+        if let Ok(Some(role)) = RoleRepository::find_by_id(store.as_ref(), &tenant, b.role_id())
+            && (role.grants(&Permission::parse("org.member.read").expect("perm"))
+                || role.grants(&Permission::parse("org.member.manage").expect("perm")))
+        {
+            return true;
         }
     }
     false
 }
 
-fn can_manage_members(store: &std::sync::Arc<authkit_store::SqlStore>, user_id: &authkit_core::domain::Id<UserEntity>, org_id: &authkit_core::domain::Id<OrganizationEntity>) -> bool {
+fn can_manage_members(
+    store: &std::sync::Arc<authkit_store::SqlStore>,
+    user_id: &authkit_core::domain::Id<UserEntity>,
+    org_id: &authkit_core::domain::Id<OrganizationEntity>,
+) -> bool {
     let tenant = TenantContext::new(org_id.clone());
-    let membership = MembershipRepository::find_by_user(store.as_ref(), &tenant, user_id).ok().flatten();
+    let membership = MembershipRepository::find_by_user(store.as_ref(), &tenant, user_id)
+        .ok()
+        .flatten();
     if !membership.map(|m| m.is_active()).unwrap_or(false) {
         return false;
     }
-    let bindings = RoleBindingRepository::list_for_user(store.as_ref(), &tenant, user_id).ok().unwrap_or_default();
+    let bindings = RoleBindingRepository::list_for_user(store.as_ref(), &tenant, user_id)
+        .ok()
+        .unwrap_or_default();
     for b in bindings {
-        if let Ok(Some(role)) = RoleRepository::find_by_id(store.as_ref(), &tenant, b.role_id()) {
-            if role.grants(&Permission::parse("org.member.manage").expect("perm")) {
-                return true;
-            }
+        if let Ok(Some(role)) = RoleRepository::find_by_id(store.as_ref(), &tenant, b.role_id())
+            && role.grants(&Permission::parse("org.member.manage").expect("perm"))
+        {
+            return true;
         }
     }
     false
@@ -1313,7 +1604,10 @@ fn redirect(location: &str) -> Response {
     match axum::http::HeaderValue::from_str(location) {
         Ok(location) => (
             StatusCode::SEE_OTHER,
-            [(header::LOCATION, location), (header::CACHE_CONTROL, HeaderValue::from_static("no-store"))],
+            [
+                (header::LOCATION, location),
+                (header::CACHE_CONTROL, HeaderValue::from_static("no-store")),
+            ],
         )
             .into_response(),
         Err(_) => unavailable(),
@@ -1350,7 +1644,10 @@ fn forbidden() -> Response {
 fn html_ok(body: &str) -> Response {
     (
         StatusCode::OK,
-        [(header::CONTENT_TYPE, "text/html; charset=utf-8"), (header::CACHE_CONTROL, "no-store")],
+        [
+            (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
         body.to_owned(),
     )
         .into_response()
@@ -1404,7 +1701,7 @@ fn hash_token(value: &str, pepper: &[u8]) -> authkit_core::domain::SecretHash {
     let mut mac = Hmac::<Sha256>::new_from_slice(pepper).expect("hmac");
     mac.update(b"authkit.reset.v1\0");
     mac.update(value.as_bytes());
-    let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .encode(mac.finalize().into_bytes());
+    let encoded =
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes());
     authkit_core::domain::SecretHash::parse(format!("hmac-sha256:{encoded}")).expect("hash")
 }

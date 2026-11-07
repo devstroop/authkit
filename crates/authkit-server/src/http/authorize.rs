@@ -12,8 +12,8 @@ use axum::response::{IntoResponse, Response};
 
 use crate::authorization::{AuthorizationService, ClientContext, ConsentMode, IssueCode};
 use crate::http::error::OAuthErrorCode;
-use crate::http::request_id::RequestId;
 use crate::http::rate_limit::client_ip;
+use crate::http::request_id::RequestId;
 use crate::http::routes::AppState;
 use crate::http::session::SessionContext;
 
@@ -41,11 +41,20 @@ pub(crate) async fn authorize(
             "The authorization endpoint is not available.",
         );
     };
-    let trusted = std::env::var("AUTHKIT_TRUSTED_PROXIES").unwrap_or_default()
-        .split(',').filter_map(|v| v.trim().parse().ok()).collect::<Vec<_>>();
-    let trusted = if trusted.is_empty() && std::env::var("AUTHKIT_TRUSTED_PROXIES").unwrap_or_default().contains('*') {
+    let trusted = std::env::var("AUTHKIT_TRUSTED_PROXIES")
+        .unwrap_or_default()
+        .split(',')
+        .filter_map(|v| v.trim().parse().ok())
+        .collect::<Vec<_>>();
+    let trusted = if trusted.is_empty()
+        && std::env::var("AUTHKIT_TRUSTED_PROXIES")
+            .unwrap_or_default()
+            .contains('*')
+    {
         vec!["0.0.0.0".parse().unwrap()]
-    } else { trusted };
+    } else {
+        trusted
+    };
     let ip = client_ip(&headers, None, &trusted);
     if let Some(sessions) = state.sessions.as_ref() {
         let store = sessions.store().clone();
@@ -54,9 +63,9 @@ pub(crate) async fn authorize(
         let result = tokio::task::spawn_blocking({
             let store = store.clone();
             let key = key.clone();
-            let now = now;
             move || RateLimiter::check(store.as_ref(), &key, 60, 300, now)
-        }).await;
+        })
+        .await;
         if let Ok(Err(err)) = result {
             return oauth_rate_limited(err.retry_after_secs);
         }
@@ -103,9 +112,9 @@ pub(crate) async fn authorize(
         let result = tokio::task::spawn_blocking({
             let store = store.clone();
             let key = key.clone();
-            let now = now;
             move || RateLimiter::check(store.as_ref(), &key, 60, 300, now)
-        }).await;
+        })
+        .await;
         if let Ok(Err(err)) = result {
             return oauth_rate_limited(err.retry_after_secs);
         }
@@ -176,10 +185,7 @@ pub(crate) async fn authorize(
             AuditActor::Anonymous,
         )
         .await;
-        let next = format!(
-            "/oauth2/authorize?{}",
-            query.as_deref().unwrap_or_default()
-        );
+        let next = format!("/oauth2/authorize?{}", query.as_deref().unwrap_or_default());
         let mut serializer = url::form_urlencoded::Serializer::new(String::new());
         serializer.append_pair("next", &next);
         let login_url = format!("/login?{}", serializer.finish());
@@ -1138,6 +1144,19 @@ button.secondary { background: #e8ecf2; color: #17202a; }
 }
 "#;
 
+
+fn oauth_rate_limited(retry_after: u64) -> Response {
+    let mut response = (
+        StatusCode::TOO_MANY_REQUESTS,
+        axum::Json(serde_json::json!({"error": "temporarily_unavailable", "error_description": "the request was rate limited"})),
+    )
+        .into_response();
+    if let Ok(value) = HeaderValue::from_str(&retry_after.to_string()) {
+        response.headers_mut().insert(header::RETRY_AFTER, value);
+    }
+    response
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1165,14 +1184,3 @@ mod tests {
     }
 }
 
-fn oauth_rate_limited(retry_after: u64) -> Response {
-    let mut response = (
-        StatusCode::TOO_MANY_REQUESTS,
-        axum::Json(serde_json::json!({"error": "temporarily_unavailable", "error_description": "the request was rate limited"})),
-    )
-        .into_response();
-    if let Ok(value) = HeaderValue::from_str(&retry_after.to_string()) {
-        response.headers_mut().insert(header::RETRY_AFTER, value);
-    }
-    response
-}

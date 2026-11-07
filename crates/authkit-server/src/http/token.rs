@@ -14,8 +14,8 @@ use serde_json::json;
 use crate::authorization::ClientContext;
 use crate::http::authorize::Params;
 use crate::http::error::{OAuthError, OAuthErrorCode};
-use crate::http::request_id::RequestId;
 use crate::http::rate_limit::client_ip;
+use crate::http::request_id::RequestId;
 use crate::http::routes::AppState;
 use crate::tokens::{ClientCredentials, CodeExchange, RefreshExchange, TokenResponse};
 
@@ -32,11 +32,20 @@ pub(crate) async fn token(
     let Some(service) = state.tokens.as_deref() else {
         return not_available();
     };
-    let trusted = std::env::var("AUTHKIT_TRUSTED_PROXIES").unwrap_or_default()
-        .split(',').filter_map(|v| v.trim().parse().ok()).collect::<Vec<_>>();
-    let trusted = if trusted.is_empty() && std::env::var("AUTHKIT_TRUSTED_PROXIES").unwrap_or_default().contains('*') {
+    let trusted = std::env::var("AUTHKIT_TRUSTED_PROXIES")
+        .unwrap_or_default()
+        .split(',')
+        .filter_map(|v| v.trim().parse().ok())
+        .collect::<Vec<_>>();
+    let trusted = if trusted.is_empty()
+        && std::env::var("AUTHKIT_TRUSTED_PROXIES")
+            .unwrap_or_default()
+            .contains('*')
+    {
         vec!["0.0.0.0".parse().unwrap()]
-    } else { trusted };
+    } else {
+        trusted
+    };
     let ip = client_ip(&headers, None, &trusted);
     // IP flood protection
     if let Some(sessions) = state.sessions.as_ref() {
@@ -46,9 +55,9 @@ pub(crate) async fn token(
         let result = tokio::task::spawn_blocking({
             let store = store.clone();
             let key = key.clone();
-            let now = now;
             move || RateLimiter::check(store.as_ref(), &key, 60, 300, now)
-        }).await;
+        })
+        .await;
         if let Ok(Err(err)) = result {
             return rate_limited_response(err.retry_after_secs);
         }
@@ -72,13 +81,17 @@ pub(crate) async fn token(
     if let Some(sessions) = state.sessions.as_ref() {
         let store = sessions.store().clone();
         let now = sessions.clock().now();
-        let key = format!("token:client:{}:{}", context.client().client_id().as_str(), ip);
+        let key = format!(
+            "token:client:{}:{}",
+            context.client().client_id().as_str(),
+            ip
+        );
         let result = tokio::task::spawn_blocking({
             let store = store.clone();
             let key = key.clone();
-            let now = now;
             move || RateLimiter::check(store.as_ref(), &key, 30, 300, now)
-        }).await;
+        })
+        .await;
         if let Ok(Err(err)) = result {
             return rate_limited_response(err.retry_after_secs);
         }
@@ -156,7 +169,9 @@ fn rate_limited_response(retry_after: u64) -> Response {
     )
         .into_response();
     if let Ok(value) = axum::http::HeaderValue::from_str(&retry_after.to_string()) {
-        response.headers_mut().insert(axum::http::header::RETRY_AFTER, value);
+        response
+            .headers_mut()
+            .insert(axum::http::header::RETRY_AFTER, value);
     }
     response
 }

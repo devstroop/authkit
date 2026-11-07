@@ -13,10 +13,9 @@ use authkit_core::domain::email::Email;
 use authkit_core::domain::grant::{AuthorizationCode, Consent, RefreshFamily, RefreshToken};
 use authkit_core::domain::id::{
     ApplicationEntity, AuditEventEntity, AuthorizationCodeEntity, ConsentEntity, Entity, Id,
-    InvitationEntity, MembershipEntity, OAuthClientEntity, OrganizationEntity, RefreshFamilyEntity,
-    RecoveryCodeEntity,
-    SystemAdministratorEntity,
-    RefreshTokenEntity, RoleBindingEntity, RoleEntity, SessionEntity, UserEntity,
+    InvitationEntity, MembershipEntity, OAuthClientEntity, OrganizationEntity, RecoveryCodeEntity,
+    RefreshFamilyEntity, RefreshTokenEntity, RoleBindingEntity, RoleEntity, SessionEntity,
+    SystemAdministratorEntity, UserEntity,
 };
 use authkit_core::domain::invitation::{Invitation, InvitationStatus};
 use authkit_core::domain::membership::{Membership, MembershipStatus};

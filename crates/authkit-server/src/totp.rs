@@ -2,13 +2,13 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use aes_gcm::aead::{Aead, Payload};
+use aes_gcm::aead::Aead;
 use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
-use authkit_core::domain::credential::{EncryptedSecret, TotpConfig, TotpCredential};
 use authkit_core::domain::DomainError;
+use authkit_core::domain::credential::{EncryptedSecret, TotpConfig};
 use base64::Engine;
-use rand_core::RngCore;
 use hmac::{Hmac, Mac};
+use rand_core::RngCore;
 use sha1::Sha1;
 use sha2::Sha256;
 
@@ -24,14 +24,21 @@ pub fn generate_secret() -> Vec<u8> {
 pub fn encrypt_secret(secret: &[u8], pepper: &[u8]) -> Result<EncryptedSecret, DomainError> {
     use sha2::Digest;
     let key = sha2::Sha256::digest(pepper);
-    let cipher = Aes256Gcm::new_from_slice(key.as_slice())
-        .map_err(|_| DomainError::new(authkit_core::domain::ErrorCode::Internal, "invalid TOTP key"))?;
+    let cipher = Aes256Gcm::new_from_slice(key.as_slice()).map_err(|_| {
+        DomainError::new(
+            authkit_core::domain::ErrorCode::Internal,
+            "invalid TOTP key",
+        )
+    })?;
     let mut nonce_bytes = [0u8; 12];
     rand_core::OsRng.fill_bytes(&mut nonce_bytes);
     let nonce = Nonce::from_slice(&nonce_bytes);
-    let ciphertext = cipher
-        .encrypt(nonce, secret)
-        .map_err(|_| DomainError::new(authkit_core::domain::ErrorCode::Internal, "TOTP encryption failed"))?;
+    let ciphertext = cipher.encrypt(nonce, secret).map_err(|_| {
+        DomainError::new(
+            authkit_core::domain::ErrorCode::Internal,
+            "TOTP encryption failed",
+        )
+    })?;
     EncryptedSecret::new(KEY_ID, nonce_bytes.to_vec(), ciphertext)
         .map_err(|e| DomainError::new(authkit_core::domain::ErrorCode::Internal, e.to_string()))
 }
@@ -39,12 +46,19 @@ pub fn encrypt_secret(secret: &[u8], pepper: &[u8]) -> Result<EncryptedSecret, D
 pub fn decrypt_secret(secret: &EncryptedSecret, pepper: &[u8]) -> Result<Vec<u8>, DomainError> {
     use sha2::Digest;
     let key = sha2::Sha256::digest(pepper);
-    let cipher = Aes256Gcm::new_from_slice(key.as_slice())
-        .map_err(|_| DomainError::new(authkit_core::domain::ErrorCode::Internal, "invalid TOTP key"))?;
+    let cipher = Aes256Gcm::new_from_slice(key.as_slice()).map_err(|_| {
+        DomainError::new(
+            authkit_core::domain::ErrorCode::Internal,
+            "invalid TOTP key",
+        )
+    })?;
     let nonce = Nonce::from_slice(secret.nonce());
-    cipher
-        .decrypt(nonce, secret.ciphertext())
-        .map_err(|_| DomainError::new(authkit_core::domain::ErrorCode::Internal, "TOTP decryption failed"))
+    cipher.decrypt(nonce, secret.ciphertext()).map_err(|_| {
+        DomainError::new(
+            authkit_core::domain::ErrorCode::Internal,
+            "TOTP decryption failed",
+        )
+    })
 }
 
 pub fn base32_encode(bytes: &[u8]) -> String {
@@ -90,7 +104,6 @@ pub fn code(secret: &[u8], step: u64, config: TotpConfig) -> String {
             mac.finalize().into_bytes().to_vec()
         }
         authkit_core::domain::credential::TotpAlgorithm::Sha512 => {
-            use sha2::Sha512;
             let mut mac = <Hmac<sha2::Sha512> as Mac>::new_from_slice(secret).expect("hmac");
             mac.update(&message);
             mac.finalize().into_bytes().to_vec()
@@ -157,7 +170,8 @@ pub fn verify_challenge(token: &str, next: &str, pepper: &[u8]) -> Option<String
     mac.update(next.as_bytes());
     mac.update(b"|");
     mac.update(expiry.to_string().as_bytes());
-    let expected = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes());
+    let expected =
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes());
     if expected != parts[2] {
         return None;
     }
