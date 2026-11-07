@@ -151,6 +151,25 @@ pub(crate) async fn change_password(
         return unavailable();
     }
 
+    let current_session_id = session.session().id().clone();
+    let store_for_sessions = store.clone();
+    let user_id_for_sessions = user_id.clone();
+    let now_for_sessions = sessions.clock().now();
+    let _ = tokio::task::spawn_blocking(move || {
+        let sessions_list = SessionRepository::list_for_user(store_for_sessions.as_ref(), &user_id_for_sessions)?;
+        for target in sessions_list {
+            if target.id() == &current_session_id || !target.is_valid(now_for_sessions) {
+                continue;
+            }
+            let expected = target.version();
+            let mut revoked = target;
+            revoked.revoke(now_for_sessions);
+            let _ = SessionRepository::update(store_for_sessions.as_ref(), &revoked, expected);
+        }
+        Ok::<_, authkit_core::domain::DomainError>(())
+    })
+    .await;
+
     redirect("/account")
 }
 

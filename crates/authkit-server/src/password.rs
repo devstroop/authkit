@@ -38,6 +38,27 @@ pub fn verify_password(password: &str, verifier: &DomainVerifier) -> bool {
         .is_ok()
 }
 
+/// Returns `true` when the stored verifier uses weaker or older Argon2id parameters.
+pub fn needs_rehash(verifier: &DomainVerifier) -> bool {
+    let Ok(parsed) = PasswordHash::new(verifier.as_str()) else {
+        return true;
+    };
+    let params = &parsed.params;
+    let memory = params
+        .get("m")
+        .and_then(|value| value.decimal().ok())
+        .unwrap_or(0);
+    let time = params
+        .get("t")
+        .and_then(|value| value.decimal().ok())
+        .unwrap_or(0);
+    let parallelism = params
+        .get("p")
+        .and_then(|value| value.decimal().ok())
+        .unwrap_or(0);
+    memory < MEMORY_KIB || time < TIME_COST || parallelism < PARALLELISM
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

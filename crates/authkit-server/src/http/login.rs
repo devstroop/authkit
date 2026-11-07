@@ -305,6 +305,22 @@ pub(crate) async fn login_submit(
         );
     }
 
+    if crate::password::needs_rehash(&verifier) {
+        if let Ok(new_verifier) = crate::password::hash_password(&password) {
+            let original_version = credential.version();
+            let mut updated = credential.clone();
+            if updated.replace_password(new_verifier, sessions.clock().now()).is_ok() {
+                let store_clone = store.clone();
+                let updated_clone = updated.clone();
+                let _ = tokio::task::spawn_blocking(move || {
+                    CredentialRepository::update(store_clone.as_ref(), &updated_clone, original_version)
+                })
+                .await;
+                let _ = updated;
+            }
+        }
+    }
+
     let now = sessions.clock().now();
     let store = sessions.store().clone();
     let key = format!("login:account:{}", email.to_lowercase());
