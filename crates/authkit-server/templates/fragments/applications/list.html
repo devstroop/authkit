@@ -1,0 +1,24 @@
+<ul id="applications">
+{% for app in apps %}
+<li>{{ app.name }} ({{ app.slug }}) {{ app.kind }} {{ app.status }}</li>
+{% endfor %}
+</ul>
+{% if can_manage %}
+<h2>Create application</h2>
+<form method="post" action="/organizations/{{ org_id }}/applications" hx-post="/organizations/{{ org_id }}/applications" hx-target="#applications" hx-swap="outerHTML">
+  <input type="hidden" name="_csrf" value="{{ csrf }}">
+  <label>Slug <input name="slug" required></label><br>
+  <label>Name <input name="name" required></label><br>
+  <label>Kind
+    <select name="kind">
+      <option value="web">web</option>
+      <option value="admin">admin</option>
+      <option value="native">native</option>
+      <option value="service">service</option>
+      <option value="cli">cli</option>
+    </select>
+  </label><br>
+  <label><input type="checkbox" name="first_party" value="true"> First-party</label><br>
+  <button type="submit">Create</button>
+</form>
+{% endif %}

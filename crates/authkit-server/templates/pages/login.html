@@ -12,8 +12,8 @@
   {% if !next.is_empty() %}
   <input type="hidden" name="next" value="{{ next }}">
   {% endif %}
-  <label>Email <input type="email" name="email" required></label>
-  <label>Password <input type="password" name="password" required></label>
+  <label>Email <input type="email" name="email" required autocomplete="email" aria-required="true"></label>
+  <label>Password <input type="password" name="password" type="password" required autocomplete="current-password" aria-required="true"></label>
   {{ ui::button("Sign in") }}
 </form>
 <p><a href="/register">Create an account</a></p>

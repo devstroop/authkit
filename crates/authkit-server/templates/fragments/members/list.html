@@ -1,0 +1,13 @@
+<ul id="members">
+{% for member in members %}
+<li>{{ member.email }} {{ member.status }} ({{ member.id }})</li>
+{% endfor %}
+</ul>
+{% if can_manage %}
+<h2>Add member</h2>
+<form method="post" action="/organizations/{{ org_id }}/members" hx-post="/organizations/{{ org_id }}/members" hx-target="#members" hx-swap="beforeend">
+  <input type="hidden" name="_csrf" value="{{ csrf }}">
+  <label>User email <input name="email" type="email" required autocomplete="email" aria-required="true"></label>
+  <button type="submit">Add</button>
+</form>
+{% endif %}

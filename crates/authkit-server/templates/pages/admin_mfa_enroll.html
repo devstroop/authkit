@@ -1,0 +1,10 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+<h1>Enroll MFA</h1>
+<p>Secret: <code>{{ secret }}</code></p>
+<form method="post" action="/admin/mfa/verify">
+  <input type="hidden" name="_csrf" value="{{ csrf }}">
+  <label>Code <input name="code" required></label>
+  <button type="submit">Verify</button>
+</form>
+{% endblock %}

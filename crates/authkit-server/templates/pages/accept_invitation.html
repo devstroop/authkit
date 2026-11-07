@@ -1,0 +1,8 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+<h1>Accept invitation</h1>
+<form method="post" action="/invitations/accept">
+  <input type="hidden" name="token" value="{{ token }}">
+  <button type="submit">Accept</button>
+</form>
+{% endblock %}

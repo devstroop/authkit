@@ -2,8 +2,8 @@
 {% block content %}
 <h1>Admin sign in</h1>
 <form method="post" action="/admin/login">
-  <label>Email <input type="email" name="email" required></label>
-  <label>Password <input type="password" name="password" required></label>
+  <label>Email <input type="email" name="email" type="email" required autocomplete="email" aria-required="true" autocomplete="email" aria-required="true"></label>
+  <label>Password <input type="password" name="password" type="password" required autocomplete="current-password" aria-required="true"></label>
   <button type="submit">Sign in</button>
 </form>
 {% endblock %}

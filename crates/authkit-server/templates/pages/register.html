@@ -8,8 +8,8 @@
   {% if !next.is_empty() %}
   <input type="hidden" name="next" value="{{ next }}">
   {% endif %}
-  <label>Email <input type="email" name="email" required></label>
-  <label>Password <input type="password" name="password" required minlength="12"></label>
+  <label>Email <input type="email" name="email" required autocomplete="email" aria-required="true"></label>
+  <label>Password <input type="password" name="password" type="password" required minlength="12" autocomplete="new-password" aria-required="true"></label>
   <button type="submit">Create account</button>
 </form>
 <p><a href="/login">Sign in instead</a></p>

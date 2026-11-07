@@ -636,12 +636,19 @@ fn redirect(location: &str) -> Response {
     }
 }
 
+#[derive(askama::Template)]
+#[template(path = "pages/message.html")]
+struct MessageTemplate<'a> {
+    title: &'a str,
+    message: &'a str,
+}
+
 fn html_page(title: &str, body: &str) -> Response {
-    let html = format!(
-        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>{title}</title></head><body style="font-family: system-ui, sans-serif; max-width: 32rem; margin: 4rem auto; padding: 0 1rem;"><h1>{title}</h1>{body}</body></html>"#,
-        title = title,
-        body = body
-    );
+    let template = MessageTemplate {
+        title,
+        message: body,
+    };
+    let html = template.render().unwrap_or_default();
     (
         StatusCode::OK,
         [

@@ -1,0 +1,10 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+<h1>Two-factor authentication</h1>
+<form method="post" action="/login/mfa">
+  <input type="hidden" name="challenge" value="{{ challenge }}">
+  <input type="hidden" name="next" value="{{ next }}">
+  <label>Code <input name="code" required></label>
+  <button type="submit">Verify</button>
+</form>
+{% endblock %}
