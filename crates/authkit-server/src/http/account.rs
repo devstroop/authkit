@@ -170,6 +170,19 @@ pub(crate) async fn change_password(
     })
     .await;
 
+    if let Ok(Ok(Some(user))) = tokio::task::spawn_blocking({
+        let store = store.clone();
+        let uid = user_id.clone();
+        move || UserRepository::find_by_id(store.as_ref(), &uid)
+    })
+    .await
+    {
+        let _ = state.email.send(
+            user.email(),
+            "Your password was changed",
+            "Your account password was changed. If this was not you, contact support.",
+        );
+    }
     redirect("/account")
 }
 

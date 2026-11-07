@@ -522,6 +522,17 @@ pub trait RateLimiter {
     fn reset(&self, key: &str) -> Result<(), crate::domain::DomainError>;
 }
 
+/// Sends transactional email.
+pub trait EmailSender {
+    /// Sends a message to `to`.
+    fn send(
+        &self,
+        to: &crate::domain::email::Email,
+        subject: &str,
+        body: &str,
+    ) -> Result<(), crate::domain::DomainError>;
+}
+
 /// A repository bundle available to use cases.
 pub trait Repositories:
     UserRepository

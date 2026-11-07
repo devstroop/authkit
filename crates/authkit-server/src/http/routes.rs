@@ -23,6 +23,7 @@ use crate::http::reset;
 use crate::http::security_headers::{SecurityHeaders, security_headers};
 use crate::http::session::{SessionSecurityState, session_context};
 use crate::session::SessionService;
+use authkit_core::ports::EmailSender;
 use crate::signing::KeyRing;
 use crate::tokens::TokenService;
 
@@ -70,6 +71,7 @@ pub(crate) struct AppState {
     pub(crate) sessions: Option<Arc<SessionService>>,
     pub(crate) authorization: Option<Arc<AuthorizationService>>,
     pub(crate) tokens: Option<Arc<TokenService>>,
+    pub(crate) email: Arc<dyn EmailSender + Send + Sync>,
 }
 
 impl AppState {
@@ -80,6 +82,7 @@ impl AppState {
         sessions: Option<Arc<SessionService>>,
         authorization: Option<Arc<AuthorizationService>>,
         tokens: Option<Arc<TokenService>>,
+        email: Arc<dyn EmailSender + Send + Sync>,
     ) -> Self {
         Self {
             readiness,
@@ -88,6 +91,7 @@ impl AppState {
             sessions,
             authorization,
             tokens,
+            email,
         }
     }
 }
@@ -98,7 +102,7 @@ impl AppState {
 /// [`router_with_sessions`]; the base router keeps metadata and health tests independent of
 /// session storage.
 pub fn router(readiness: Arc<dyn ReadinessProbe>, keys: Arc<KeyRing>, issuer: Issuer) -> Router {
-    base_router(readiness, keys, issuer, None, None, None)
+    base_router(readiness, keys, issuer, None, None, None, Arc::new(crate::email::DevEmailSender))
         .layer(middleware::from_fn(request_id::request_context))
 }
 
@@ -119,6 +123,7 @@ pub fn router_with_sessions(
             Some(sessions.clone()),
             authorization,
             None,
+            Arc::new(crate::email::DevEmailSender),
         ),
         sessions,
         issuer,
@@ -144,6 +149,7 @@ pub fn router_with_sessions_and_tokens(
             Some(sessions.clone()),
             authorization,
             tokens,
+            Arc::new(crate::email::DevEmailSender),
         ),
         sessions,
         issuer,
@@ -181,6 +187,7 @@ fn base_router(
     sessions: Option<Arc<SessionService>>,
     authorization: Option<Arc<AuthorizationService>>,
     tokens: Option<Arc<TokenService>>,
+    email: Arc<dyn EmailSender + Send + Sync>,
 ) -> Router {
     let mut router = Router::new()
         .route("/healthz", get(health))
@@ -256,6 +263,7 @@ fn base_router(
         sessions,
         authorization,
         tokens,
+        email,
     ))
 }
 

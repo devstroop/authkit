@@ -132,6 +132,12 @@ pub(crate) async fn request_reset_submit(
             })
             .await;
             if insert.ok().and_then(|r| r.ok()) == Some(WriteOutcome::Applied) {
+                let link = format!("/password-reset/confirm?token={}", token_plain);
+                let _ = state.email.send(
+                    &parsed_email,
+                    "Reset your password",
+                    &format!("Use this link to reset your password: {}", link),
+                );
                 #[cfg(debug_assertions)]
                 tracing::info!(
                     target = "authkit.dev.reset",
@@ -377,6 +383,12 @@ pub(crate) async fn request_verify_submit(
     })
     .await;
     if insert.ok().and_then(|r| r.ok()) == Some(WriteOutcome::Applied) {
+        let link = format!("/verify-email/confirm?token={}", token_plain);
+        let _ = state.email.send(
+            user.email(),
+            "Verify your email",
+            &format!("Use this link to verify your email: {}", link),
+        );
         #[cfg(debug_assertions)]
         tracing::info!(
             target = "authkit.dev.verify",
