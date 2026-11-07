@@ -4,6 +4,7 @@ use authkit_core::domain::{Credential, CredentialKind, Id, RecoveryCode, User};
 use authkit_core::domain::id::{CredentialEntity, UserEntity};
 use authkit_core::ports::{CredentialRepository, IdGenerator, RecoveryCodeRepository};
 use authkit_core::domain::WriteOutcome;
+use askama::Template;
 use axum::extract::{Extension, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
@@ -14,6 +15,14 @@ use crate::password::verify_password;
 use authkit_core::domain::SessionAudience;
 use crate::session::SystemClock;
 use crate::totp;
+
+#[derive(Template)]
+#[template(path = "pages/mfa.html")]
+struct MfaTemplate<'a> {
+    title: &'a str,
+    csrf: &'a str,
+    has_mfa: bool,
+}
 
 pub(crate) async fn account_page(
     State(state): State<AppState>,
@@ -39,17 +48,12 @@ pub(crate) async fn account_page(
     .await
     .unwrap_or(false);
 
-    let body = if has_mfa {
-        format!(
-            r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>MFA</title></head><body style="font-family: system-ui, sans-serif; max-width: 32rem; margin: 4rem auto; padding: 0 1rem;"><h1>MFA enabled</h1><form method="post" action="/account/mfa/disable"><input type="hidden" name="_csrf" value="{}"><button type="submit">Disable MFA</button></form></body></html>"#,
-            escape(&csrf)
-        )
-    } else {
-        format!(
-            r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>MFA</title></head><body style="font-family: system-ui, sans-serif; max-width: 32rem; margin: 4rem auto; padding: 0 1rem;"><h1>Enroll MFA</h1><form method="post" action="/account/mfa/enroll"><input type="hidden" name="_csrf" value="{}"><button type="submit">Generate secret</button></form></body></html>"#,
-            escape(&csrf)
-        )
+    let template = MfaTemplate {
+        title: "MFA",
+        csrf: &csrf,
+        has_mfa,
     };
+    let body = template.render().unwrap_or_default();
     html_ok(&body)
 }
 
