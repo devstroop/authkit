@@ -1,0 +1,14 @@
+{% macro button(label) %}
+<button type="submit" class="btn btn-primary">{{ label }}</button>
+{% endmacro %}
+
+{% macro text_input(name, label, input_type) %}
+<label class="field">
+  <span>{{ label }}</span>
+  <input type="{{ input_type }}" name="{{ name }}" class="input" required>
+</label>
+{% endmacro %}
+
+{% macro alert(message) %}
+<p class="alert" role="alert">{{ message }}</p>
+{% endmacro %}
