@@ -194,6 +194,7 @@ fn base_router(
     metrics::install(metrics::global());
     let mut router = Router::new()
         .route("/healthz", get(health))
+        .route("/static/htmx.min.js", get(static_htmx))
         .route("/metrics", get(metrics::handler))
         .route("/readyz", get(ready))
         .route("/login", get(login::login_page).post(login::login_submit))
@@ -285,6 +286,15 @@ fn base_router(
         tokens,
         email,
     ))
+}
+
+async fn static_htmx() -> Response {
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "application/javascript; charset=utf-8"), (header::CACHE_CONTROL, "public, max-age=31536000, immutable")],
+        include_str!("../../static/htmx.min.js"),
+    )
+        .into_response()
 }
 
 async fn health() -> Response {
