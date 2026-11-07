@@ -1392,6 +1392,13 @@ pub(crate) async fn replace_scopes(
     }
 }
 
+#[derive(askama::Template)]
+#[template(path = "pages/accept_invitation.html")]
+struct AcceptInvitationTemplate<'a> {
+    title: &'a str,
+    token: &'a str,
+}
+
 pub(crate) async fn accept_invitation_page(
     axum::extract::RawQuery(query): axum::extract::RawQuery,
 ) -> Response {
@@ -1399,13 +1406,11 @@ pub(crate) async fn accept_invitation_page(
         .as_deref()
         .and_then(|q| form_value(q, "token"))
         .unwrap_or_default();
-    let body = format!(
-        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Accept invitation</title></head><body style="font-family: system-ui, sans-serif; max-width: 32rem; margin: 4rem auto; padding: 0 1rem;">
-<h1>Accept invitation</h1>
-<form method="post" action="/invitations/accept"><input type="hidden" name="token" value="{}"><button type="submit">Accept</button></form>
-</body></html>"#,
-        escape(&token)
-    );
+    let template = AcceptInvitationTemplate {
+        title: "Accept invitation",
+        token: &token,
+    };
+    let body = template.render().unwrap_or_default();
     html_ok(&body)
 }
 
@@ -1661,14 +1666,6 @@ fn html_ok(body: &str) -> Response {
         body.to_owned(),
     )
         .into_response()
-}
-
-fn escape(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
 }
 
 trait MembershipStatusExt {
