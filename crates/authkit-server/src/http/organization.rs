@@ -162,14 +162,25 @@ struct MembersTemplate<'a> {
     can_manage: bool,
 }
 
+#[derive(Clone)]
 struct MemberView {
     email: String,
     status: String,
     id: String,
 }
 
+#[derive(askama::Template)]
+#[template(path = "fragments/members/list.html")]
+struct MembersFragment<'a> {
+    csrf: &'a str,
+    org_id: &'a str,
+    members: Vec<MemberView>,
+    can_manage: bool,
+}
+
 pub(crate) async fn members_page(
     State(state): State<AppState>,
+    headers: HeaderMap,
     session: Option<Extension<SessionContext>>,
     Path(org_id): Path<String>,
 ) -> Response {
@@ -225,6 +236,16 @@ pub(crate) async fn members_page(
     }
 
     let can_manage = can_manage_members(&store, &user_id, &org_id);
+    if headers.get("HX-Request").is_some() {
+        let fragment = MembersFragment {
+            csrf: &csrf,
+            org_id: org_id.as_str(),
+            members: members.clone(),
+            can_manage,
+        };
+        let body = fragment.render().unwrap_or_default();
+        return html_ok(&body);
+    }
     let template = MembersTemplate {
         title: "Members",
         csrf: &csrf,
@@ -307,19 +328,32 @@ struct InvitationsTemplate<'a> {
     can_manage: bool,
 }
 
+#[derive(Clone)]
 struct InvitationView {
     email: String,
     status: String,
     id: String,
 }
 
+#[derive(Clone)]
 struct RoleOption {
     id: String,
     name: String,
 }
 
+#[derive(askama::Template)]
+#[template(path = "fragments/invitations/list.html")]
+struct InvitationsFragment<'a> {
+    csrf: &'a str,
+    org_id: &'a str,
+    invitations: Vec<InvitationView>,
+    roles: Vec<RoleOption>,
+    can_manage: bool,
+}
+
 pub(crate) async fn invitations_page(
     State(state): State<AppState>,
+    headers: HeaderMap,
     session: Option<Extension<SessionContext>>,
     Path(org_id): Path<String>,
 ) -> Response {
@@ -375,6 +409,17 @@ pub(crate) async fn invitations_page(
         })
         .collect();
     let can_manage = can_manage_members(&store, &user_id, &org_id);
+    if headers.get("HX-Request").is_some() {
+        let fragment = InvitationsFragment {
+            csrf: &csrf,
+            org_id: org_id.as_str(),
+            invitations: invitation_views.clone(),
+            roles: role_options.clone(),
+            can_manage,
+        };
+        let body = fragment.render().unwrap_or_default();
+        return html_ok(&body);
+    }
     let template = InvitationsTemplate {
         title: "Invitations",
         csrf: &csrf,
@@ -533,14 +578,25 @@ struct RolesTemplate<'a> {
     can_manage: bool,
 }
 
+#[derive(Clone)]
 struct RoleView {
     name: String,
     slug: String,
     permissions: String,
 }
 
+#[derive(askama::Template)]
+#[template(path = "fragments/roles/list.html")]
+struct RolesFragment<'a> {
+    csrf: &'a str,
+    org_id: &'a str,
+    roles: Vec<RoleView>,
+    can_manage: bool,
+}
+
 pub(crate) async fn roles_page(
     State(state): State<AppState>,
+    headers: HeaderMap,
     session: Option<Extension<SessionContext>>,
     Path(org_id): Path<String>,
 ) -> Response {
@@ -585,6 +641,16 @@ pub(crate) async fn roles_page(
         })
         .collect();
     let can_manage = can_manage_members(&store, &user_id, &org_id);
+    if headers.get("HX-Request").is_some() {
+        let fragment = RolesFragment {
+            csrf: &csrf,
+            org_id: org_id.as_str(),
+            roles: role_views.clone(),
+            can_manage,
+        };
+        let body = fragment.render().unwrap_or_default();
+        return html_ok(&body);
+    }
     let template = RolesTemplate {
         title: "Roles",
         csrf: &csrf,
@@ -761,6 +827,7 @@ struct ApplicationsTemplate<'a> {
     can_manage: bool,
 }
 
+#[derive(Clone)]
 struct ApplicationView {
     name: String,
     slug: String,
@@ -768,8 +835,18 @@ struct ApplicationView {
     status: String,
 }
 
+#[derive(askama::Template)]
+#[template(path = "fragments/applications/list.html")]
+struct ApplicationsFragment<'a> {
+    csrf: &'a str,
+    org_id: &'a str,
+    apps: Vec<ApplicationView>,
+    can_manage: bool,
+}
+
 pub(crate) async fn applications_page(
     State(state): State<AppState>,
+    headers: HeaderMap,
     session: Option<Extension<SessionContext>>,
     Path(org_id): Path<String>,
 ) -> Response {
@@ -813,6 +890,16 @@ pub(crate) async fn applications_page(
         })
         .collect();
     let can_manage = can_manage_members(&store, &user_id, &org_id);
+    if headers.get("HX-Request").is_some() {
+        let fragment = ApplicationsFragment {
+            csrf: &csrf,
+            org_id: org_id.as_str(),
+            apps: app_views.clone(),
+            can_manage,
+        };
+        let body = fragment.render().unwrap_or_default();
+        return html_ok(&body);
+    }
     let template = ApplicationsTemplate {
         title: "Applications",
         csrf: &csrf,
@@ -902,6 +989,7 @@ struct OAuthClientsTemplate<'a> {
     can_manage: bool,
 }
 
+#[derive(Clone)]
 struct OAuthClientView {
     name: String,
     client_id: String,
@@ -909,13 +997,25 @@ struct OAuthClientView {
     id: String,
 }
 
+#[derive(Clone)]
 struct AppOption {
     id: String,
     name: String,
 }
 
+#[derive(askama::Template)]
+#[template(path = "fragments/oauth_clients/list.html")]
+struct OAuthClientsFragment<'a> {
+    csrf: &'a str,
+    org_id: &'a str,
+    clients: Vec<OAuthClientView>,
+    apps: Vec<AppOption>,
+    can_manage: bool,
+}
+
 pub(crate) async fn oauth_clients_page(
     State(state): State<AppState>,
+    headers: HeaderMap,
     session: Option<Extension<SessionContext>>,
     Path(org_id): Path<String>,
 ) -> Response {
@@ -975,6 +1075,17 @@ pub(crate) async fn oauth_clients_page(
         })
         .collect();
     let can_manage = can_manage_members(&store, &user_id, &org_id);
+    if headers.get("HX-Request").is_some() {
+        let fragment = OAuthClientsFragment {
+            csrf: &csrf,
+            org_id: org_id.as_str(),
+            clients: client_views.clone(),
+            apps: app_options.clone(),
+            can_manage,
+        };
+        let body = fragment.render().unwrap_or_default();
+        return html_ok(&body);
+    }
     let template = OAuthClientsTemplate {
         title: "OAuth clients",
         csrf: &csrf,

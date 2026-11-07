@@ -1,0 +1,27 @@
+<ul id="invitations">
+{% for invitation in invitations %}
+<li>{{ invitation.email }} {{ invitation.status }}
+  {% if can_manage %}
+  <form method="post" action="/organizations/{{ org_id }}/invitations/{{ invitation.id }}/revoke" style="display:inline" hx-post="/organizations/{{ org_id }}/invitations/{{ invitation.id }}/revoke" hx-target="#invitations" hx-swap="outerHTML">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <button type="submit">Revoke</button>
+  </form>
+  {% endif %}
+</li>
+{% endfor %}
+</ul>
+{% if can_manage %}
+<h2>Invite member</h2>
+<form method="post" action="/organizations/{{ org_id }}/invitations" hx-post="/organizations/{{ org_id }}/invitations" hx-target="#invitations" hx-swap="outerHTML">
+  <input type="hidden" name="_csrf" value="{{ csrf }}">
+  <label>Email <input name="email" type="email" required></label><br>
+  <label>Role
+    <select name="role_id">
+      {% for role in roles %}
+      <option value="{{ role.id }}">{{ role.name }}</option>
+      {% endfor %}
+    </select>
+  </label><br>
+  <button type="submit">Invite</button>
+</form>
+{% endif %}
