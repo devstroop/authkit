@@ -228,6 +228,13 @@ pub(crate) async fn recovery_codes_page(
     html_ok(&body)
 }
 
+#[derive(askama::Template)]
+#[template(path = "pages/recovery_codes.html")]
+struct RecoveryCodesTemplate<'a> {
+    title: &'a str,
+    codes: Vec<String>,
+}
+
 pub(crate) async fn generate_recovery_codes(
     State(state): State<AppState>,
     session: Option<Extension<SessionContext>>,
@@ -278,10 +285,11 @@ pub(crate) async fn generate_recovery_codes(
         codes.push(recovery);
     }
     let _ = codes;
-    let body = format!(
-        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Recovery codes</title></head><body style="font-family: system-ui, sans-serif; max-width: 32rem; margin: 4rem auto; padding: 0 1rem;"><h1>Save these recovery codes</h1><ul>{}</ul><p><a href="/account/mfa">Back</a></p></body></html>"#,
-        plaintext_codes.iter().map(|c| format!("<li><code>{}</code></li>", escape(c))).collect::<Vec<_>>().join("")
-    );
+    let template = RecoveryCodesTemplate {
+        title: "Recovery codes",
+        codes: plaintext_codes.clone(),
+    };
+    let body = template.render().unwrap_or_default();
     html_ok(&body)
 }
 

@@ -1,0 +1,10 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+<h1>Save these recovery codes</h1>
+<ul>
+{% for code in codes %}
+<li><code>{{ code }}</code></li>
+{% endfor %}
+</ul>
+<p><a href="/account/mfa">Back</a></p>
+{% endblock %}
