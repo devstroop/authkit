@@ -10,6 +10,7 @@ pub mod config;
 pub mod email;
 pub mod password;
 pub mod http;
+pub mod metrics;
 pub mod session;
 pub mod signing;
 pub mod telemetry;

@@ -22,6 +22,7 @@ use crate::http::request_id;
 use crate::http::reset;
 use crate::http::security_headers::{SecurityHeaders, security_headers};
 use crate::http::session::{SessionSecurityState, session_context};
+use crate::metrics;
 use crate::session::SessionService;
 use authkit_core::ports::EmailSender;
 use crate::signing::KeyRing;
@@ -189,8 +190,10 @@ fn base_router(
     tokens: Option<Arc<TokenService>>,
     email: Arc<dyn EmailSender + Send + Sync>,
 ) -> Router {
+    metrics::install(metrics::global());
     let mut router = Router::new()
         .route("/healthz", get(health))
+        .route("/metrics", get(metrics::handler))
         .route("/readyz", get(ready))
         .route("/login", get(login::login_page).post(login::login_submit))
         .route("/register", get(login::register_page).post(login::register_submit))
@@ -256,6 +259,7 @@ fn base_router(
                 get(crate::http::logout::logout_get).post(crate::http::logout::logout_post),
             );
     }
+    let router = router.layer(axum::middleware::from_fn(metrics::middleware));
     router.fallback(not_found).with_state(AppState::new(
         readiness,
         keys,
