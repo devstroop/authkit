@@ -1,9 +1,10 @@
 {% extends "layouts/base.html" %}
+{% import "macros/ui.html" as ui %}
 {% block content %}
 <h1>Admin sign in</h1>
 <form method="post" action="/admin/login">
-  <label>Email <input type="email" name="email" type="email" required autocomplete="email" aria-required="true" autocomplete="email" aria-required="true"></label>
-  <label>Password <input type="password" name="password" type="password" required autocomplete="current-password" aria-required="true"></label>
-  <button type="submit">Sign in</button>
+  {{ ui::text_input("email", "Email", "email", "email") }}
+  {{ ui::text_input("password", "Password", "password", "current-password") }}
+  {{ ui::button("Sign in") }}
 </form>
 {% endblock %}

@@ -1,10 +1,11 @@
 {% extends "layouts/base.html" %}
+{% import "macros/ui.html" as ui %}
 {% block content %}
 <h1>Enroll MFA</h1>
 <p>Secret: <code>{{ secret }}</code></p>
 <form method="post" action="/account/mfa/verify">
   <input type="hidden" name="_csrf" value="{{ csrf }}">
-  <label>Code <input name="code" required></label>
-  <button type="submit">Verify</button>
+  {{ ui::text_input("code", "Code", "text", "") }}
+  {{ ui::button("Verify") }}
 </form>
 {% endblock %}

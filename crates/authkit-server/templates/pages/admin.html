@@ -1,42 +1,53 @@
 {% extends "layouts/base.html" %}
+{% import "macros/ui.html" as ui %}
 {% block content %}
 <h1>System administration</h1>
-<h2>System administrators</h2>
-<ul>
-{% for admin in admins %}
-<li>{{ admin.email }} ({{ admin.id }}) {{ admin.status }}
-  {% if admin.active %}
-  <form method="post" action="/admin/administrators/{{ admin.id }}/disable" style="display:inline">
+
+<section class="card">
+  <h2>System administrators</h2>
+  <ul>
+  {% for admin in admins %}
+  <li>{{ admin.email }} ({{ admin.id }}) {{ admin.status }}
+    {% if admin.active %}
+    <form method="post" action="/admin/administrators/{{ admin.id }}/disable" style="display:inline">
+      <input type="hidden" name="_csrf" value="{{ csrf }}">
+      {{ ui::button("Disable", "danger") }}
+    </form>
+    {% endif %}
+  </li>
+  {% endfor %}
+  </ul>
+  <form method="post" action="/admin/administrators">
     <input type="hidden" name="_csrf" value="{{ csrf }}">
-    <button type="submit">Disable</button>
+    {{ ui::text_input("email", "Email", "email", "email") }}
+    {{ ui::button("Grant admin") }}
   </form>
-  {% endif %}
-</li>
-{% endfor %}
-</ul>
-<form method="post" action="/admin/administrators">
-  <input type="hidden" name="_csrf" value="{{ csrf }}">
-  <label>Email <input type="email" name="email" type="email" required autocomplete="email" aria-required="true" autocomplete="email" aria-required="true"></label>
-  <button type="submit">Grant admin</button>
-</form>
-<h2>Signing keys</h2>
-<ul>
-{% for key in keys %}
-<li>{{ key.kid }} {{ key.state }} {{ key.published }}</li>
-{% endfor %}
-</ul>
-<form method="post" action="/admin/signing-keys/rotate">
-  <input type="hidden" name="_csrf" value="{{ csrf }}">
-  <button type="submit">Rotate signing key</button>
-</form>
-<h2>Recent audit events</h2>
-<ul>
-{% for event in events %}
-<li>{{ event.occurred_at }} {{ event.action }} {{ event.org }}</li>
-{% endfor %}
-</ul>
+</section>
+
+<section class="card">
+  <h2>Signing keys</h2>
+  <ul>
+  {% for key in keys %}
+  <li>{{ key.kid }} {{ key.state }} {{ key.published }}</li>
+  {% endfor %}
+  </ul>
+  <form method="post" action="/admin/signing-keys/rotate">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    {{ ui::button("Rotate signing key") }}
+  </form>
+</section>
+
+<section class="card">
+  <h2>Recent audit events</h2>
+  <ul>
+  {% for event in events %}
+  <li>{{ event.occurred_at }} {{ event.action }} {{ event.org }}</li>
+  {% endfor %}
+  </ul>
+</section>
+
 <form method="post" action="/admin/logout">
   <input type="hidden" name="_csrf" value="{{ csrf }}">
-  <button type="submit">Sign out</button>
+  {{ ui::button("Sign out", "secondary") }}
 </form>
 {% endblock %}
