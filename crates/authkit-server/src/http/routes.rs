@@ -16,6 +16,7 @@ use crate::authorization::AuthorizationService;
 use crate::config::Issuer;
 use crate::http::account;
 use crate::http::login;
+use crate::http::organization;
 use crate::http::request_id;
 use crate::http::reset;
 use crate::http::security_headers::{SecurityHeaders, security_headers};
@@ -194,6 +195,13 @@ fn base_router(
         .route("/account/password", post(account::change_password))
         .route("/account/applications", get(account::connected_apps_page))
         .route("/account/consents/{id}/revoke", post(account::revoke_consent))
+        .route("/organizations", get(organization::organizations_page).post(organization::create_organization))
+        .route("/organizations/{org_id}/members", get(organization::members_page).post(organization::add_member))
+        .route("/organizations/{org_id}/invitations", get(organization::invitations_page).post(organization::create_invitation))
+        .route("/organizations/{org_id}/invitations/{invitation_id}/revoke", post(organization::revoke_invitation))
+        .route("/organizations/{org_id}/roles", get(organization::roles_page).post(organization::create_role))
+        .route("/organizations/{org_id}/role-bindings", post(organization::bind_role))
+        .route("/invitations/accept", get(organization::accept_invitation_page).post(organization::accept_invitation))
         .route("/account/verify-email", get(reset::request_verify_page))
         .route("/account/verify-email-request", post(reset::request_verify_submit))
         .route(

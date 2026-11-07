@@ -97,6 +97,12 @@ pub trait MembershipRepository {
         user_id: &Id<UserEntity>,
     ) -> Result<Option<Membership>, DomainError>;
 
+    /// Lists memberships in a tenant.
+    fn list(&self, tenant: &TenantContext) -> Result<Vec<Membership>, DomainError>;
+
+    /// Lists memberships for a user across tenants.
+    fn list_for_user(&self, user_id: &Id<UserEntity>) -> Result<Vec<Membership>, DomainError>;
+
     /// Inserts a new membership.
     fn insert(
         &self,
@@ -121,6 +127,15 @@ pub trait InvitationRepository {
         tenant: &TenantContext,
         id: &Id<InvitationEntity>,
     ) -> Result<Option<Invitation>, DomainError>;
+
+    /// Finds an invitation by its hashed token.
+    fn find_by_token_hash(
+        &self,
+        token_hash: &crate::domain::secret::SecretHash,
+    ) -> Result<Option<Invitation>, DomainError>;
+
+    /// Lists invitations in a tenant.
+    fn list(&self, tenant: &TenantContext) -> Result<Vec<Invitation>, DomainError>;
 
     /// Inserts a new invitation.
     fn insert(
@@ -273,6 +288,9 @@ pub trait RoleRepository {
 
 /// Read and write access to role bindings.
 pub trait RoleBindingRepository {
+    /// Lists bindings in a tenant.
+    fn list(&self, tenant: &TenantContext) -> Result<Vec<RoleBinding>, DomainError>;
+
     /// Finds bindings for a user in a tenant.
     fn list_for_user(
         &self,

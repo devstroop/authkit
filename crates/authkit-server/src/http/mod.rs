@@ -3,6 +3,7 @@
 pub mod account;
 pub mod authorize;
 pub mod login;
+pub mod organization;
 pub mod reset;
 pub mod logout;
 pub mod revoke;

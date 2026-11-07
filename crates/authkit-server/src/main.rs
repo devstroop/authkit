@@ -5,6 +5,7 @@
 use std::process::ExitCode;
 
 use authkit_server::config::Config;
+use authkit_server::signing::KeyRing;
 use authkit_server::telemetry::init_tracing;
 use authkit_store::SqlStore;
 
@@ -32,6 +33,16 @@ fn run(mut args: impl Iterator<Item = String>) -> Result<(), u8> {
                 return Err(2);
             }
             serve()
+        }
+        Some("migrate") => migrate(),
+        Some("bootstrap") => bootstrap(),
+        Some("key") => match args.next().as_deref() {
+            Some("rotate") => key_rotate(),
+            _ => {
+                eprintln!("error: expected 'key rotate'\n");
+                print_help();
+                Err(2)
+            }
         }
         Some("audit") => match args.next().as_deref() {
             Some("export") => audit_export(args.collect()),
@@ -138,6 +149,33 @@ fn audit_export(args: Vec<String>) -> Result<(), u8> {
         }
         Ok(())
     })
+}
+
+fn migrate() -> Result<(), u8> {
+    let config = Config::from_env().map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    let url = config.database().url().to_owned();
+    let max_connections = config.database().max_connections();
+    let store = SqlStore::connect(&url, max_connections).map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    store.migrate().map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    println!("migrated");
+    Ok(())
+}
+
+fn bootstrap() -> Result<(), u8> {
+    migrate()?;
+    let config = Config::from_env().map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    let now = authkit_server::signing::unix_now();
+    let ring = KeyRing::load_or_bootstrap(config.signing_keys(), now).map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    println!("bootstrapped signing key {}", ring.active().kid());
+    Ok(())
+}
+
+fn key_rotate() -> Result<(), u8> {
+    let config = Config::from_env().map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    let now = authkit_server::signing::unix_now();
+    let ring = KeyRing::rotate(config.signing_keys(), now).map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    println!("rotated signing key {}", ring.active().kid());
+    Ok(())
 }
 
 fn serve() -> Result<(), u8> {

@@ -218,6 +218,34 @@ impl MembershipRepository for SqlStore {
         })
     }
 
+    fn list(&self, tenant: &TenantContext) -> Result<Vec<Membership>, DomainError> {
+        let sql = self.sql(
+            "SELECT id, org_id, user_id, status, invited_by, joined_at, created_at, updated_at, version FROM membership WHERE org_id = ? ORDER BY created_at, id",
+        );
+        self.block_on(async {
+            let rows = sqlx::query(&sql)
+                .bind(tenant.organization_id().as_str())
+                .fetch_all(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            rows.iter().map(map_membership).collect()
+        })
+    }
+
+    fn list_for_user(&self, user_id: &Id<UserEntity>) -> Result<Vec<Membership>, DomainError> {
+        let sql = self.sql(
+            "SELECT id, org_id, user_id, status, invited_by, joined_at, created_at, updated_at, version FROM membership WHERE user_id = ? ORDER BY created_at, id",
+        );
+        self.block_on(async {
+            let rows = sqlx::query(&sql)
+                .bind(user_id.as_str())
+                .fetch_all(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            rows.iter().map(map_membership).collect()
+        })
+    }
+
     fn insert(
         &self,
         tenant: &TenantContext,
@@ -270,6 +298,75 @@ impl InvitationRepository for SqlStore {
             let role_ids = parse_role_ids(fetch_strings(&mut tx, &roles_sql, id.as_str()).await?)?;
             tx.commit().await.map_err(map_db_error)?;
             Ok(Some(map_invitation(&row, role_ids)?))
+        })
+    }
+
+    fn find_by_token_hash(&self, token_hash: &SecretHash) -> Result<Option<Invitation>, DomainError> {
+        let sql = self.sql(
+            "SELECT id, org_id, email, token_hash, invited_by, status, expires_at, accepted_at, created_at, updated_at, version FROM invitation WHERE token_hash = ?",
+        );
+        let roles_sql = self.sql(
+            "SELECT role_id AS value FROM invitation_role WHERE invitation_id = ? ORDER BY position",
+        );
+        self.block_on(async {
+            let row = sqlx::query(&sql)
+                .bind(token_hash.as_str())
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            let Some(row) = row else {
+                return Ok(None);
+            };
+            let invitation_id = stored_id::<InvitationEntity>(&row, "id")?;
+            let role_rows = sqlx::query(&roles_sql)
+                .bind(invitation_id.as_str())
+                .fetch_all(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            let role_ids: Vec<String> = role_rows
+                .iter()
+                .map(|r| {
+                    use sqlx::Row;
+                    r.get::<String, _>("value")
+                })
+                .collect();
+            let role_ids = parse_role_ids(role_ids)?;
+            Ok(Some(map_invitation(&row, role_ids)?))
+        })
+    }
+
+    fn list(&self, tenant: &TenantContext) -> Result<Vec<Invitation>, DomainError> {
+        let sql = self.sql(
+            "SELECT id, org_id, email, token_hash, invited_by, status, expires_at, accepted_at, created_at, updated_at, version FROM invitation WHERE org_id = ? ORDER BY created_at, id",
+        );
+        let roles_sql = self.sql(
+            "SELECT role_id AS value FROM invitation_role WHERE invitation_id = ? ORDER BY position",
+        );
+        self.block_on(async {
+            let rows = sqlx::query(&sql)
+                .bind(tenant.organization_id().as_str())
+                .fetch_all(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            let mut result = Vec::with_capacity(rows.len());
+            for row in &rows {
+                let invitation_id = stored_id::<InvitationEntity>(row, "id")?;
+                let role_rows = sqlx::query(&roles_sql)
+                    .bind(invitation_id.as_str())
+                    .fetch_all(&self.pool)
+                    .await
+                    .map_err(map_db_error)?;
+                let role_ids: Vec<String> = role_rows
+                    .iter()
+                    .map(|r| {
+                        use sqlx::Row;
+                        r.get::<String, _>("value")
+                    })
+                    .collect();
+                let role_ids = parse_role_ids(role_ids)?;
+                result.push(map_invitation(row, role_ids)?);
+            }
+            Ok(result)
         })
     }
 
@@ -760,6 +857,20 @@ impl RoleRepository for SqlStore {
 }
 
 impl RoleBindingRepository for SqlStore {
+    fn list(&self, tenant: &TenantContext) -> Result<Vec<RoleBinding>, DomainError> {
+        let sql = self.sql(
+            "SELECT id, org_id, application_id, role_id, user_id, created_at FROM role_binding WHERE org_id = ? ORDER BY created_at, id",
+        );
+        self.block_on(async {
+            let rows = sqlx::query(&sql)
+                .bind(tenant.organization_id().as_str())
+                .fetch_all(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            rows.iter().map(map_role_binding).collect()
+        })
+    }
+
     fn list_for_user(
         &self,
         tenant: &TenantContext,

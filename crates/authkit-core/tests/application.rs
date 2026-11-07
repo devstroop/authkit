@@ -214,6 +214,28 @@ impl MembershipRepository for MemoryStore {
             .cloned())
     }
 
+    fn list(&self, tenant: &TenantContext) -> Result<Vec<Membership>, DomainError> {
+        Ok(self
+            .data
+            .borrow()
+            .memberships
+            .iter()
+            .filter(|membership| membership.organization_id() == tenant.organization_id())
+            .cloned()
+            .collect())
+    }
+
+    fn list_for_user(&self, user_id: &TypedId<UserEntity>) -> Result<Vec<Membership>, DomainError> {
+        Ok(self
+            .data
+            .borrow()
+            .memberships
+            .iter()
+            .filter(|membership| membership.user_id() == user_id)
+            .cloned()
+            .collect())
+    }
+
     fn insert(
         &self,
         tenant: &TenantContext,
@@ -287,6 +309,17 @@ impl RoleRepository for MemoryStore {
 }
 
 impl RoleBindingRepository for MemoryStore {
+    fn list(&self, tenant: &TenantContext) -> Result<Vec<RoleBinding>, DomainError> {
+        Ok(self
+            .data
+            .borrow()
+            .bindings
+            .iter()
+            .filter(|binding| binding.organization_id() == tenant.organization_id())
+            .cloned()
+            .collect())
+    }
+
     fn list_for_user(
         &self,
         tenant: &TenantContext,

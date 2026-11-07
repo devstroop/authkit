@@ -231,6 +231,38 @@ impl KeyRing {
         Ok(Self { keys, active_index })
     }
 
+    /// Rotates the active signing key, retiring the previous one.
+    pub fn rotate(config: &SigningKeyConfig, now: u64) -> Result<Self, KeyRingError> {
+        let ring = Self::load_or_bootstrap(config, now)?;
+        let keys = ring.keys;
+        let publish_secs = config.retired_publish_secs();
+        let mut rotated = Vec::with_capacity(keys.len() + 1);
+        for mut key in keys {
+            if key.state == KeyState::Active {
+                key.state = KeyState::Retired;
+                key.secret = None;
+                key.retired_at = Some(now);
+                key.publish_until = Some(now.saturating_add(publish_secs));
+            }
+            rotated.push(key);
+        }
+        let new_key = SigningKey::generate(KeyState::Active, now)?;
+        let new_kid = new_key.kid().to_owned();
+        rotated.push(new_key);
+
+        let file = KeyRingFile {
+            version: KEYRING_VERSION,
+            keys: rotated
+                .iter()
+                .map(|key| KeyEntry::from_signing_key(key, config.kek()))
+                .collect::<Result<Vec<_>, _>>()?,
+        };
+        write_keyring(config.file(), &file)?;
+        let ring = Self::new(rotated)?;
+        tracing::info!(new_kid = %new_kid, "rotated signing key");
+        Ok(ring)
+    }
+
     /// Loads the encrypted keyring or creates and persists a bootstrap key.
     pub fn load_or_bootstrap(config: &SigningKeyConfig, now: u64) -> Result<Self, KeyRingError> {
         if !config.file().exists() {
