@@ -1,0 +1,16 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+<h1>Create account</h1>
+<form method="post" action="/register">
+  {% if !csrf.is_empty() %}
+  <input type="hidden" name="_csrf" value="{{ csrf }}">
+  {% endif %}
+  {% if !next.is_empty() %}
+  <input type="hidden" name="next" value="{{ next }}">
+  {% endif %}
+  <label>Email <input type="email" name="email" required></label>
+  <label>Password <input type="password" name="password" required minlength="12"></label>
+  <button type="submit">Create account</button>
+</form>
+<p><a href="/login">Sign in instead</a></p>
+{% endblock %}

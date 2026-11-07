@@ -87,6 +87,14 @@ pub(crate) async fn login_page(
         .into_response()
 }
 
+#[derive(Template)]
+#[template(path = "pages/register.html")]
+struct RegisterTemplate<'a> {
+    title: &'a str,
+    next: &'a str,
+    csrf: &'a str,
+}
+
 pub(crate) async fn register_page(
     State(state): State<AppState>,
     session: Option<Extension<SessionContext>>,
@@ -96,29 +104,27 @@ pub(crate) async fn register_page(
         .as_deref()
         .and_then(|q| form_value(q, "next"))
         .unwrap_or_default();
-    let mut extra = if next.is_empty() {
-        String::new()
-    } else {
-        format!(r#"<input type="hidden" name="next" value="{}">"#, escape(&next))
-    };
-    if let Some(ext) = session {
+    let csrf_value = if let Some(ext) = session {
         if let Some(sessions) = state.sessions.as_ref() {
-            extra.push_str(&format!(
-                r#"<input type="hidden" name="_csrf" value="{}">"#,
-                escape(&sessions.csrf_token(ext.0.session()))
-            ));
+            sessions.csrf_token(ext.0.session()).to_owned()
+        } else {
+            String::new()
         }
-    }
-    html(
+    } else {
+        String::new()
+    };
+    let template = RegisterTemplate {
+        title: "Create account",
+        next: &next,
+        csrf: &csrf_value,
+    };
+    let body = template.render().unwrap_or_default();
+    (
         StatusCode::OK,
-        "Create account",
-        "/register",
-        "Create account",
-        "",
-        "/login",
-        "Sign in instead",
-        &extra,
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8"), (header::CACHE_CONTROL, "no-store")],
+        body,
     )
+        .into_response()
 }
 
 pub(crate) async fn login_submit(
