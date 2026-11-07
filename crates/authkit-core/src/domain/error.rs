@@ -89,6 +89,11 @@ impl DomainError {
         Self::new(ErrorCode::Unauthenticated, message)
     }
 
+    /// Creates a `RateLimited` error.
+    pub fn rate_limited(message: impl Into<String>) -> Self {
+        Self::new(ErrorCode::RateLimited, message)
+    }
+
     /// Returns the stable error code.
     pub const fn code(&self) -> ErrorCode {
         self.code

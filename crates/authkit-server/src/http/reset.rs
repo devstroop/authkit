@@ -2,12 +2,14 @@
 
 use authkit_core::domain::{Email, OneTimeToken, OneTimeTokenPurpose, WriteOutcome};
 use authkit_core::domain::id::OneTimeTokenEntity;
-use authkit_core::ports::{CredentialRepository, IdGenerator, OneTimeTokenRepository, UserRepository};
+use authkit_core::ports::{
+    RateLimiter,CredentialRepository, IdGenerator, OneTimeTokenRepository, UserRepository};
 use axum::extract::{Query, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
 
+use crate::http::rate_limit::client_ip;
 use crate::http::routes::AppState;
 use crate::password::hash_password;
 use base64::Engine;
@@ -41,14 +43,49 @@ pub(crate) async fn request_reset_page(
 
 pub(crate) async fn request_reset_submit(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
     let mut params = std::collections::HashMap::new();
     for (k, v) in url::form_urlencoded::parse(&body) {
         params.insert(k.into_owned(), v.into_owned());
     }
+    let trusted = std::env::var("AUTHKIT_TRUSTED_PROXIES").unwrap_or_default()
+        .split(',').filter_map(|v| v.trim().parse().ok()).collect::<Vec<_>>();
+    let trusted = if trusted.is_empty() && std::env::var("AUTHKIT_TRUSTED_PROXIES").unwrap_or_default().contains('*') {
+        vec!["0.0.0.0".parse().unwrap()]
+    } else { trusted };
+    let ip = client_ip(&headers, None, &trusted);
+    if let Some(sessions) = state.sessions.as_ref() {
+        let store = sessions.store().clone();
+        let now = sessions.clock().now();
+        let key = format!("reset:ip:{ip}");
+        let result = tokio::task::spawn_blocking({
+            let store = store.clone();
+            let key = key.clone();
+            let now = now;
+            move || RateLimiter::check(store.as_ref(), &key, 20, 3600, now)
+        }).await;
+        if let Ok(Err(err)) = result {
+            return rate_limited_response(err.retry_after_secs);
+        }
+    }
     let email = params.get("email").cloned().unwrap_or_default();
     if let Ok(parsed_email) = Email::parse(&email) {
+        if let Some(sessions) = state.sessions.as_ref() {
+            let store = sessions.store().clone();
+            let now = sessions.clock().now();
+            let key = format!("reset:account:{}", parsed_email.as_str().to_lowercase());
+            let result = tokio::task::spawn_blocking({
+                let store = store.clone();
+                let key = key.clone();
+                let now = now;
+                move || RateLimiter::check(store.as_ref(), &key, 5, 900, now)
+            }).await;
+            if let Ok(Err(err)) = result {
+                return rate_limited_response(err.retry_after_secs);
+            }
+        }
         let store = match state.sessions.as_ref() {
             Some(s) => s.store().clone(),
             None => return unavailable(),
@@ -264,16 +301,45 @@ pub(crate) async fn request_verify_page(session: Option<axum::extract::Extension
 
 pub(crate) async fn request_verify_submit(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     session: Option<axum::extract::Extension<crate::http::session::SessionContext>>,
 ) -> Response {
-    let Some(ext) = session else {
+    let Some(ref ext) = session else {
         return redirect("/login");
     };
     let sessions = match state.sessions.as_ref() {
         Some(s) => s,
         None => return unavailable(),
     };
+    let trusted = std::env::var("AUTHKIT_TRUSTED_PROXIES").unwrap_or_default()
+        .split(',').filter_map(|v| v.trim().parse().ok()).collect::<Vec<_>>();
+    let trusted = if trusted.is_empty() && std::env::var("AUTHKIT_TRUSTED_PROXIES").unwrap_or_default().contains('*') {
+        vec!["0.0.0.0".parse().unwrap()]
+    } else { trusted };
+    let ip = client_ip(&headers, None, &trusted);
     let store = sessions.store().clone();
+    let now = sessions.clock().now();
+    let user_key = format!("verify:user:{}",
+        session.as_ref().map(|s| s.0.session().user_id().as_str().to_owned()).unwrap_or_else(|| "unknown".to_owned()));
+    let user_result = tokio::task::spawn_blocking({
+        let store = store.clone();
+        let user_key = user_key.clone();
+        let now = now;
+        move || RateLimiter::check(store.as_ref(), &user_key, 5, 3600, now)
+    }).await;
+    if let Ok(Err(err)) = user_result {
+        return rate_limited_response(err.retry_after_secs);
+    }
+    let ip_key = format!("verify:ip:{ip}");
+    let ip_result = tokio::task::spawn_blocking({
+        let store = store.clone();
+        let ip_key = ip_key.clone();
+        let now = now;
+        move || RateLimiter::check(store.as_ref(), &ip_key, 20, 3600, now)
+    }).await;
+    if let Ok(Err(err)) = ip_result {
+        return rate_limited_response(err.retry_after_secs);
+    }
     let user_id = ext.0.session().user_id().clone();
     let user = tokio::task::spawn_blocking({
         let store = store.clone();
@@ -335,11 +401,32 @@ pub(crate) async fn verify_email_page(Query(q): Query<TokenQuery>) -> Response {
 
 pub(crate) async fn verify_email_confirm(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
     let mut params = std::collections::HashMap::new();
     for (k, v) in url::form_urlencoded::parse(&body) {
         params.insert(k.into_owned(), v.into_owned());
+    }
+    let trusted = std::env::var("AUTHKIT_TRUSTED_PROXIES").unwrap_or_default()
+        .split(',').filter_map(|v| v.trim().parse().ok()).collect::<Vec<_>>();
+    let trusted = if trusted.is_empty() && std::env::var("AUTHKIT_TRUSTED_PROXIES").unwrap_or_default().contains('*') {
+        vec!["0.0.0.0".parse().unwrap()]
+    } else { trusted };
+    let ip = client_ip(&headers, None, &trusted);
+    if let Some(sessions) = state.sessions.as_ref() {
+        let store = sessions.store().clone();
+        let now = sessions.clock().now();
+        let key = format!("verify:ip:{ip}");
+        let result = tokio::task::spawn_blocking({
+            let store = store.clone();
+            let key = key.clone();
+            let now = now;
+            move || RateLimiter::check(store.as_ref(), &key, 20, 300, now)
+        }).await;
+        if let Ok(Err(err)) = result {
+            return rate_limited_response(err.retry_after_secs);
+        }
     }
     let token_plain = params.get("token").cloned().unwrap_or_default();
     if token_plain.is_empty() {
@@ -479,4 +566,16 @@ fn authkit_server_now() -> authkit_core::domain::time::Timestamp {
     authkit_core::domain::time::Timestamp::from_millis(
         crate::signing::unix_now().saturating_mul(1000),
     )
+}
+
+fn rate_limited_response(retry_after: u64) -> Response {
+    let mut response = (
+        axum::http::StatusCode::TOO_MANY_REQUESTS,
+        axum::Json(serde_json::json!({"error": "rate_limited", "retry_after": retry_after})),
+    )
+        .into_response();
+    if let Ok(value) = axum::http::HeaderValue::from_str(&retry_after.to_string()) {
+        response.headers_mut().insert(axum::http::header::RETRY_AFTER, value);
+    }
+    response
 }

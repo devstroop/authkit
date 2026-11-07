@@ -5,13 +5,15 @@ use std::collections::HashSet;
 use authkit_core::domain::{
     AuditActor, ClientId, ErrorCode, GrantType, Nonce, PkceChallenge, RedirectUri, Scope, ScopeSet,
 };
+use authkit_core::ports::RateLimiter;
 use axum::extract::{Extension, RawForm, RawQuery, State};
-use axum::http::{HeaderValue, StatusCode, header};
+use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 
 use crate::authorization::{AuthorizationService, ClientContext, ConsentMode, IssueCode};
 use crate::http::error::OAuthErrorCode;
 use crate::http::request_id::RequestId;
+use crate::http::rate_limit::client_ip;
 use crate::http::routes::AppState;
 use crate::http::session::SessionContext;
 
@@ -26,6 +28,7 @@ const MAX_MAX_AGE_SECS: u64 = 30 * 24 * 60 * 60;
 /// Handles a browser authorization request.
 pub(crate) async fn authorize(
     State(state): State<AppState>,
+    headers: HeaderMap,
     session: Option<Extension<SessionContext>>,
     request_id: Option<Extension<RequestId>>,
     RawQuery(query): RawQuery,
@@ -38,6 +41,26 @@ pub(crate) async fn authorize(
             "The authorization endpoint is not available.",
         );
     };
+    let trusted = std::env::var("AUTHKIT_TRUSTED_PROXIES").unwrap_or_default()
+        .split(',').filter_map(|v| v.trim().parse().ok()).collect::<Vec<_>>();
+    let trusted = if trusted.is_empty() && std::env::var("AUTHKIT_TRUSTED_PROXIES").unwrap_or_default().contains('*') {
+        vec!["0.0.0.0".parse().unwrap()]
+    } else { trusted };
+    let ip = client_ip(&headers, None, &trusted);
+    if let Some(sessions) = state.sessions.as_ref() {
+        let store = sessions.store().clone();
+        let now = sessions.clock().now();
+        let key = format!("authorize:ip:{ip}");
+        let result = tokio::task::spawn_blocking({
+            let store = store.clone();
+            let key = key.clone();
+            let now = now;
+            move || RateLimiter::check(store.as_ref(), &key, 60, 300, now)
+        }).await;
+        if let Ok(Err(err)) = result {
+            return oauth_rate_limited(err.retry_after_secs);
+        }
+    }
     let params = match Params::from_query(query.as_deref()) {
         Ok(params) => params,
         Err(()) => {
@@ -73,6 +96,20 @@ pub(crate) async fn authorize(
         }
         Err(error) => return unavailable(error),
     };
+    if let Some(sessions) = state.sessions.as_ref() {
+        let store = sessions.store().clone();
+        let now = sessions.clock().now();
+        let key = format!("authorize:client:{}:{}", client_id.as_str(), ip);
+        let result = tokio::task::spawn_blocking({
+            let store = store.clone();
+            let key = key.clone();
+            let now = now;
+            move || RateLimiter::check(store.as_ref(), &key, 60, 300, now)
+        }).await;
+        if let Ok(Err(err)) = result {
+            return oauth_rate_limited(err.retry_after_secs);
+        }
+    }
 
     let redirect_uri = match registered_redirect(&params, &context) {
         Some(redirect_uri) => redirect_uri,
@@ -1126,4 +1163,16 @@ mod tests {
         assert!(parse_prompt(Some("none consent")).is_err());
         assert!(parse_prompt(Some("login")).is_err());
     }
+}
+
+fn oauth_rate_limited(retry_after: u64) -> Response {
+    let mut response = (
+        StatusCode::TOO_MANY_REQUESTS,
+        axum::Json(serde_json::json!({"error": "temporarily_unavailable", "error_description": "the request was rate limited"})),
+    )
+        .into_response();
+    if let Ok(value) = HeaderValue::from_str(&retry_after.to_string()) {
+        response.headers_mut().insert(header::RETRY_AFTER, value);
+    }
+    response
 }

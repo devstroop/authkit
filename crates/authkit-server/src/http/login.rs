@@ -8,7 +8,7 @@ use authkit_core::domain::{
 };
 use authkit_core::domain::id::{CredentialEntity, UserEntity};
 use authkit_core::ports::{
-    CredentialRepository, IdGenerator, UserRepository,
+    CredentialRepository, IdGenerator, RateLimiter, UserRepository,
 };
 use crate::password::verify_password;
 use authkit_core::domain::SessionAudience;
@@ -19,6 +19,7 @@ use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use serde_json::json;
 
+use crate::http::rate_limit::client_ip;
 use crate::http::routes::AppState;
 use crate::http::session::SessionContext;
 
@@ -112,7 +113,7 @@ pub(crate) async fn register_page(
 
 pub(crate) async fn login_submit(
     State(state): State<AppState>,
-    _headers: HeaderMap,
+    headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
     let Some(sessions) = state.sessions.as_ref() else {
@@ -124,6 +125,32 @@ pub(crate) async fn login_submit(
     };
     let email = params.get("email").cloned().unwrap_or_default();
     let password = params.get("password").cloned().unwrap_or_default();
+    let trusted = std::env::var("AUTHKIT_TRUSTED_PROXIES").unwrap_or_default()
+        .split(',')
+        .filter_map(|v| v.trim().parse().ok())
+        .collect::<Vec<_>>();
+    // wildcard support
+    let trusted = if trusted.is_empty() && std::env::var("AUTHKIT_TRUSTED_PROXIES").unwrap_or_default().contains('*') {
+        vec!["0.0.0.0".parse().unwrap()]
+    } else {
+        trusted
+    };
+    let ip = client_ip(&headers, None, &trusted);
+    // IP rate limit (all failed attempts tracked after auth; check baseline on every request for flood)
+    if let Some(sessions) = state.sessions.as_ref() {
+        let store = sessions.store().clone();
+        let now = sessions.clock().now();
+        let ip_key = format!("login:ip:{ip}");
+        let ip_result = tokio::task::spawn_blocking({
+            let store = store.clone();
+            let ip_key = ip_key.clone();
+            let now = now;
+            move || RateLimiter::check(store.as_ref(), &ip_key, 20, 300, now)
+        }).await;
+        if let Ok(Err(err)) = ip_result {
+            return rate_limited(err.retry_after_secs);
+        }
+    }
     if email.is_empty() || password.is_empty() {
         return html(
             StatusCode::BAD_REQUEST,
@@ -166,6 +193,30 @@ pub(crate) async fn login_submit(
             // Spend comparable work to avoid trivial user enumeration via timing.
             let _ = tokio::task::spawn_blocking(|| crate::password::hash_password("dummy-password-for-timing"))
                 .await;
+            if let Some(sessions) = state.sessions.as_ref() {
+                let store = sessions.store().clone();
+                let now = sessions.clock().now();
+                let account_key = format!("login:account:{}", email.to_lowercase());
+                let account_result = tokio::task::spawn_blocking({
+                let store = store.clone();
+                let account_key = account_key.clone();
+                let now = now;
+                move || RateLimiter::check(store.as_ref(), &account_key, 5, 300, now)
+            }).await;
+            if let Ok(Err(err)) = account_result {
+                return rate_limited(err.retry_after_secs);
+            }
+                let ip_key = format!("login:ip:{ip}");
+                let ip_result = tokio::task::spawn_blocking({
+                let store = store.clone();
+                let ip_key = ip_key.clone();
+                let now = now;
+                move || RateLimiter::check(store.as_ref(), &ip_key, 20, 300, now)
+            }).await;
+            if let Ok(Err(err)) = ip_result {
+                return rate_limited(err.retry_after_secs);
+            }
+            }
             return html(
                 StatusCode::UNAUTHORIZED,
                 "Sign in",
@@ -218,6 +269,30 @@ pub(crate) async fn login_submit(
     };
 
     if !verify_password(&password, &verifier) {
+        if let Some(sessions) = state.sessions.as_ref() {
+            let store = sessions.store().clone();
+            let now = sessions.clock().now();
+            let account_key = format!("login:account:{}", email.to_lowercase());
+            let account_result = tokio::task::spawn_blocking({
+                let store = store.clone();
+                let account_key = account_key.clone();
+                let now = now;
+                move || RateLimiter::check(store.as_ref(), &account_key, 5, 300, now)
+            }).await;
+            if let Ok(Err(err)) = account_result {
+                return rate_limited(err.retry_after_secs);
+            }
+            let ip_key = format!("login:ip:{ip}");
+            let ip_result = tokio::task::spawn_blocking({
+                let store = store.clone();
+                let ip_key = ip_key.clone();
+                let now = now;
+                move || RateLimiter::check(store.as_ref(), &ip_key, 20, 300, now)
+            }).await;
+            if let Ok(Err(err)) = ip_result {
+                return rate_limited(err.retry_after_secs);
+            }
+        }
         return html(
             StatusCode::UNAUTHORIZED,
             "Sign in",
@@ -231,6 +306,9 @@ pub(crate) async fn login_submit(
     }
 
     let now = sessions.clock().now();
+    let store = sessions.store().clone();
+    let key = format!("login:account:{}", email.to_lowercase());
+    let _ = tokio::task::spawn_blocking(move || RateLimiter::reset(store.as_ref(), &key)).await;
     let created = match sessions.create(user.id().clone(), None, SessionAudience::Account, now).await
     {
         Ok(value) => value,
@@ -459,6 +537,15 @@ fn redirect(location: &str) -> Response {
         )
             .into_response(),
     }
+}
+
+fn rate_limited(retry_after: u64) -> Response {
+    (
+        StatusCode::TOO_MANY_REQUESTS,
+        [(header::RETRY_AFTER, retry_after.to_string()), (header::CACHE_CONTROL, "no-store".to_owned())],
+        axum::Json(json!({"error": "rate_limited", "retry_after": retry_after})),
+    )
+        .into_response()
 }
 
 fn escape(value: &str) -> String {

@@ -31,9 +31,9 @@ use authkit_core::ports::write::{UnitOfWork, WriteBatch, WriteCommand};
 use authkit_core::ports::{
     ApplicationRepository, AuditRepository, AuthorizationCodeRepository, ConsentRepository,
     CredentialRepository, InvitationRepository, MembershipRepository, OAuthClientRepository,
-    OrganizationRepository, RefreshFamilyRepository, RefreshTokenRepository, Repositories,
-    RoleBindingRepository, RoleRepository, SessionRepository, SystemAdministratorRepository,
-    UserRepository,
+    OrganizationRepository, RateLimiter, RateLimitExceeded, RefreshFamilyRepository,
+    RefreshTokenRepository, Repositories, RoleBindingRepository, RoleRepository, SessionRepository,
+    SystemAdministratorRepository, UserRepository,
 };
 use sqlx::Any;
 
@@ -1456,6 +1456,63 @@ impl SystemAdministratorRepository for SqlStore {
             } else {
                 Ok(WriteOutcome::Applied)
             }
+        })
+    }
+}
+
+
+impl RateLimiter for SqlStore {
+    fn check(
+        &self,
+        key: &str,
+        limit: u32,
+        window_secs: u64,
+        now: authkit_core::domain::time::Timestamp,
+    ) -> Result<(), RateLimitExceeded> {
+        let now_ms = now.as_millis() as i64;
+        let expires_ms = now.as_millis().saturating_add(window_secs * 1000) as i64;
+        let sql = self.sql(
+            "INSERT INTO rate_limit_bucket (key, window_start, count, expires_at) VALUES (?, ?, 1, ?)              ON CONFLICT (key) DO UPDATE SET              window_start = CASE WHEN rate_limit_bucket.expires_at <= ? THEN ? ELSE rate_limit_bucket.window_start END,              count = CASE WHEN rate_limit_bucket.expires_at <= ? THEN 1 ELSE rate_limit_bucket.count + 1 END,              expires_at = CASE WHEN rate_limit_bucket.expires_at <= ? THEN ? ELSE rate_limit_bucket.expires_at END              RETURNING count, expires_at",
+        );
+        let row = self.block_on(async {
+            sqlx::query(&sql)
+                .bind(key)
+                .bind(now_ms)
+                .bind(expires_ms)
+                .bind(now_ms)
+                .bind(now_ms)
+                .bind(now_ms)
+                .bind(now_ms)
+                .bind(expires_ms)
+                .fetch_one(&self.pool)
+                .await
+                .map_err(map_db_error)
+        });
+        let row = match row {
+            Ok(row) => row,
+            Err(_) => return Ok(()),
+        };
+        use sqlx::Row;
+        let count: i64 = row.get("count");
+        let expires: i64 = row.get("expires_at");
+        if count as u32 > limit {
+            let retry = ((expires - now_ms).max(0) as u64 + 999) / 1000;
+            return Err(RateLimitExceeded {
+                retry_after_secs: retry.max(1),
+            });
+        }
+        Ok(())
+    }
+
+    fn reset(&self, key: &str) -> Result<(), authkit_core::domain::DomainError> {
+        let sql = self.sql("DELETE FROM rate_limit_bucket WHERE key = ?");
+        self.block_on(async {
+            sqlx::query(&sql)
+                .bind(key)
+                .execute(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            Ok(())
         })
     }
 }

@@ -499,6 +499,29 @@ pub trait AuditRepository {
     ) -> Result<WriteOutcome, DomainError>;
 }
 
+/// A rate-limit decision failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RateLimitExceeded {
+    /// Seconds until the caller may retry.
+    pub retry_after_secs: u64,
+}
+
+/// Rate limiting and abuse-control storage.
+pub trait RateLimiter {
+    /// Records an attempt for `key` and returns an error when the configured
+    /// `limit` has been exceeded within `window_secs`.
+    fn check(
+        &self,
+        key: &str,
+        limit: u32,
+        window_secs: u64,
+        now: crate::domain::time::Timestamp,
+    ) -> Result<(), RateLimitExceeded>;
+
+    /// Clears the counter for `key`.
+    fn reset(&self, key: &str) -> Result<(), crate::domain::DomainError>;
+}
+
 /// A repository bundle available to use cases.
 pub trait Repositories:
     UserRepository
