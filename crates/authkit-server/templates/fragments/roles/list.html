@@ -1,3 +1,4 @@
+{% import "macros/ui.html" as ui %}
 <ul id="roles">
 {% for role in roles %}
 <li>{{ role.name }} ({{ role.slug }}) - {{ role.permissions }}</li>
@@ -7,9 +8,9 @@
 <h2>Create role</h2>
 <form method="post" action="/organizations/{{ org_id }}/roles" hx-post="/organizations/{{ org_id }}/roles" hx-target="#roles" hx-swap="outerHTML">
   <input type="hidden" name="_csrf" value="{{ csrf }}">
-  <label>Slug <input name="slug" required></label><br>
-  <label>Name <input name="name" required></label><br>
-  <label>Permissions (space-separated) <input name="permissions"></label><br>
-  <button type="submit">Create</button>
+  {{ ui::text_input("slug", "Slug", "text", "") }}
+  {{ ui::text_input("name", "Name", "text", "") }}
+  {{ ui::text_input("permissions", "Permissions (space-separated)", "text", "") }}
+  {{ ui::button("Create") }}
 </form>
 {% endif %}

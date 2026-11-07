@@ -1,3 +1,4 @@
+{% import "macros/ui.html" as ui %}
 <ul id="oauth-clients">
 {% for client in clients %}
 <li>{{ client.name }} ({{ client.client_id }}) - {{ client.status }} <a href="/organizations/{{ org_id }}/oauth-clients/{{ client.id }}">Manage</a></li>
@@ -7,22 +8,24 @@
 <h2>Create OAuth client</h2>
 <form method="post" action="/organizations/{{ org_id }}/oauth-clients" hx-post="/organizations/{{ org_id }}/oauth-clients" hx-target="#oauth-clients" hx-swap="outerHTML">
   <input type="hidden" name="_csrf" value="{{ csrf }}">
-  <label>Application
-    <select name="application_id">
+  <label class="field">
+    <span>Application</span>
+    <select name="application_id" class="input" required aria-required="true">
       {% for app in apps %}
       <option value="{{ app.id }}">{{ app.name }}</option>
       {% endfor %}
     </select>
-  </label><br>
-  <label>Name <input name="name" required></label><br>
-  <label>Client type
-    <select name="client_type">
+  </label>
+  {{ ui::text_input("name", "Name", "text", "") }}
+  <label class="field">
+    <span>Client type</span>
+    <select name="client_type" class="input" required aria-required="true">
       <option value="public">public</option>
       <option value="confidential">confidential</option>
     </select>
-  </label><br>
-  <label>Redirect URI <input name="redirect_uri" required></label><br>
-  <label>Scopes <input name="scopes" value="openid profile email"></label><br>
-  <button type="submit">Create</button>
+  </label>
+  {{ ui::text_input("redirect_uri", "Redirect URI", "text", "") }}
+  {{ ui::text_input("scopes", "Scopes", "text", "") }}
+  {{ ui::button("Create") }}
 </form>
 {% endif %}
