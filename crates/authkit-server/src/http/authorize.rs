@@ -2,6 +2,7 @@
 
 use std::collections::HashSet;
 
+use askama::Template;
 use authkit_core::domain::{
     AuditActor, ClientId, ErrorCode, GrantType, Nonce, PkceChallenge, RedirectUri, Scope, ScopeSet,
 };
@@ -274,6 +275,23 @@ pub(crate) async fn authorize(
 }
 
 /// Handles an explicit consent decision.
+#[derive(askama::Template)]
+#[template(path = "pages/authorize_consent.html")]
+struct AuthorizeConsentTemplate<'a> {
+    client: &'a str,
+    application: &'a str,
+    organization: &'a str,
+    scopes: &'a str,
+    csrf: &'a str,
+    client_id: &'a str,
+    redirect_uri: &'a str,
+    scope: &'a str,
+    challenge: &'a str,
+    max_age: &'a str,
+    state: &'a str,
+    nonce: &'a str,
+}
+
 pub(crate) async fn consent(
     State(state): State<AppState>,
     session: Option<Extension<SessionContext>>,
@@ -823,56 +841,21 @@ fn render_consent(context: &ClientContext, validated: &Validated, csrf_token: &s
         .max_age_secs
         .map(|value| format!(r#"<input type="hidden" name="max_age" value="{value}">"#,))
         .unwrap_or_default();
-    let body = format!(
-        r#"<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="referrer" content="no-referrer">
-<title>Authorize {client}</title>
-<link rel="stylesheet" href="/oauth2/authorize.css" referrerpolicy="no-referrer">
-</head>
-<body>
-<main class="card">
-<p class="eyebrow">Authorization request</p>
-<h1>{client}</h1>
-<p><strong>{application}</strong> from {organization} wants to access your AuthKit account.</p>
-<p class="muted">Requested access</p>
-<ul class="scopes">{scopes}</ul>
-<form method="post" action="/oauth2/authorize/consent">
-<input type="hidden" name="_csrf" value="{csrf}">
-<input type="hidden" name="client_id" value="{client_id}">
-<input type="hidden" name="redirect_uri" value="{redirect_uri}">
-<input type="hidden" name="response_type" value="code">
-<input type="hidden" name="scope" value="{scope}">
-<input type="hidden" name="code_challenge" value="{challenge}">
-<input type="hidden" name="code_challenge_method" value="S256">
-{max_age}
-{state}
-{nonce}
-<div class="actions">
-<button type="submit" name="decision" value="deny" class="secondary">Deny</button>
-<button type="submit" name="decision" value="allow">Allow access</button>
-</div>
-</form>
-<p class="fine">An administrator can revoke this access later.</p>
-</main>
-</body>
-</html>"#,
-        client = escape(context.client().name().as_str()),
-        application = escape(context.application().name().as_str()),
-        organization = escape(context.organization().name().as_str()),
-        scopes = scopes,
-        csrf = escape(csrf_token),
-        client_id = escape(context.client().client_id().as_str()),
-        redirect_uri = escape(validated.redirect_uri.as_str()),
-        scope = escape(&scope),
-        challenge = escape(validated.pkce_challenge.as_str()),
-        max_age = max_age,
-        state = state,
-        nonce = nonce,
-    );
+    let template = AuthorizeConsentTemplate {
+        client: context.client().name().as_str(),
+        application: context.application().name().as_str(),
+        organization: context.organization().name().as_str(),
+        scopes: &scopes,
+        csrf: csrf_token,
+        client_id: context.client().client_id().as_str(),
+        redirect_uri: validated.redirect_uri.as_str(),
+        scope: &scope,
+        challenge: validated.pkce_challenge.as_str(),
+        max_age: &max_age,
+        state: &state,
+        nonce: &nonce,
+    };
+    let body = template.render().unwrap_or_default();
     html_response(StatusCode::OK, body)
 }
 
@@ -936,28 +919,16 @@ fn redirect(location: &str) -> Response {
     }
 }
 
+#[derive(askama::Template)]
+#[template(path = "pages/authorize_error.html")]
+struct AuthorizeErrorTemplate<'a> {
+    title: &'a str,
+    message: &'a str,
+}
+
 fn error_page(status: StatusCode, title: &str, message: &str) -> Response {
-    let body = format!(
-        r#"<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="referrer" content="no-referrer">
-<title>{title}</title>
-<link rel="stylesheet" href="/oauth2/authorize.css" referrerpolicy="no-referrer">
-</head>
-<body>
-<main class="card">
-<p class="eyebrow">AuthKit</p>
-<h1>{title}</h1>
-<p>{message}</p>
-</main>
-</body>
-</html>"#,
-        title = escape(title),
-        message = escape(message),
-    );
+    let template = AuthorizeErrorTemplate { title, message };
+    let body = template.render().unwrap_or_default();
     html_response(status, body)
 }
 
