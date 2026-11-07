@@ -1,7 +1,7 @@
 //! System administration pages.
 
-use authkit_core::domain::{Email, Id, SystemAdministrator};
-use authkit_core::domain::id::SystemAdministratorEntity;
+use authkit_core::domain::{Credential, CredentialKind, Email, Id, SystemAdministrator, SystemAdministratorStatus};
+use authkit_core::domain::id::{CredentialEntity, SystemAdministratorEntity};
 use authkit_core::ports::{CredentialRepository, IdGenerator, SystemAdministratorRepository, UserRepository};
 use authkit_core::domain::WriteOutcome;
 use axum::extract::{Extension, Path, State};
@@ -11,6 +11,7 @@ use axum::response::{IntoResponse, Response};
 use crate::http::routes::AppState;
 use crate::http::session::SessionContext;
 use crate::password::verify_password;
+use crate::totp;
 use authkit_core::domain::SessionAudience;
 use crate::config::Config;
 
@@ -119,6 +120,27 @@ pub(crate) async fn dashboard(
     .and_then(|r| r.ok().flatten());
     if admin.is_none() {
         return forbidden();
+    }
+
+    let has_mfa = tokio::task::spawn_blocking({
+        let store = store.clone();
+        let user_id = user_id.clone();
+        move || {
+            CredentialRepository::list_for_user(store.as_ref(), &user_id)
+                .unwrap_or_default()
+                .into_iter()
+                .any(|c| c.kind() == CredentialKind::Totp && c.is_active())
+        }
+    })
+    .await
+    .unwrap_or(false);
+
+    if !has_mfa {
+        let body = format!(
+            r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Admin MFA enrollment</title></head><body style="font-family: system-ui, sans-serif; max-width: 32rem; margin: 4rem auto; padding: 0 1rem;"><h1>MFA required</h1><form method="post" action="/admin/mfa/enroll"><input type="hidden" name="_csrf" value="{}"><button type="submit">Generate secret</button></form></body></html>"#,
+            escape(&csrf)
+        );
+        return html_ok(&body);
     }
 
     let admins = tokio::task::spawn_blocking({
@@ -377,6 +399,108 @@ pub(crate) async fn logout(
         }
     }
     redirect("/admin/login")
+}
+
+
+pub(crate) async fn mfa_enroll(
+    State(state): State<AppState>,
+    session: Option<Extension<SessionContext>>,
+) -> Response {
+    let Some(Extension(session)) = session else {
+        return redirect("/admin/login");
+    };
+    let Some(sessions) = state.sessions.as_ref() else {
+        return unavailable();
+    };
+    let user_id = session.session().user_id().clone();
+    let store = sessions.store().clone();
+    let csrf = sessions.csrf_token(session.session());
+    let pepper = sessions.pepper().to_vec();
+    let secret = crate::totp::generate_secret();
+    let encoded = crate::totp::base32_encode(&secret);
+    let encrypted = match crate::totp::encrypt_secret(&secret, &pepper) {
+        Ok(v) => v,
+        Err(_) => return unavailable(),
+    };
+    let now = sessions.clock().now();
+    let credential = Credential::totp(
+        crate::session::SecureIdGenerator.generate::<CredentialEntity>().expect("id"),
+        user_id.clone(),
+        encrypted,
+        authkit_core::domain::credential::TotpConfig::default(),
+        now,
+    );
+    let outcome = tokio::task::spawn_blocking({
+        let store = store.clone();
+        let credential = credential.clone();
+        move || CredentialRepository::insert(store.as_ref(), &credential)
+    })
+    .await;
+    if outcome.ok().and_then(|r| r.ok()) != Some(WriteOutcome::Applied) {
+        return unavailable();
+    }
+    let body = format!(
+        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Admin MFA enrollment</title></head><body style="font-family: system-ui, sans-serif; max-width: 32rem; margin: 4rem auto; padding: 0 1rem;"><h1>Enroll MFA</h1><p>Secret: <code>{}</code></p><form method="post" action="/admin/mfa/verify"><input type="hidden" name="_csrf" value="{}"><label>Code <input name="code" required></label><button type="submit">Verify</button></form></body></html>"#,
+        escape(&encoded),
+        escape(&csrf)
+    );
+    html_ok(&body)
+}
+
+pub(crate) async fn mfa_verify(
+    State(state): State<AppState>,
+    session: Option<Extension<SessionContext>>,
+    body: axum::body::Bytes,
+) -> Response {
+    let Some(Extension(session)) = session else {
+        return redirect("/admin/login");
+    };
+    let Some(sessions) = state.sessions.as_ref() else {
+        return unavailable();
+    };
+    let mut params = parse_form(&body);
+    let code = params.remove("code").unwrap_or_default();
+    let user_id = session.session().user_id().clone();
+    let store = sessions.store().clone();
+    let pepper = sessions.pepper().to_vec();
+    let now = sessions.clock().now();
+    let creds = tokio::task::spawn_blocking({
+        let store = store.clone();
+        let user_id = user_id.clone();
+        move || CredentialRepository::list_for_user(store.as_ref(), &user_id)
+    })
+    .await
+    .ok()
+    .and_then(|r| r.ok())
+    .unwrap_or_default();
+    let mut cred = match creds.into_iter().find(|c| c.kind() == CredentialKind::Totp && c.is_active()) {
+        Some(c) => c,
+        None => return bad_request(),
+    };
+    let totp = match cred.as_totp() {
+        Some(v) => v,
+        None => return bad_request(),
+    };
+    let secret = match totp::decrypt_secret(totp.secret(), &pepper) {
+        Ok(v) => v,
+        Err(_) => return unavailable(),
+    };
+    let step = match totp::verify_code(&secret, &code, totp.config(), totp.last_accepted_step()) {
+        Some(v) => v,
+        None => return bad_request(),
+    };
+    if cred.accept_totp_step(step, now).is_err() {
+        return bad_request();
+    }
+    let original_version = cred.version();
+    let updated = cred.clone();
+    let _ = tokio::task::spawn_blocking({
+        let store = store.clone();
+        let updated = updated.clone();
+        move || CredentialRepository::update(store.as_ref(), &updated, original_version)
+    })
+    .await;
+    redirect("/admin")
 }
 
 // helpers

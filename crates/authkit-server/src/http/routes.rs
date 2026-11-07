@@ -220,6 +220,8 @@ fn base_router(
         .route("/admin/administrators", post(admin::grant_admin))
         .route("/admin/administrators/{id}/disable", post(admin::disable_admin))
         .route("/admin/signing-keys/rotate", post(admin::rotate_signing_key))
+        .route("/admin/mfa/enroll", post(admin::mfa_enroll))
+        .route("/admin/mfa/verify", post(admin::mfa_verify))
         .route("/organizations", get(organization::organizations_page).post(organization::create_organization))
         .route("/organizations/{org_id}/members", get(organization::members_page).post(organization::add_member))
         .route("/organizations/{org_id}/invitations", get(organization::invitations_page).post(organization::create_invitation))
