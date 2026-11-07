@@ -7,6 +7,8 @@ use std::process::ExitCode;
 use authkit_server::config::Config;
 use authkit_core::ports::IdGenerator;
 use authkit_server::signing::KeyRing;
+use sha2::Sha256;
+use sha2::Digest;
 use authkit_server::telemetry::init_tracing;
 use authkit_store::SqlStore;
 
@@ -48,8 +50,10 @@ fn run(mut args: impl Iterator<Item = String>) -> Result<(), u8> {
         }
         Some("audit") => match args.next().as_deref() {
             Some("export") => audit_export(args.collect()),
+            Some("prune") => audit_prune(args.collect()),
+            Some("verify") => audit_verify(args.collect()),
             _ => {
-                eprintln!("error: expected 'audit export'\n");
+                eprintln!("error: expected 'audit export', 'audit prune', or 'audit verify'\n");
                 print_help();
                 Err(2)
             }
@@ -246,6 +250,105 @@ fn doctor() -> Result<(), u8> {
     Ok(())
 }
 
+fn audit_prune(args: Vec<String>) -> Result<(), u8> {
+    let mut days: i64 = 90;
+    let mut org: Option<String> = None;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--days" => {
+                if i + 1 >= args.len() { eprintln!("error: --days requires a value"); return Err(2); }
+                days = args[i + 1].parse().unwrap_or(90);
+                i += 2;
+            }
+            "--org" => {
+                if i + 1 >= args.len() { eprintln!("error: --org requires a value"); return Err(2); }
+                org = Some(args[i + 1].clone());
+                i += 2;
+            }
+            other => { eprintln!("error: unknown argument: {other}"); return Err(2); }
+        }
+    }
+    let config = Config::from_env().map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    let url = config.database().url().to_owned();
+    let max_connections = config.database().max_connections();
+    let store = SqlStore::connect(&url, max_connections).map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    let cutoff = (authkit_server::signing::unix_now() as i64 - days * 86400) * 1000;
+    let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    runtime.block_on(async {
+        use sqlx::Row;
+        let mut sql = String::from("DELETE FROM audit_event WHERE occurred_at < ?");
+        if org.is_some() { sql.push_str(" AND org_id = ?"); }
+        let mut query = sqlx::query(&sql).bind(cutoff);
+        if let Some(org) = &org { query = query.bind(org); }
+        let result = query.execute(store.pool()).await.map_err(|e| { eprintln!("error: {e}"); 1u8 })?;
+        println!("pruned {} audit events", result.rows_affected());
+        Ok(())
+    })
+}
+
+fn audit_verify(args: Vec<String>) -> Result<(), u8> {
+    let mut org: Option<String> = None;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--org" => {
+                if i + 1 >= args.len() { eprintln!("error: --org requires a value"); return Err(2); }
+                org = Some(args[i + 1].clone());
+                i += 2;
+            }
+            other => { eprintln!("error: unknown argument: {other}"); return Err(2); }
+        }
+    }
+    let config = Config::from_env().map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    let url = config.database().url().to_owned();
+    let max_connections = config.database().max_connections();
+    let store = SqlStore::connect(&url, max_connections).map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    runtime.block_on(async {
+        use sqlx::Row;
+        let mut sql = String::from("SELECT id, org_id, actor_type, actor_id, action, target, occurred_at, attributes, prev_hash, hash FROM audit_event");
+        if org.is_some() { sql.push_str(" WHERE org_id = ?"); }
+        sql.push_str(" ORDER BY org_id, occurred_at, id");
+        let mut query = sqlx::query(&sql);
+        if let Some(org) = &org { query = query.bind(org); }
+        let rows = query.fetch_all(store.pool()).await.map_err(|e| { eprintln!("error: {e}"); 1u8 })?;
+        let mut current_org: Option<String> = None;
+        let mut prev: Option<String> = None;
+        let mut failures = 0u64;
+        for row in rows {
+            let row_org: Option<String> = row.get("org_id");
+            if current_org != row_org { current_org = row_org.clone(); prev = None; }
+            let id: String = row.get("id");
+            let actor_type: String = row.get("actor_type");
+            let actor_id: Option<String> = row.get("actor_id");
+            let action: String = row.get("action");
+            let target: Option<String> = row.get("target");
+            let occurred_at: i64 = row.get("occurred_at");
+            let attributes: String = row.get("attributes");
+            let stored_prev: Option<String> = row.get("prev_hash");
+            let stored_hash: Option<String> = row.get("hash");
+            if stored_prev != prev { failures += 1; eprintln!("prev_hash mismatch for {id}"); }
+            let mut hasher = Sha256::new();
+            if let Some(p) = &prev { hasher.update(p.as_bytes()); }
+            hasher.update(id.as_bytes());
+            if let Some(o) = &row_org { hasher.update(o.as_bytes()); }
+            hasher.update(actor_type.as_bytes());
+            if let Some(a) = &actor_id { hasher.update(a.as_bytes()); }
+            hasher.update(action.as_bytes());
+            if let Some(t) = &target { hasher.update(t.as_bytes()); }
+            hasher.update(occurred_at.to_string().as_bytes());
+            // attributes order as stored (pairs)
+            hasher.update(attributes.as_bytes());
+            let computed = format!("{:x}", hasher.finalize());
+            if stored_hash.as_deref() != Some(computed.as_str()) { failures += 1; eprintln!("hash mismatch for {id}"); }
+            prev = stored_hash;
+        }
+        if failures == 0 { println!("audit chain: ok"); } else { println!("audit chain: {failures} failures"); }
+        Ok(())
+    })
+}
+
 fn serve() -> Result<(), u8> {
     let config = Config::from_env().map_err(|error| {
         eprintln!("error: {error}");
@@ -279,7 +382,9 @@ fn print_help() {
          Usage: authkit-server <command>\n\n\
          Commands:\n\
            serve          Start the HTTP server using environment configuration\n\
-           audit export   Export audit events as JSONL\n\n\
+           audit export   Export audit events as JSONL\n\
+           audit prune    Prune old audit events\n\
+           audit verify   Verify audit hash chains\n\n\
          Options:\n\
            -h, --help       Print this help\n\
            -V, --version    Print the version\n\n\
