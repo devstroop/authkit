@@ -2,9 +2,9 @@
 
 use authkit_core::domain::WriteOutcome;
 use authkit_core::domain::id::SessionEntity;
-use authkit_core::domain::{TenantContext};
+use authkit_core::domain::{DisplayName, TenantContext, User};
 use authkit_core::domain::id::ConsentEntity;
-use authkit_core::ports::{ConsentRepository, CredentialRepository, OAuthClientRepository, SessionRepository};
+use authkit_core::ports::{ConsentRepository, CredentialRepository, OAuthClientRepository, SessionRepository, UserRepository};
 use axum::extract::{Extension, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
@@ -327,6 +327,94 @@ pub(crate) async fn revoke_consent(
     } else {
         unavailable()
     }
+}
+
+pub(crate) async fn profile_page(
+    State(state): State<AppState>,
+    session: Option<Extension<SessionContext>>,
+) -> Response {
+    let Some(Extension(session)) = session else {
+        return redirect("/login");
+    };
+    let Some(sessions) = state.sessions.as_ref() else {
+        return unavailable();
+    };
+    let user_id = session.session().user_id().clone();
+    let store = sessions.store().clone();
+    let csrf = sessions.csrf_token(session.session());
+    let user = tokio::task::spawn_blocking({
+        let store = store.clone();
+        let uid = user_id.clone();
+        move || UserRepository::find_by_id(store.as_ref(), &uid)
+    })
+    .await
+    .ok()
+    .and_then(|r| r.ok().flatten());
+    let display_name = user
+        .map(|u| u.display_name().as_str().to_owned())
+        .unwrap_or_default();
+    let body = format!(
+        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Profile</title></head><body style="font-family: system-ui, sans-serif; max-width: 32rem; margin: 4rem auto; padding: 0 1rem;"><h1>Profile</h1><form method="post" action="/account/profile"><input type="hidden" name="_csrf" value="{}"><label>Display name <input type="text" name="display_name" value="{}" required></label><br><button type="submit">Save</button></form></body></html>"#,
+        escape(&csrf),
+        escape(&display_name)
+    );
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8"), (header::CACHE_CONTROL, "no-store")],
+        body,
+    )
+        .into_response()
+}
+
+pub(crate) async fn update_profile(
+    State(state): State<AppState>,
+    session: Option<Extension<SessionContext>>,
+    body: axum::body::Bytes,
+) -> Response {
+    let Some(Extension(session)) = session else {
+        return redirect("/login");
+    };
+    let Some(sessions) = state.sessions.as_ref() else {
+        return unavailable();
+    };
+    let mut params = std::collections::HashMap::new();
+    for (k, v) in url::form_urlencoded::parse(&body) {
+        params.insert(k.into_owned(), v.into_owned());
+    }
+    let new_name = params.get("display_name").cloned().unwrap_or_default();
+    let display_name = match DisplayName::parse(&new_name) {
+        Ok(v) => v,
+        Err(_) => return bad_request(),
+    };
+
+    let store = sessions.store().clone();
+    let user_id = session.session().user_id().clone();
+    let now = sessions.clock().now();
+    let user = tokio::task::spawn_blocking({
+        let store = store.clone();
+        let uid = user_id.clone();
+        move || UserRepository::find_by_id(store.as_ref(), &uid)
+    })
+    .await
+    .ok()
+    .and_then(|r| r.ok().flatten());
+    let Some(mut user) = user else {
+        return unavailable();
+    };
+    let original_version = user.version();
+    let _ = user.rename(display_name, now);
+
+    let store_clone = store.clone();
+    let updated = user.clone();
+    let outcome = tokio::task::spawn_blocking(move || {
+        UserRepository::update(store_clone.as_ref(), &updated, original_version)
+    })
+    .await;
+
+    if outcome.ok().and_then(|r| r.ok()) != Some(WriteOutcome::Applied) {
+        return unavailable();
+    }
+    redirect("/account/profile")
 }
 
 fn unavailable() -> Response {

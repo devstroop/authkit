@@ -190,6 +190,7 @@ fn base_router(
         .route("/verify-email", get(reset::verify_email_page))
         .route("/verify-email/confirm", post(reset::verify_email_confirm))
         .route("/account", get(account::account_page))
+        .route("/account/profile", get(account::profile_page).post(account::update_profile))
         .route("/account/password", post(account::change_password))
         .route("/account/applications", get(account::connected_apps_page))
         .route("/account/consents/{id}/revoke", post(account::revoke_consent))
