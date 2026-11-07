@@ -16,9 +16,16 @@ use crate::totp;
 use authkit_core::domain::SessionAudience;
 use crate::config::Config;
 
+#[derive(Template)]
+#[template(path = "pages/admin_login.html")]
+struct AdminLoginTemplate {
+    title: &'static str,
+}
+
 pub(crate) async fn login_page() -> Response {
-    let body = r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Admin sign in</title></head><body style="font-family: system-ui, sans-serif; max-width: 32rem; margin: 4rem auto; padding: 0 1rem;"><h1>Admin sign in</h1><form method="post" action="/admin/login"><label>Email <input type="email" name="email" required></label><br><label>Password <input type="password" name="password" required></label><br><button type="submit">Sign in</button></form></body></html>"#;
-    html_ok(body)
+    let template = AdminLoginTemplate { title: "Admin sign in" };
+    let body = template.render().unwrap_or_default();
+    html_ok(&body)
 }
 
 pub(crate) async fn login_submit(
