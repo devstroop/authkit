@@ -9,11 +9,13 @@ use authkit_core::domain::membership::Membership;
 use authkit_core::domain::oauth_client::OAuthClient;
 use authkit_core::domain::organization::Organization;
 use authkit_core::domain::role::{Role, RoleBinding};
+use authkit_core::domain::scope::{Scope, ScopeSet};
 use authkit_core::domain::session::Session;
 use authkit_core::domain::tenant::TenantContext;
 use authkit_core::domain::user::User;
 use authkit_core::domain::write::WriteOutcome;
 use authkit_core::ports::write::{UnitOfWork, WriteBatch, WriteCommand};
+use sha2::Sha256;
 use sqlx::any::AnyArguments;
 use sqlx::{Any, Transaction};
 
@@ -168,6 +170,15 @@ fn ensure_tenant(
         ));
     }
     Ok(())
+}
+
+fn scope_text(scopes: &ScopeSet) -> String {
+    scopes
+        .as_slice()
+        .iter()
+        .map(Scope::as_str)
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn scope_key(application_id: Option<&Id<ApplicationEntity>>) -> String {
@@ -1341,13 +1352,16 @@ async fn insert_refresh_family(
     ensure_tenant(tenant, family.organization_id())?;
     ensure_client_tenant(dialect, tx, tenant, family.client_id()).await?;
     let sql = dialect.placeholders(
-        "INSERT INTO refresh_family (id, org_id, client_id, user_id, created_at, absolute_expires_at, revoked_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO refresh_family (id, org_id, client_id, user_id, scope, session_id, auth_time, created_at, absolute_expires_at, revoked_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     );
     match sqlx::query(&sql)
         .bind(family.id().as_str())
         .bind(family.organization_id().as_str())
         .bind(family.client_id().as_str())
         .bind(family.user_id().as_str())
+        .bind(scope_text(family.scopes()))
+        .bind(family.session_id().map(|id| id.as_str()))
+        .bind(db_timestamp(family.auth_time())?)
         .bind(db_timestamp(family.created_at())?)
         .bind(db_timestamp(family.absolute_expires_at())?)
         .bind(family.revoked_at().map(db_timestamp).transpose()?)
@@ -1370,11 +1384,14 @@ async fn update_refresh_family(
     ensure_tenant(tenant, family.organization_id())?;
     ensure_client_tenant(dialect, tx, tenant, family.client_id()).await?;
     let sql = dialect.placeholders(
-        "UPDATE refresh_family SET client_id = ?, user_id = ?, absolute_expires_at = ?, revoked_at = ?, version = ? WHERE id = ? AND org_id = ? AND version = ?",
+        "UPDATE refresh_family SET client_id = ?, user_id = ?, scope = ?, session_id = ?, auth_time = ?, absolute_expires_at = ?, revoked_at = ?, version = ? WHERE id = ? AND org_id = ? AND version = ?",
     );
     let result = sqlx::query(&sql)
         .bind(family.client_id().as_str())
         .bind(family.user_id().as_str())
+        .bind(scope_text(family.scopes()))
+        .bind(family.session_id().map(|id| id.as_str()))
+        .bind(db_timestamp(family.auth_time())?)
         .bind(db_timestamp(family.absolute_expires_at())?)
         .bind(family.revoked_at().map(db_timestamp).transpose()?)
         .bind(db_version(family.version())?)
@@ -1495,8 +1512,52 @@ async fn insert_audit_row(
         .iter()
         .map(|attribute| (attribute.key().to_owned(), attribute.value().to_owned()))
         .collect::<Vec<_>>();
+    let prev_sql = if event.organization_id().is_some() {
+        "SELECT hash FROM audit_event WHERE org_id = ? ORDER BY occurred_at DESC, id DESC LIMIT 1"
+    } else {
+        "SELECT hash FROM audit_event WHERE org_id IS NULL ORDER BY occurred_at DESC, id DESC LIMIT 1"
+    };
+    let prev_sql = dialect.placeholders(prev_sql);
+    let mut prev_query = sqlx::query(&prev_sql);
+    if let Some(org) = event.organization_id() {
+        prev_query = prev_query.bind(org.as_str());
+    }
+    let prev_hash: Option<String> = prev_query
+        .fetch_optional(&mut **tx)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|row| {
+            use sqlx::Row;
+            row.try_get::<Option<String>, _>("hash").ok().flatten()
+        });
+
+    use sha2::Digest;
+    let mut hasher = Sha256::new();
+    if let Some(prev) = &prev_hash {
+        hasher.update(prev.as_bytes());
+    }
+    hasher.update(event.id().as_str().as_bytes());
+    if let Some(org) = event.organization_id() {
+        hasher.update(org.as_str().as_bytes());
+    }
+    hasher.update(actor_type.as_bytes());
+    if let Some(actor) = &actor_id {
+        hasher.update(actor.as_bytes());
+    }
+    hasher.update(event.action().as_str().as_bytes());
+    if let Some(target) = event.target() {
+        hasher.update(target.as_str().as_bytes());
+    }
+    hasher.update(event.occurred_at().as_millis().to_string().as_bytes());
+    for (key, value) in &attributes {
+        hasher.update(key.as_bytes());
+        hasher.update(value.as_bytes());
+    }
+    let hash = format!("{:x}", hasher.finalize());
+
     let sql = dialect.placeholders(
-        "INSERT INTO audit_event (id, org_id, actor_type, actor_id, action, target, occurred_at, attributes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO audit_event (id, org_id, actor_type, actor_id, action, target, occurred_at, attributes, prev_hash, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     );
     match sqlx::query(&sql)
         .bind(event.id().as_str())
@@ -1507,6 +1568,8 @@ async fn insert_audit_row(
         .bind(event.target().map(|target| target.as_str()))
         .bind(db_timestamp(event.occurred_at())?)
         .bind(encode_pairs(&attributes)?)
+        .bind(prev_hash)
+        .bind(hash)
         .execute(&mut **tx)
         .await
     {

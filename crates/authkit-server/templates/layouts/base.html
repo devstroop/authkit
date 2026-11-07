@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }}</title>
+  <style>
+    :root {
+      --color-bg: #ffffff;
+      --color-fg: #111827;
+      --color-muted: #6b7280;
+      --color-border: #d1d5db;
+      --color-primary: #2563eb;
+      --color-primary-fg: #ffffff;
+      --color-danger: #dc2626;
+      --radius: 0.5rem;
+      --space-1: 0.25rem;
+      --space-2: 0.5rem;
+      --space-3: 1rem;
+      --space-4: 1.5rem;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --color-bg: #111827;
+        --color-fg: #f9fafb;
+        --color-muted: #9ca3af;
+        --color-border: #374151;
+        --color-primary: #3b82f6;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, sans-serif;
+      background: var(--color-bg);
+      color: var(--color-fg);
+      line-height: 1.5;
+    }
+    main {
+      max-width: 32rem;
+      margin: var(--space-4) auto;
+      padding: 0 var(--space-3);
+    }
+    .field { display: block; margin: var(--space-2) 0; }
+    .input {
+      width: 100%;
+      padding: var(--space-2);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius);
+    }
+    .btn {
+      padding: var(--space-2) var(--space-3);
+      border: 0;
+      border-radius: var(--radius);
+      cursor: pointer;
+    }
+    .btn-primary {
+      background: var(--color-primary);
+      color: var(--color-primary-fg);
+    }
+    .alert { color: var(--color-danger); }
+    a { color: var(--color-primary); }
+  </style>
+  <script src="/static/htmx.min.js" defer></script>
+</head>
+<body>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

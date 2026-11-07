@@ -300,6 +300,60 @@ impl fmt::Debug for SessionConfig {
     }
 }
 
+/// Validated token lifetimes and JWT validation leeway.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TokenConfig {
+    access_ttl_secs: u64,
+    id_ttl_secs: u64,
+    refresh_ttl_secs: u64,
+    refresh_family_ttl_secs: u64,
+    clock_skew_secs: u64,
+}
+
+impl TokenConfig {
+    /// Creates a token policy from its lifetimes.
+    pub const fn new(
+        access_ttl_secs: u64,
+        id_ttl_secs: u64,
+        refresh_ttl_secs: u64,
+        refresh_family_ttl_secs: u64,
+        clock_skew_secs: u64,
+    ) -> Self {
+        Self {
+            access_ttl_secs,
+            id_ttl_secs,
+            refresh_ttl_secs,
+            refresh_family_ttl_secs,
+            clock_skew_secs,
+        }
+    }
+
+    /// Returns the access-token lifetime in seconds.
+    pub const fn access_ttl_secs(self) -> u64 {
+        self.access_ttl_secs
+    }
+
+    /// Returns the ID-token lifetime in seconds.
+    pub const fn id_ttl_secs(self) -> u64 {
+        self.id_ttl_secs
+    }
+
+    /// Returns the refresh-token lifetime in seconds.
+    pub const fn refresh_ttl_secs(self) -> u64 {
+        self.refresh_ttl_secs
+    }
+
+    /// Returns the refresh-family absolute lifetime in seconds.
+    pub const fn refresh_family_ttl_secs(self) -> u64 {
+        self.refresh_family_ttl_secs
+    }
+
+    /// Returns the clock skew allowed when validating JWTs.
+    pub const fn clock_skew_secs(self) -> u64 {
+        self.clock_skew_secs
+    }
+}
+
 /// Fully validated server configuration.
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -309,6 +363,7 @@ pub struct Config {
     database: DatabaseConfig,
     signing_keys: SigningKeyConfig,
     session: SessionConfig,
+    tokens: TokenConfig,
     log_format: LogFormat,
 }
 
@@ -440,6 +495,28 @@ impl Config {
             ));
         }
 
+        let access_ttl_secs = session_secs(&get, "AUTHKIT_ACCESS_TOKEN_TTL_SECS", 600, 60..=3_600)?;
+        let id_ttl_secs = session_secs(&get, "AUTHKIT_ID_TOKEN_TTL_SECS", 600, 60..=3_600)?;
+        let refresh_ttl_secs = session_secs(
+            &get,
+            "AUTHKIT_REFRESH_TOKEN_TTL_SECS",
+            2_592_000,
+            300..=31_536_000,
+        )?;
+        let refresh_family_ttl_secs = session_secs(
+            &get,
+            "AUTHKIT_REFRESH_FAMILY_TTL_SECS",
+            31_536_000,
+            3_600..=157_680_000,
+        )?;
+        let clock_skew_secs = session_secs(&get, "AUTHKIT_TOKEN_CLOCK_SKEW_SECS", 60, 0..=300)?;
+        if refresh_ttl_secs > refresh_family_ttl_secs {
+            return Err(ConfigError::invalid(
+                "AUTHKIT_REFRESH_TOKEN_TTL_SECS",
+                "must not exceed AUTHKIT_REFRESH_FAMILY_TTL_SECS",
+            ));
+        }
+
         let log_format = match get("AUTHKIT_LOG_FORMAT") {
             Some(value) => LogFormat::parse(&value)?,
             None => {
@@ -466,6 +543,13 @@ impl Config {
                 retired_publish_secs,
             ),
             session: SessionConfig::new(session_pepper, cookie_secure, account, admin),
+            tokens: TokenConfig::new(
+                access_ttl_secs,
+                id_ttl_secs,
+                refresh_ttl_secs,
+                refresh_family_ttl_secs,
+                clock_skew_secs,
+            ),
             log_format,
         })
     }
@@ -498,6 +582,11 @@ impl Config {
     /// Returns the session, cookie, and CSRF configuration.
     pub fn session(&self) -> &SessionConfig {
         &self.session
+    }
+
+    /// Returns the token lifetime policy.
+    pub const fn tokens(&self) -> TokenConfig {
+        self.tokens
     }
 
     /// Returns the tracing output format.

@@ -177,6 +177,9 @@ fn fixture(base: u64) -> Result<Fixture, DomainError> {
         organization.id().clone(),
         client.id().clone(),
         user.id().clone(),
+        ScopeSet::new([Scope::parse("openid")?, Scope::parse("offline_access")?]),
+        None,
+        now,
         now,
         absolute_expires,
     )?;

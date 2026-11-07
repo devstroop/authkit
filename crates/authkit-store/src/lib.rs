@@ -160,6 +160,11 @@ impl SqlStore {
         }
     }
 
+    /// Returns the underlying connection pool for read-only CLI queries.
+    pub fn pool(&self) -> &sqlx::Pool<sqlx::Any> {
+        &self.pool
+    }
+
     /// Runs a trivial query to verify that the database is reachable.
     pub fn ping(&self) -> Result<(), StoreError> {
         self.block_on(async {

@@ -1,0 +1,18 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+<h1>Members</h1>
+<ul>
+{% for member in members %}
+<li>{{ member.email }} {{ member.status }} ({{ member.id }})</li>
+{% endfor %}
+</ul>
+{% if can_manage %}
+<h2>Add member</h2>
+<form method="post" action="/organizations/{{ org_id }}/members">
+  <input type="hidden" name="_csrf" value="{{ csrf }}">
+  <label>User email <input name="email" type="email" required></label>
+  <button type="submit">Add</button>
+</form>
+{% endif %}
+<p><a href="/organizations/{{ org_id }}/invitations">Invitations</a> | <a href="/organizations/{{ org_id }}/roles">Roles</a></p>
+{% endblock %}

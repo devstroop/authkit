@@ -9,9 +9,10 @@ use tracing::info;
 
 use crate::authorization::AuthorizationService;
 use crate::config::{Config, Environment};
-use crate::http::{ReadinessProbe, SqlStoreReadiness, router_with_sessions};
+use crate::http::{ReadinessProbe, SqlStoreReadiness, router_with_sessions_and_tokens};
 use crate::session::{SessionService, SystemClock};
 use crate::signing::{KeyRing, KeyRingError, unix_now};
+use crate::tokens::TokenService;
 
 /// A server startup, bind, or shutdown failure.
 #[derive(Debug)]
@@ -89,23 +90,35 @@ async fn serve_with_store(config: &Config, store: Arc<SqlStore>) -> Result<(), S
     .map_err(ServerError::Blocking)??;
     let keys = Arc::new(keys);
     let readiness: Arc<dyn ReadinessProbe> = Arc::new(SqlStoreReadiness::new(store.clone()));
+    let clock: Arc<dyn authkit_core::ports::Clock + Send + Sync> = Arc::new(SystemClock);
     let sessions = Arc::new(SessionService::new(
         store.clone(),
         config.session().clone(),
         config.environment(),
-        Arc::new(SystemClock),
+        clock.clone(),
     ));
     let authorization = Arc::new(AuthorizationService::new(
         store.clone(),
         config.issuer().clone(),
-        Arc::new(SystemClock),
+        clock.clone(),
     ));
-    let app = router_with_sessions(
+    let tokens = Arc::new(TokenService::new(
+        store.clone(),
+        config.issuer().clone(),
+        clock,
+        keys.clone(),
+        sessions.clone(),
+        authorization.clone(),
+        config.tokens(),
+        config.session().pepper().to_vec(),
+    ));
+    let app = router_with_sessions_and_tokens(
         readiness,
         keys,
         config.issuer().clone(),
         sessions,
         Some(authorization),
+        Some(tokens),
         config.environment() == Environment::Production,
     );
     let listener = TcpListener::bind(config.bind_addr())

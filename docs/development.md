@@ -197,6 +197,11 @@ environment files are untracked.
 | `AUTHKIT_SESSION_ABSOLUTE_SECS` | Account-session absolute lifetime. Defaults to `43200`; must be between `300` and `2592000`. |
 | `AUTHKIT_ADMIN_SESSION_IDLE_SECS` | Administrator-session idle timeout. Defaults to `900`; must be between `60` and `86400`, less than the admin absolute lifetime, and no greater than the account idle timeout. |
 | `AUTHKIT_ADMIN_SESSION_ABSOLUTE_SECS` | Administrator-session absolute lifetime. Defaults to `28800`; must be between `300` and `2592000`, and no greater than the account absolute lifetime. |
+| `AUTHKIT_ACCESS_TOKEN_TTL_SECS` | Access-token lifetime. Defaults to `600`; must be between `60` and `3600`. |
+| `AUTHKIT_ID_TOKEN_TTL_SECS` | ID-token lifetime. Defaults to `600`; must be between `60` and `3600`. |
+| `AUTHKIT_REFRESH_TOKEN_TTL_SECS` | Refresh-token lifetime. Defaults to `2592000` (30 days); must be between `300` and `31536000`, and no greater than `AUTHKIT_REFRESH_FAMILY_TTL_SECS`. |
+| `AUTHKIT_REFRESH_FAMILY_TTL_SECS` | Refresh-family absolute lifetime. Defaults to `31536000` (365 days); must be between `3600` and `157680000`. |
+| `AUTHKIT_TOKEN_CLOCK_SKEW_SECS` | Clock skew allowed when validating JWTs. Defaults to `60`; must be between `0` and `300`. |
 | `AUTHKIT_LOG_FORMAT` | `json` or `pretty`. Defaults to `json` in production and `pretty` otherwise. |
 | `RUST_LOG` | Tracing filter. Defaults to `info`; never include credentials in log output. |
 

@@ -8,33 +8,42 @@ use authkit_core::domain::email::Email;
 use authkit_core::domain::grant::{AuthorizationCode, Consent, RefreshFamily, RefreshToken};
 use authkit_core::domain::id::{
     ApplicationEntity, AuthorizationCodeEntity, ConsentEntity, CredentialEntity, Id,
-    InvitationEntity, MembershipEntity, OAuthClientEntity, OrganizationEntity, RefreshFamilyEntity,
-    RefreshTokenEntity, RoleBindingEntity, RoleEntity, SessionEntity, UserEntity,
+    InvitationEntity, MembershipEntity, OAuthClientEntity, OneTimeTokenEntity, OrganizationEntity,
+    RecoveryCodeEntity, RefreshFamilyEntity, RefreshTokenEntity, RoleBindingEntity, RoleEntity,
+    SessionEntity, SystemAdministratorEntity, UserEntity,
 };
 use authkit_core::domain::invitation::Invitation;
 use authkit_core::domain::membership::Membership;
 use authkit_core::domain::oauth_client::OAuthClient;
+use authkit_core::domain::one_time_token::{OneTimeToken, OneTimeTokenPurpose};
 use authkit_core::domain::organization::Organization;
+use authkit_core::domain::recovery_code::RecoveryCode;
 use authkit_core::domain::role::{Role, RoleBinding};
 use authkit_core::domain::secret::SecretHash;
 use authkit_core::domain::session::Session;
 use authkit_core::domain::slug::Slug;
+use authkit_core::domain::system_administrator::SystemAdministrator;
 use authkit_core::domain::tenant::TenantContext;
+use authkit_core::domain::time::Timestamp;
 use authkit_core::domain::user::User;
 use authkit_core::domain::write::WriteOutcome;
+use authkit_core::ports::OneTimeTokenRepository;
 use authkit_core::ports::write::{UnitOfWork, WriteBatch, WriteCommand};
 use authkit_core::ports::{
     ApplicationRepository, AuditRepository, AuthorizationCodeRepository, ConsentRepository,
     CredentialRepository, InvitationRepository, MembershipRepository, OAuthClientRepository,
-    OrganizationRepository, RefreshFamilyRepository, RefreshTokenRepository, Repositories,
-    RoleBindingRepository, RoleRepository, SessionRepository, UserRepository,
+    OrganizationRepository, RateLimitExceeded, RateLimiter, RecoveryCodeRepository,
+    RefreshFamilyRepository, RefreshTokenRepository, Repositories, RoleBindingRepository,
+    RoleRepository, SessionRepository, SystemAdministratorRepository, UserRepository,
 };
 use sqlx::Any;
 
+use crate::mapping::db_timestamp;
 use crate::mapping::{
     id as stored_id, map_application, map_audit_event, map_authorization_code, map_consent,
     map_credential, map_invitation, map_membership, map_oauth_client, map_organization,
-    map_refresh_family, map_refresh_token, map_role, map_role_binding, map_session, map_user, text,
+    map_recovery_code, map_refresh_family, map_refresh_token, map_role, map_role_binding,
+    map_session, map_system_administrator, map_user, text,
 };
 use crate::{SqlStore, invalid_stored_value, map_db_error};
 
@@ -49,6 +58,35 @@ async fn fetch_strings(
         .await
         .map_err(map_db_error)?;
     rows.iter().map(|row| text(row, "value")).collect()
+}
+
+fn map_one_time_token(row: &sqlx::any::AnyRow) -> Result<OneTimeToken, DomainError> {
+    use sqlx::Row;
+    let id: String = row.get("id");
+    let user_id: String = row.get("user_id");
+    let purpose: String = row.get("purpose");
+    let token_hash: String = row.get("token_hash");
+    let expires_at: i64 = row.get("expires_at");
+    let consumed_at: Option<i64> = row.get("consumed_at");
+    let created_at: i64 = row.get("created_at");
+    let id = Id::<OneTimeTokenEntity>::parse(id).map_err(|_| invalid_stored_value())?;
+    let user_id = Id::<UserEntity>::parse(user_id).map_err(|_| invalid_stored_value())?;
+    let purpose = OneTimeTokenPurpose::parse(&purpose).map_err(|_| invalid_stored_value())?;
+    let token_hash = SecretHash::parse(token_hash).map_err(|_| invalid_stored_value())?;
+    let expires_at =
+        Timestamp::from_millis(u64::try_from(expires_at).map_err(|_| invalid_stored_value())?);
+    let consumed_at = consumed_at
+        .map(|value| u64::try_from(value).map_err(|_| invalid_stored_value()))
+        .transpose()?
+        .map(Timestamp::from_millis);
+    let created_at =
+        Timestamp::from_millis(u64::try_from(created_at).map_err(|_| invalid_stored_value())?);
+    OneTimeToken::new(id, user_id, purpose, token_hash, created_at, expires_at).map(|mut token| {
+        if let Some(consumed) = consumed_at {
+            let _ = token.consume(consumed);
+        }
+        token
+    })
 }
 
 fn parse_role_ids(values: Vec<String>) -> Result<Vec<Id<RoleEntity>>, DomainError> {
@@ -183,6 +221,34 @@ impl MembershipRepository for SqlStore {
         })
     }
 
+    fn list(&self, tenant: &TenantContext) -> Result<Vec<Membership>, DomainError> {
+        let sql = self.sql(
+            "SELECT id, org_id, user_id, status, invited_by, joined_at, created_at, updated_at, version FROM membership WHERE org_id = ? ORDER BY created_at, id",
+        );
+        self.block_on(async {
+            let rows = sqlx::query(&sql)
+                .bind(tenant.organization_id().as_str())
+                .fetch_all(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            rows.iter().map(map_membership).collect()
+        })
+    }
+
+    fn list_for_user(&self, user_id: &Id<UserEntity>) -> Result<Vec<Membership>, DomainError> {
+        let sql = self.sql(
+            "SELECT id, org_id, user_id, status, invited_by, joined_at, created_at, updated_at, version FROM membership WHERE user_id = ? ORDER BY created_at, id",
+        );
+        self.block_on(async {
+            let rows = sqlx::query(&sql)
+                .bind(user_id.as_str())
+                .fetch_all(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            rows.iter().map(map_membership).collect()
+        })
+    }
+
     fn insert(
         &self,
         tenant: &TenantContext,
@@ -238,6 +304,78 @@ impl InvitationRepository for SqlStore {
         })
     }
 
+    fn find_by_token_hash(
+        &self,
+        token_hash: &SecretHash,
+    ) -> Result<Option<Invitation>, DomainError> {
+        let sql = self.sql(
+            "SELECT id, org_id, email, token_hash, invited_by, status, expires_at, accepted_at, created_at, updated_at, version FROM invitation WHERE token_hash = ?",
+        );
+        let roles_sql = self.sql(
+            "SELECT role_id AS value FROM invitation_role WHERE invitation_id = ? ORDER BY position",
+        );
+        self.block_on(async {
+            let row = sqlx::query(&sql)
+                .bind(token_hash.as_str())
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            let Some(row) = row else {
+                return Ok(None);
+            };
+            let invitation_id = stored_id::<InvitationEntity>(&row, "id")?;
+            let role_rows = sqlx::query(&roles_sql)
+                .bind(invitation_id.as_str())
+                .fetch_all(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            let role_ids: Vec<String> = role_rows
+                .iter()
+                .map(|r| {
+                    use sqlx::Row;
+                    r.get::<String, _>("value")
+                })
+                .collect();
+            let role_ids = parse_role_ids(role_ids)?;
+            Ok(Some(map_invitation(&row, role_ids)?))
+        })
+    }
+
+    fn list(&self, tenant: &TenantContext) -> Result<Vec<Invitation>, DomainError> {
+        let sql = self.sql(
+            "SELECT id, org_id, email, token_hash, invited_by, status, expires_at, accepted_at, created_at, updated_at, version FROM invitation WHERE org_id = ? ORDER BY created_at, id",
+        );
+        let roles_sql = self.sql(
+            "SELECT role_id AS value FROM invitation_role WHERE invitation_id = ? ORDER BY position",
+        );
+        self.block_on(async {
+            let rows = sqlx::query(&sql)
+                .bind(tenant.organization_id().as_str())
+                .fetch_all(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            let mut result = Vec::with_capacity(rows.len());
+            for row in &rows {
+                let invitation_id = stored_id::<InvitationEntity>(row, "id")?;
+                let role_rows = sqlx::query(&roles_sql)
+                    .bind(invitation_id.as_str())
+                    .fetch_all(&self.pool)
+                    .await
+                    .map_err(map_db_error)?;
+                let role_ids: Vec<String> = role_rows
+                    .iter()
+                    .map(|r| {
+                        use sqlx::Row;
+                        r.get::<String, _>("value")
+                    })
+                    .collect();
+                let role_ids = parse_role_ids(role_ids)?;
+                result.push(map_invitation(row, role_ids)?);
+            }
+            Ok(result)
+        })
+    }
+
     fn insert(
         &self,
         tenant: &TenantContext,
@@ -264,6 +402,18 @@ impl InvitationRepository for SqlStore {
 }
 
 impl ApplicationRepository for SqlStore {
+    fn list(&self, tenant: &TenantContext) -> Result<Vec<Application>, DomainError> {
+        let sql = self.sql("SELECT id, org_id, slug, name, kind, first_party, status, created_at, updated_at, version FROM application WHERE org_id = ? ORDER BY created_at, id");
+        self.block_on(async {
+            let rows = sqlx::query(&sql)
+                .bind(tenant.organization_id().as_str())
+                .fetch_all(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            rows.iter().map(map_application).collect()
+        })
+    }
+
     fn find_by_id(
         &self,
         tenant: &TenantContext,
@@ -352,6 +502,43 @@ impl SqlStore {
 }
 
 impl OAuthClientRepository for SqlStore {
+    fn list(&self, tenant: &TenantContext) -> Result<Vec<OAuthClient>, DomainError> {
+        let sql = self.sql("SELECT id, org_id, application_id, client_id, name, client_type, token_endpoint_auth_method, secret_hash, require_pkce, status, created_at, updated_at, version FROM oauth_client WHERE org_id = ? ORDER BY created_at, id");
+        let redirect_sql = self.sql("SELECT redirect_uri AS value FROM oauth_client_redirect_uri WHERE client_id = ? ORDER BY position");
+        let post_logout_sql = self.sql("SELECT redirect_uri AS value FROM oauth_client_post_logout_redirect_uri WHERE client_id = ? ORDER BY position");
+        let scope_sql = self.sql(
+            "SELECT scope AS value FROM oauth_client_scope WHERE client_id = ? ORDER BY position",
+        );
+        let grant_sql = self.sql("SELECT grant_type AS value FROM oauth_client_grant_type WHERE client_id = ? ORDER BY position");
+        self.block_on(async {
+            let mut tx = self.pool.begin().await.map_err(map_db_error)?;
+            let rows = sqlx::query(&sql)
+                .bind(tenant.organization_id().as_str())
+                .fetch_all(&mut *tx)
+                .await
+                .map_err(map_db_error)?;
+            let mut result = Vec::with_capacity(rows.len());
+            for row in &rows {
+                let internal_id = stored_id::<OAuthClientEntity>(row, "id")?;
+                let redirect_uris =
+                    fetch_strings(&mut tx, &redirect_sql, internal_id.as_str()).await?;
+                let post_logout =
+                    fetch_strings(&mut tx, &post_logout_sql, internal_id.as_str()).await?;
+                let scopes = fetch_strings(&mut tx, &scope_sql, internal_id.as_str()).await?;
+                let grants = fetch_strings(&mut tx, &grant_sql, internal_id.as_str()).await?;
+                result.push(map_oauth_client(
+                    row,
+                    redirect_uris,
+                    post_logout,
+                    scopes,
+                    grants,
+                )?);
+            }
+            tx.commit().await.map_err(map_db_error)?;
+            Ok(result)
+        })
+    }
+
     fn find_by_id(
         &self,
         tenant: &TenantContext,
@@ -521,6 +708,20 @@ impl SessionRepository for SqlStore {
         })
     }
 
+    fn list_for_user(&self, user_id: &Id<UserEntity>) -> Result<Vec<Session>, DomainError> {
+        let sql = self.sql(
+            "SELECT id, user_id, organization_id, audience, token_hash, status, created_at, last_seen_at, idle_expires_at, absolute_expires_at, revoked_at, rotated_from, version FROM session WHERE user_id = ? ORDER BY created_at, id",
+        );
+        self.block_on(async {
+            let rows = sqlx::query(&sql)
+                .bind(user_id.as_str())
+                .fetch_all(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            rows.iter().map(map_session).collect()
+        })
+    }
+
     fn insert(&self, session: &Session) -> Result<WriteOutcome, DomainError> {
         self.commit(&WriteBatch::new().with(WriteCommand::InsertSession(session.clone())))
     }
@@ -534,6 +735,91 @@ impl SessionRepository for SqlStore {
             session: session.clone(),
             expected_version,
         }))
+    }
+}
+
+impl OneTimeTokenRepository for SqlStore {
+    fn find_by_hash(
+        &self,
+        hash: &SecretHash,
+        purpose: OneTimeTokenPurpose,
+    ) -> Result<Option<OneTimeToken>, DomainError> {
+        let sql = self.sql(
+            "SELECT id, user_id, purpose, token_hash, expires_at, consumed_at, created_at FROM one_time_token WHERE token_hash = ? AND purpose = ?",
+        );
+        self.block_on(async {
+            let row = sqlx::query(&sql)
+                .bind(hash.as_str())
+                .bind(purpose.as_str())
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            row.as_ref().map(map_one_time_token).transpose()
+        })
+    }
+
+    fn insert(&self, token: &OneTimeToken) -> Result<WriteOutcome, DomainError> {
+        let sql = self.sql(
+            "INSERT INTO one_time_token (id, user_id, purpose, token_hash, expires_at, consumed_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        );
+        let now = token.created_at();
+        let _ = now;
+        self.block_on(async {
+            match sqlx::query(&sql)
+                .bind(token.id().as_str())
+                .bind(token.user_id().as_str())
+                .bind(token.purpose().as_str())
+                .bind(token.token_hash().as_str())
+                .bind(db_timestamp(token.expires_at())?)
+                .bind(token.consumed_at().map(db_timestamp).transpose()?)
+                .bind(db_timestamp(token.created_at())?)
+                .execute(&self.pool)
+                .await
+            {
+                Ok(_) => Ok(WriteOutcome::Applied),
+                Err(error) => {
+                    if let sqlx::Error::Database(db) = &error
+                        && db.is_unique_violation()
+                    {
+                        return Ok(WriteOutcome::Conflict);
+                    }
+                    Err(map_db_error(error))
+                }
+            }
+        })
+    }
+
+    fn consume(
+        &self,
+        id: &Id<OneTimeTokenEntity>,
+        now: Timestamp,
+    ) -> Result<WriteOutcome, DomainError> {
+        let sql = self
+            .sql("UPDATE one_time_token SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL");
+        self.block_on(async {
+            let result = sqlx::query(&sql)
+                .bind(db_timestamp(now)?)
+                .bind(id.as_str())
+                .execute(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            if result.rows_affected() == 1 {
+                Ok(WriteOutcome::Applied)
+            } else {
+                // determine conflict vs not found
+                let exists_sql = self.sql("SELECT 1 FROM one_time_token WHERE id = ?");
+                let exists = sqlx::query(&exists_sql)
+                    .bind(id.as_str())
+                    .fetch_optional(&self.pool)
+                    .await
+                    .map_err(map_db_error)?;
+                if exists.is_some() {
+                    Ok(WriteOutcome::Conflict)
+                } else {
+                    Ok(WriteOutcome::NotFound)
+                }
+            }
+        })
     }
 }
 
@@ -625,6 +911,20 @@ impl RoleRepository for SqlStore {
 }
 
 impl RoleBindingRepository for SqlStore {
+    fn list(&self, tenant: &TenantContext) -> Result<Vec<RoleBinding>, DomainError> {
+        let sql = self.sql(
+            "SELECT id, org_id, application_id, role_id, user_id, created_at FROM role_binding WHERE org_id = ? ORDER BY created_at, id",
+        );
+        self.block_on(async {
+            let rows = sqlx::query(&sql)
+                .bind(tenant.organization_id().as_str())
+                .fetch_all(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            rows.iter().map(map_role_binding).collect()
+        })
+    }
+
     fn list_for_user(
         &self,
         tenant: &TenantContext,
@@ -809,6 +1109,39 @@ impl ConsentRepository for SqlStore {
         )
     }
 
+    fn list_for_user(&self, user_id: &Id<UserEntity>) -> Result<Vec<Consent>, DomainError> {
+        let sql = self.sql(
+            "SELECT id, org_id, user_id, client_id, created_at, updated_at, revoked_at, version FROM consent WHERE user_id = ? ORDER BY created_at, id",
+        );
+        let scopes_sql = self
+            .sql("SELECT scope AS value FROM consent_scope WHERE consent_id = ? ORDER BY position");
+        self.block_on(async {
+            let rows = sqlx::query(&sql)
+                .bind(user_id.as_str())
+                .fetch_all(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            let mut result = Vec::with_capacity(rows.len());
+            for row in &rows {
+                let consent_id = stored_id::<ConsentEntity>(row, "id")?;
+                let scope_rows = sqlx::query(&scopes_sql)
+                    .bind(consent_id.as_str())
+                    .fetch_all(&self.pool)
+                    .await
+                    .map_err(map_db_error)?;
+                let scopes: Vec<String> = scope_rows
+                    .iter()
+                    .map(|r| {
+                        use sqlx::Row;
+                        r.get::<String, _>("value")
+                    })
+                    .collect();
+                result.push(map_consent(row, scopes)?);
+            }
+            Ok(result)
+        })
+    }
+
     fn insert(
         &self,
         tenant: &TenantContext,
@@ -873,7 +1206,7 @@ impl RefreshFamilyRepository for SqlStore {
         id: &Id<RefreshFamilyEntity>,
     ) -> Result<Option<RefreshFamily>, DomainError> {
         let sql = self.sql(
-            "SELECT id, org_id, client_id, user_id, created_at, absolute_expires_at, revoked_at, version FROM refresh_family WHERE id = ? AND org_id = ?",
+            "SELECT id, org_id, client_id, user_id, scope, session_id, auth_time, created_at, absolute_expires_at, revoked_at, version FROM refresh_family WHERE id = ? AND org_id = ?",
         );
         self.block_on(async {
             let row = sqlx::query(&sql)
@@ -989,6 +1322,23 @@ impl AuditRepository for SqlStore {
 }
 
 impl SqlStore {
+    /// Lists recent audit events across all tenants.
+    pub fn list_all_audit_events(&self, limit: i64) -> Result<Vec<AuditEvent>, DomainError> {
+        let sql = self.sql(
+            "SELECT id, org_id, actor_type, actor_id, action, target, occurred_at, attributes FROM audit_event ORDER BY occurred_at DESC, id DESC LIMIT ?",
+        );
+        self.block_on(async {
+            let rows = sqlx::query(&sql)
+                .bind(limit)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            rows.iter().map(map_audit_event).collect()
+        })
+    }
+}
+
+impl SqlStore {
     /// Lists audit events for a tenant in occurrence order.
     ///
     /// This read helper is intended for adapter diagnostics and contract tests; audit events
@@ -1045,3 +1395,231 @@ impl SqlStore {
 }
 
 impl Repositories for SqlStore {}
+
+impl SystemAdministratorRepository for SqlStore {
+    fn find_by_id(
+        &self,
+        id: &Id<SystemAdministratorEntity>,
+    ) -> Result<Option<SystemAdministrator>, DomainError> {
+        let sql = self.sql(
+            "SELECT id, user_id, created_by, status, created_at, updated_at, version FROM system_administrator WHERE id = ?",
+        );
+        self.block_on(async {
+            let row = sqlx::query(&sql)
+                .bind(id.as_str())
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            row.as_ref().map(map_system_administrator).transpose()
+        })
+    }
+
+    fn find_by_user(
+        &self,
+        user_id: &Id<UserEntity>,
+    ) -> Result<Option<SystemAdministrator>, DomainError> {
+        let sql = self.sql(
+            "SELECT id, user_id, created_by, status, created_at, updated_at, version FROM system_administrator WHERE user_id = ?",
+        );
+        self.block_on(async {
+            let row = sqlx::query(&sql)
+                .bind(user_id.as_str())
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            row.as_ref().map(map_system_administrator).transpose()
+        })
+    }
+
+    fn list(&self) -> Result<Vec<SystemAdministrator>, DomainError> {
+        let sql = self.sql(
+            "SELECT id, user_id, created_by, status, created_at, updated_at, version FROM system_administrator ORDER BY created_at, id",
+        );
+        self.block_on(async {
+            let rows = sqlx::query(&sql)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            rows.iter().map(map_system_administrator).collect()
+        })
+    }
+
+    fn insert(&self, admin: &SystemAdministrator) -> Result<WriteOutcome, DomainError> {
+        let sql = self.sql(
+            "INSERT INTO system_administrator (id, user_id, created_by, status, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        );
+        let status = match admin.status() {
+            authkit_core::domain::SystemAdministratorStatus::Active => "active",
+            authkit_core::domain::SystemAdministratorStatus::Disabled => "disabled",
+        };
+        self.block_on(async {
+            let result = sqlx::query(&sql)
+                .bind(admin.id().as_str())
+                .bind(admin.user_id().as_str())
+                .bind(admin.created_by().map(|v| v.as_str()))
+                .bind(status)
+                .bind(admin.created_at().as_millis() as i64)
+                .bind(admin.updated_at().as_millis() as i64)
+                .bind(admin.version() as i64)
+                .execute(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            if result.rows_affected() == 0 {
+                Ok(WriteOutcome::NotFound)
+            } else {
+                Ok(WriteOutcome::Applied)
+            }
+        })
+    }
+
+    fn update(
+        &self,
+        admin: &SystemAdministrator,
+        expected_version: u64,
+    ) -> Result<WriteOutcome, DomainError> {
+        let sql = self.sql(
+            "UPDATE system_administrator SET user_id = ?, created_by = ?, status = ?, created_at = ?, updated_at = ?, version = ? WHERE id = ? AND version = ?",
+        );
+        let status = match admin.status() {
+            authkit_core::domain::SystemAdministratorStatus::Active => "active",
+            authkit_core::domain::SystemAdministratorStatus::Disabled => "disabled",
+        };
+        self.block_on(async {
+            let result = sqlx::query(&sql)
+                .bind(admin.user_id().as_str())
+                .bind(admin.created_by().map(|v| v.as_str()))
+                .bind(status)
+                .bind(admin.created_at().as_millis() as i64)
+                .bind(admin.updated_at().as_millis() as i64)
+                .bind(admin.version() as i64)
+                .bind(admin.id().as_str())
+                .bind(expected_version as i64)
+                .execute(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            if result.rows_affected() == 0 {
+                // distinguish not found vs conflict not possible here; treat as conflict
+                Ok(WriteOutcome::Conflict)
+            } else {
+                Ok(WriteOutcome::Applied)
+            }
+        })
+    }
+}
+
+impl RateLimiter for SqlStore {
+    fn check(
+        &self,
+        key: &str,
+        limit: u32,
+        window_secs: u64,
+        now: authkit_core::domain::time::Timestamp,
+    ) -> Result<(), RateLimitExceeded> {
+        let now_ms = now.as_millis() as i64;
+        let expires_ms = now.as_millis().saturating_add(window_secs * 1000) as i64;
+        let sql = self.sql(
+            "INSERT INTO rate_limit_bucket (key, window_start, count, expires_at) VALUES (?, ?, 1, ?)              ON CONFLICT (key) DO UPDATE SET              window_start = CASE WHEN rate_limit_bucket.expires_at <= ? THEN ? ELSE rate_limit_bucket.window_start END,              count = CASE WHEN rate_limit_bucket.expires_at <= ? THEN 1 ELSE rate_limit_bucket.count + 1 END,              expires_at = CASE WHEN rate_limit_bucket.expires_at <= ? THEN ? ELSE rate_limit_bucket.expires_at END              RETURNING count, expires_at",
+        );
+        let row = self.block_on(async {
+            sqlx::query(&sql)
+                .bind(key)
+                .bind(now_ms)
+                .bind(expires_ms)
+                .bind(now_ms)
+                .bind(now_ms)
+                .bind(now_ms)
+                .bind(now_ms)
+                .bind(expires_ms)
+                .fetch_one(&self.pool)
+                .await
+                .map_err(map_db_error)
+        });
+        let row = match row {
+            Ok(row) => row,
+            Err(_) => return Ok(()),
+        };
+        use sqlx::Row;
+        let count: i64 = row.get("count");
+        let expires: i64 = row.get("expires_at");
+        if count as u32 > limit {
+            let retry = ((expires - now_ms).max(0) as u64).div_ceil(1000);
+            return Err(RateLimitExceeded {
+                retry_after_secs: retry.max(1),
+            });
+        }
+        Ok(())
+    }
+
+    fn reset(&self, key: &str) -> Result<(), authkit_core::domain::DomainError> {
+        let sql = self.sql("DELETE FROM rate_limit_bucket WHERE key = ?");
+        self.block_on(async {
+            sqlx::query(&sql)
+                .bind(key)
+                .execute(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            Ok(())
+        })
+    }
+}
+
+impl RecoveryCodeRepository for SqlStore {
+    fn list_for_user(&self, user_id: &Id<UserEntity>) -> Result<Vec<RecoveryCode>, DomainError> {
+        let sql = self.sql("SELECT id, user_id, code_hash, used_at, created_at, version FROM recovery_code WHERE user_id = ? ORDER BY created_at, id");
+        self.block_on(async {
+            let rows = sqlx::query(&sql)
+                .bind(user_id.as_str())
+                .fetch_all(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            rows.iter().map(map_recovery_code).collect()
+        })
+    }
+    fn insert(&self, code: &RecoveryCode) -> Result<WriteOutcome, DomainError> {
+        let sql = self.sql("INSERT INTO recovery_code (id, user_id, code_hash, used_at, created_at, version) VALUES (?, ?, ?, ?, ?, ?)");
+        self.block_on(async {
+            sqlx::query(&sql)
+                .bind(code.id().as_str())
+                .bind(code.user_id().as_str())
+                .bind(code.code_hash().as_str())
+                .bind(code.used_at().map(|t| t.as_millis() as i64))
+                .bind(code.created_at().as_millis() as i64)
+                .bind(code.version() as i64)
+                .execute(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            Ok(WriteOutcome::Applied)
+        })
+    }
+    fn mark_used(
+        &self,
+        id: &Id<RecoveryCodeEntity>,
+        now: Timestamp,
+    ) -> Result<WriteOutcome, DomainError> {
+        let sql = self.sql("UPDATE recovery_code SET used_at = ?, version = version + 1 WHERE id = ? AND used_at IS NULL");
+        self.block_on(async {
+            let result = sqlx::query(&sql)
+                .bind(now.as_millis() as i64)
+                .bind(id.as_str())
+                .execute(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            if result.rows_affected() == 0 {
+                Ok(WriteOutcome::NotFound)
+            } else {
+                Ok(WriteOutcome::Applied)
+            }
+        })
+    }
+    fn delete_for_user(&self, user_id: &Id<UserEntity>) -> Result<WriteOutcome, DomainError> {
+        let sql = self.sql("DELETE FROM recovery_code WHERE user_id = ?");
+        self.block_on(async {
+            sqlx::query(&sql)
+                .bind(user_id.as_str())
+                .execute(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            Ok(WriteOutcome::Applied)
+        })
+    }
+}

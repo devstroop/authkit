@@ -1,0 +1,5 @@
+version: 2
+
+paths-ignore:
+  - "docker-compose.yml"
+  - ".env.example"

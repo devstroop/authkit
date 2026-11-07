@@ -14,15 +14,18 @@ pub mod invitation;
 pub mod membership;
 pub mod name;
 pub mod oauth_client;
+pub mod one_time_token;
 pub mod organization;
 pub mod permission;
 pub mod pkce;
+pub mod recovery_code;
 pub mod redirect_uri;
 pub mod role;
 pub mod scope;
 pub mod secret;
 pub mod session;
 pub mod slug;
+pub mod system_administrator;
 pub mod tenant;
 pub mod time;
 pub mod user;
@@ -47,15 +50,20 @@ pub use name::DisplayName;
 pub use oauth_client::{
     ClientStatus, ClientType, GrantType, OAuthClient, OAuthClientSpec, TokenEndpointAuthMethod,
 };
+pub use one_time_token::{OneTimeToken, OneTimeTokenPurpose};
 pub use organization::{Organization, OrganizationStatus};
 pub use permission::{Permission, PermissionSet};
 pub use pkce::{Nonce, PkceChallenge};
+pub use recovery_code::RecoveryCode;
 pub use redirect_uri::RedirectUri;
 pub use role::{Role, RoleBinding, RoleKind, RoleScope};
 pub use scope::{Scope, ScopeSet};
 pub use secret::SecretHash;
 pub use session::{Session, SessionAudience, SessionStatus};
 pub use slug::Slug;
+pub use system_administrator::{
+    SystemAdministrator, SystemAdministratorStatus, ensure_system_admin_remains,
+};
 pub use tenant::TenantContext;
 pub use time::Timestamp;
 pub use user::{User, UserStatus};

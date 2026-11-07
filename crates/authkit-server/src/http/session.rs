@@ -272,6 +272,14 @@ fn cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
     None
 }
 
+pub(crate) fn account_session_token(
+    headers: &HeaderMap,
+    service: &SessionService,
+) -> Option<SessionToken> {
+    cookie_value(headers, service.cookie_name(SessionAudience::Account))
+        .and_then(|value| SessionToken::from_cookie(&value))
+}
+
 fn is_unsafe(method: &Method) -> bool {
     !matches!(
         *method,
@@ -288,6 +296,7 @@ fn session_applies_to(path: &str) -> bool {
         "/healthz"
             | "/readyz"
             | "/oauth2/token"
+            | "/oauth2/logout"
             | "/oauth2/introspect"
             | "/oauth2/revoke"
             | "/oauth2/device_authorization"

@@ -15,12 +15,14 @@ use crate::domain::email::Email;
 use crate::domain::grant::{AuthorizationCode, Consent, RefreshFamily, RefreshToken};
 use crate::domain::id::{
     ApplicationEntity, AuthorizationCodeEntity, ConsentEntity, Entity, Id, IdError,
-    InvitationEntity, MembershipEntity, OAuthClientEntity, OrganizationEntity, RefreshFamilyEntity,
-    RefreshTokenEntity, RoleBindingEntity, RoleEntity, SessionEntity, UserEntity,
+    InvitationEntity, MembershipEntity, OAuthClientEntity, OneTimeTokenEntity, OrganizationEntity,
+    RefreshFamilyEntity, RefreshTokenEntity, RoleBindingEntity, RoleEntity, SessionEntity,
+    UserEntity,
 };
 use crate::domain::invitation::Invitation;
 use crate::domain::membership::Membership;
 use crate::domain::oauth_client::OAuthClient;
+use crate::domain::one_time_token::{OneTimeToken, OneTimeTokenPurpose};
 use crate::domain::organization::Organization;
 use crate::domain::role::{Role, RoleBinding};
 use crate::domain::secret::SecretHash;
@@ -81,6 +83,37 @@ pub trait OrganizationRepository {
 }
 
 /// Read and write access to tenant-owned memberships.
+/// Read and write access to deployment-level system administrators.
+pub trait SystemAdministratorRepository {
+    /// Finds a system administrator by identifier.
+    fn find_by_id(
+        &self,
+        id: &crate::domain::id::Id<crate::domain::id::SystemAdministratorEntity>,
+    ) -> Result<Option<crate::domain::SystemAdministrator>, crate::domain::DomainError>;
+
+    /// Finds the system administrator record for a user, if one exists.
+    fn find_by_user(
+        &self,
+        user_id: &crate::domain::id::Id<crate::domain::id::UserEntity>,
+    ) -> Result<Option<crate::domain::SystemAdministrator>, crate::domain::DomainError>;
+
+    /// Lists all system administrators.
+    fn list(&self) -> Result<Vec<crate::domain::SystemAdministrator>, crate::domain::DomainError>;
+
+    /// Inserts a system administrator.
+    fn insert(
+        &self,
+        admin: &crate::domain::SystemAdministrator,
+    ) -> Result<crate::domain::WriteOutcome, crate::domain::DomainError>;
+
+    /// Updates a system administrator using optimistic concurrency.
+    fn update(
+        &self,
+        admin: &crate::domain::SystemAdministrator,
+        expected_version: u64,
+    ) -> Result<crate::domain::WriteOutcome, crate::domain::DomainError>;
+}
+
 pub trait MembershipRepository {
     /// Finds a membership by identifier.
     fn find_by_id(
@@ -95,6 +128,12 @@ pub trait MembershipRepository {
         tenant: &TenantContext,
         user_id: &Id<UserEntity>,
     ) -> Result<Option<Membership>, DomainError>;
+
+    /// Lists memberships in a tenant.
+    fn list(&self, tenant: &TenantContext) -> Result<Vec<Membership>, DomainError>;
+
+    /// Lists memberships for a user across tenants.
+    fn list_for_user(&self, user_id: &Id<UserEntity>) -> Result<Vec<Membership>, DomainError>;
 
     /// Inserts a new membership.
     fn insert(
@@ -121,6 +160,15 @@ pub trait InvitationRepository {
         id: &Id<InvitationEntity>,
     ) -> Result<Option<Invitation>, DomainError>;
 
+    /// Finds an invitation by its hashed token.
+    fn find_by_token_hash(
+        &self,
+        token_hash: &crate::domain::secret::SecretHash,
+    ) -> Result<Option<Invitation>, DomainError>;
+
+    /// Lists invitations in a tenant.
+    fn list(&self, tenant: &TenantContext) -> Result<Vec<Invitation>, DomainError>;
+
     /// Inserts a new invitation.
     fn insert(
         &self,
@@ -139,6 +187,9 @@ pub trait InvitationRepository {
 
 /// Read and write access to tenant-owned applications.
 pub trait ApplicationRepository {
+    /// Lists applications in a tenant.
+    fn list(&self, tenant: &TenantContext) -> Result<Vec<Application>, DomainError>;
+
     /// Finds an application by identifier.
     fn find_by_id(
         &self,
@@ -171,6 +222,9 @@ pub trait ApplicationRepository {
 
 /// Read and write access to OAuth clients.
 pub trait OAuthClientRepository {
+    /// Lists OAuth clients in a tenant.
+    fn list(&self, tenant: &TenantContext) -> Result<Vec<OAuthClient>, DomainError>;
+
     /// Finds a client by internal identifier.
     fn find_by_id(
         &self,
@@ -235,6 +289,9 @@ pub trait SessionRepository {
     /// Finds a session by token hash.
     fn find_by_token_hash(&self, token_hash: &SecretHash) -> Result<Option<Session>, DomainError>;
 
+    /// Lists sessions for a user.
+    fn list_for_user(&self, user_id: &Id<UserEntity>) -> Result<Vec<Session>, DomainError>;
+
     /// Inserts a new session.
     fn insert(&self, session: &Session) -> Result<WriteOutcome, DomainError>;
 
@@ -269,6 +326,9 @@ pub trait RoleRepository {
 
 /// Read and write access to role bindings.
 pub trait RoleBindingRepository {
+    /// Lists bindings in a tenant.
+    fn list(&self, tenant: &TenantContext) -> Result<Vec<RoleBinding>, DomainError>;
+
     /// Finds bindings for a user in a tenant.
     fn list_for_user(
         &self,
@@ -339,6 +399,9 @@ pub trait ConsentRepository {
         client_id: &Id<OAuthClientEntity>,
         user_id: &Id<UserEntity>,
     ) -> Result<Option<Consent>, DomainError>;
+
+    /// Lists consents granted by a user across all tenants.
+    fn list_for_user(&self, user_id: &Id<UserEntity>) -> Result<Vec<Consent>, DomainError>;
 
     /// Inserts a new consent.
     fn insert(
@@ -413,6 +476,26 @@ pub trait RefreshTokenRepository {
     ) -> Result<WriteOutcome, DomainError>;
 }
 
+/// Read and write access to one-time tokens.
+pub trait OneTimeTokenRepository {
+    /// Finds a token by its hashed verifier.
+    fn find_by_hash(
+        &self,
+        hash: &SecretHash,
+        purpose: OneTimeTokenPurpose,
+    ) -> Result<Option<OneTimeToken>, DomainError>;
+
+    /// Inserts a new token.
+    fn insert(&self, token: &OneTimeToken) -> Result<WriteOutcome, DomainError>;
+
+    /// Marks a token consumed if it is still unconsumed.
+    fn consume(
+        &self,
+        id: &Id<OneTimeTokenEntity>,
+        now: Timestamp,
+    ) -> Result<WriteOutcome, DomainError>;
+}
+
 /// Read and write access to tenant-owned audit events.
 pub trait AuditRepository {
     /// Appends an audit event. Audit writes are append-only.
@@ -421,6 +504,68 @@ pub trait AuditRepository {
         tenant: &TenantContext,
         event: &AuditEvent,
     ) -> Result<WriteOutcome, DomainError>;
+}
+
+/// A rate-limit decision failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RateLimitExceeded {
+    /// Seconds until the caller may retry.
+    pub retry_after_secs: u64,
+}
+
+/// Rate limiting and abuse-control storage.
+pub trait RateLimiter {
+    /// Records an attempt for `key` and returns an error when the configured
+    /// `limit` has been exceeded within `window_secs`.
+    fn check(
+        &self,
+        key: &str,
+        limit: u32,
+        window_secs: u64,
+        now: crate::domain::time::Timestamp,
+    ) -> Result<(), RateLimitExceeded>;
+
+    /// Clears the counter for `key`.
+    fn reset(&self, key: &str) -> Result<(), crate::domain::DomainError>;
+}
+
+/// Sends transactional email.
+pub trait EmailSender {
+    /// Sends a message to `to`.
+    fn send(
+        &self,
+        to: &crate::domain::email::Email,
+        subject: &str,
+        body: &str,
+    ) -> Result<(), crate::domain::DomainError>;
+}
+
+/// Read and write access to MFA recovery codes.
+pub trait RecoveryCodeRepository {
+    /// Lists recovery codes for a user.
+    fn list_for_user(
+        &self,
+        user_id: &crate::domain::id::Id<crate::domain::id::UserEntity>,
+    ) -> Result<Vec<crate::domain::RecoveryCode>, crate::domain::DomainError>;
+
+    /// Inserts a recovery code.
+    fn insert(
+        &self,
+        code: &crate::domain::RecoveryCode,
+    ) -> Result<crate::domain::WriteOutcome, crate::domain::DomainError>;
+
+    /// Marks a recovery code as used.
+    fn mark_used(
+        &self,
+        id: &crate::domain::id::Id<crate::domain::id::RecoveryCodeEntity>,
+        now: crate::domain::time::Timestamp,
+    ) -> Result<crate::domain::WriteOutcome, crate::domain::DomainError>;
+
+    /// Deletes all recovery codes for a user.
+    fn delete_for_user(
+        &self,
+        user_id: &crate::domain::id::Id<crate::domain::id::UserEntity>,
+    ) -> Result<crate::domain::WriteOutcome, crate::domain::DomainError>;
 }
 
 /// A repository bundle available to use cases.

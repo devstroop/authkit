@@ -13,8 +13,9 @@ use authkit_core::domain::email::Email;
 use authkit_core::domain::grant::{AuthorizationCode, Consent, RefreshFamily, RefreshToken};
 use authkit_core::domain::id::{
     ApplicationEntity, AuditEventEntity, AuthorizationCodeEntity, ConsentEntity, Entity, Id,
-    InvitationEntity, MembershipEntity, OAuthClientEntity, OrganizationEntity, RefreshFamilyEntity,
-    RefreshTokenEntity, RoleBindingEntity, RoleEntity, SessionEntity, UserEntity,
+    InvitationEntity, MembershipEntity, OAuthClientEntity, OrganizationEntity, RecoveryCodeEntity,
+    RefreshFamilyEntity, RefreshTokenEntity, RoleBindingEntity, RoleEntity, SessionEntity,
+    SystemAdministratorEntity, UserEntity,
 };
 use authkit_core::domain::invitation::{Invitation, InvitationStatus};
 use authkit_core::domain::membership::{Membership, MembershipStatus};
@@ -25,12 +26,14 @@ use authkit_core::domain::oauth_client::{
 use authkit_core::domain::organization::{Organization, OrganizationStatus};
 use authkit_core::domain::permission::{Permission, PermissionSet};
 use authkit_core::domain::pkce::{Nonce, PkceChallenge};
+use authkit_core::domain::recovery_code::RecoveryCode;
 use authkit_core::domain::redirect_uri::RedirectUri;
 use authkit_core::domain::role::{Role, RoleBinding, RoleKind};
 use authkit_core::domain::scope::{Scope, ScopeSet};
 use authkit_core::domain::secret::SecretHash;
 use authkit_core::domain::session::{Session, SessionAudience, SessionStatus};
 use authkit_core::domain::slug::Slug;
+use authkit_core::domain::system_administrator::{SystemAdministrator, SystemAdministratorStatus};
 use authkit_core::domain::time::Timestamp;
 use authkit_core::domain::user::{User, UserStatus};
 use sqlx::Row;
@@ -154,6 +157,18 @@ pub(crate) fn map_organization(row: &AnyRow) -> Result<Organization, DomainError
         Slug::parse(text(row, "slug")?).map_err(|_| invalid_stored_value())?,
         DisplayName::parse(text(row, "name")?).map_err(|_| invalid_stored_value())?,
         organization_status(&text(row, "status")?)?,
+        timestamp(row, "created_at")?,
+        timestamp(row, "updated_at")?,
+        version(row, "version")?,
+    )
+}
+
+pub(crate) fn map_system_administrator(row: &AnyRow) -> Result<SystemAdministrator, DomainError> {
+    SystemAdministrator::restore(
+        id::<SystemAdministratorEntity>(row, "id")?,
+        id::<UserEntity>(row, "user_id")?,
+        opt_id::<UserEntity>(row, "created_by")?,
+        system_administrator_status(&text(row, "status")?)?,
         timestamp(row, "created_at")?,
         timestamp(row, "updated_at")?,
         version(row, "version")?,
@@ -297,6 +312,17 @@ pub(crate) fn map_credential(row: &AnyRow) -> Result<Credential, DomainError> {
     )
 }
 
+pub(crate) fn map_recovery_code(row: &AnyRow) -> Result<RecoveryCode, DomainError> {
+    RecoveryCode::restore(
+        id::<RecoveryCodeEntity>(row, "id")?,
+        id::<UserEntity>(row, "user_id")?,
+        SecretHash::parse(text(row, "code_hash")?).map_err(|_| invalid_stored_value())?,
+        opt_timestamp(row, "used_at")?,
+        timestamp(row, "created_at")?,
+        version(row, "version")?,
+    )
+}
+
 pub(crate) fn map_session(row: &AnyRow) -> Result<Session, DomainError> {
     Session::restore(
         id::<SessionEntity>(row, "id")?,
@@ -389,6 +415,14 @@ pub(crate) fn map_refresh_family(row: &AnyRow) -> Result<RefreshFamily, DomainEr
         id::<OrganizationEntity>(row, "org_id")?,
         id::<OAuthClientEntity>(row, "client_id")?,
         id::<UserEntity>(row, "user_id")?,
+        scope_set(
+            text(row, "scope")?
+                .split_whitespace()
+                .map(str::to_owned)
+                .collect(),
+        )?,
+        opt_id::<SessionEntity>(row, "session_id")?,
+        timestamp(row, "auth_time")?,
         timestamp(row, "created_at")?,
         timestamp(row, "absolute_expires_at")?,
         opt_timestamp(row, "revoked_at")?,
@@ -494,6 +528,14 @@ fn user_status(value: &str) -> Result<UserStatus, DomainError> {
         "active" => Ok(UserStatus::Active),
         "suspended" => Ok(UserStatus::Suspended),
         "deleted" => Ok(UserStatus::Deleted),
+        _ => Err(invalid_stored_value()),
+    }
+}
+
+fn system_administrator_status(value: &str) -> Result<SystemAdministratorStatus, DomainError> {
+    match value {
+        "active" => Ok(SystemAdministratorStatus::Active),
+        "disabled" => Ok(SystemAdministratorStatus::Disabled),
         _ => Err(invalid_stored_value()),
     }
 }

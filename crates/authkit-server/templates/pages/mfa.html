@@ -1,0 +1,17 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+<h1>MFA</h1>
+{% if has_mfa %}
+<p>MFA enabled.</p>
+<form method="post" action="/account/mfa/disable">
+  <input type="hidden" name="_csrf" value="{{ csrf }}">
+  <button type="submit">Disable MFA</button>
+</form>
+{% else %}
+<p>Enroll MFA.</p>
+<form method="post" action="/account/mfa/enroll">
+  <input type="hidden" name="_csrf" value="{{ csrf }}">
+  <button type="submit">Generate secret</button>
+</form>
+{% endif %}
+{% endblock %}

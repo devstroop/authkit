@@ -147,12 +147,24 @@ impl IntoResponse for OAuthError {
             "error": self.code.as_str(),
             "error_description": self.description,
         }));
-        (
+        let mut response = (
             self.code.status(),
-            [(header::CACHE_CONTROL, "no-store")],
+            [
+                (header::CACHE_CONTROL, "no-store"),
+                (header::PRAGMA, "no-cache"),
+            ],
             body,
         )
-            .into_response()
+            .into_response();
+        if self.code == OAuthErrorCode::InvalidClient {
+            response.headers_mut().insert(
+                header::WWW_AUTHENTICATE,
+                "Basic realm=\"token\""
+                    .parse()
+                    .expect("static header value"),
+            );
+        }
+        response
     }
 }
 

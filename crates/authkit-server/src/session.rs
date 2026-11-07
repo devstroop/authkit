@@ -197,6 +197,16 @@ impl SessionService {
         self.clock.as_ref()
     }
 
+    /// Returns the backing store.
+    pub fn store(&self) -> &Arc<SqlStore> {
+        &self.store
+    }
+
+    /// Returns the session pepper.
+    pub fn pepper(&self) -> &[u8] {
+        self.config.pepper()
+    }
+
     /// Returns the cookie name for an audience.
     pub const fn cookie_name(&self, audience: SessionAudience) -> &'static str {
         match (self.environment, audience) {
@@ -522,7 +532,7 @@ pub struct SystemClock;
 
 impl Clock for SystemClock {
     fn now(&self) -> Timestamp {
-        Timestamp::from_millis(crate::signing::unix_now())
+        Timestamp::from_millis(crate::signing::unix_now().saturating_mul(1_000))
     }
 }
 
@@ -870,6 +880,12 @@ mod tests {
                 .expect("new session");
             assert!(new.is_valid(Timestamp::from_millis(1_001_000)));
         });
+    }
+
+    #[test]
+    fn system_clock_reports_epoch_milliseconds() {
+        let now = SystemClock.now().as_millis();
+        assert!(now > 1_700_000_000_000, "clock returned {now}");
     }
 
     #[test]

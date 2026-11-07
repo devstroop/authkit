@@ -7,10 +7,15 @@
 
 pub mod authorization;
 pub mod config;
+pub mod email;
 pub mod http;
+pub mod metrics;
+pub mod password;
 pub mod session;
 pub mod signing;
 pub mod telemetry;
+pub mod tokens;
+pub mod totp;
 
 mod server;
 

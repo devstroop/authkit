@@ -122,6 +122,11 @@ impl SigningKey {
         &self.kid
     }
 
+    /// Returns the ECDSA private key, when this key has private material.
+    pub fn secret(&self) -> Option<&SecretKey> {
+        self.secret.as_ref()
+    }
+
     /// Returns the lifecycle state.
     pub const fn state(&self) -> KeyState {
         self.state
@@ -135,6 +140,14 @@ impl SigningKey {
     /// Returns the publication deadline for a retired key.
     pub const fn publish_until(&self) -> Option<u64> {
         self.publish_until
+    }
+
+    fn is_published(&self, now: u64) -> bool {
+        match self.state {
+            KeyState::Active | KeyState::Next => true,
+            KeyState::Retired => self.publish_until.is_some_and(|until| until > now),
+            KeyState::Compromised => false,
+        }
     }
 
     fn validate(&self) -> Result<(), KeyRingError> {
@@ -218,6 +231,38 @@ impl KeyRing {
         Ok(Self { keys, active_index })
     }
 
+    /// Rotates the active signing key, retiring the previous one.
+    pub fn rotate(config: &SigningKeyConfig, now: u64) -> Result<Self, KeyRingError> {
+        let ring = Self::load_or_bootstrap(config, now)?;
+        let keys = ring.keys;
+        let publish_secs = config.retired_publish_secs();
+        let mut rotated = Vec::with_capacity(keys.len() + 1);
+        for mut key in keys {
+            if key.state == KeyState::Active {
+                key.state = KeyState::Retired;
+                key.secret = None;
+                key.retired_at = Some(now);
+                key.publish_until = Some(now.saturating_add(publish_secs));
+            }
+            rotated.push(key);
+        }
+        let new_key = SigningKey::generate(KeyState::Active, now)?;
+        let new_kid = new_key.kid().to_owned();
+        rotated.push(new_key);
+
+        let file = KeyRingFile {
+            version: KEYRING_VERSION,
+            keys: rotated
+                .iter()
+                .map(|key| KeyEntry::from_signing_key(key, config.kek()))
+                .collect::<Result<Vec<_>, _>>()?,
+        };
+        write_keyring(config.file(), &file)?;
+        let ring = Self::new(rotated)?;
+        tracing::info!(new_kid = %new_kid, "rotated signing key");
+        Ok(ring)
+    }
+
     /// Loads the encrypted keyring or creates and persists a bootstrap key.
     pub fn load_or_bootstrap(config: &SigningKeyConfig, now: u64) -> Result<Self, KeyRingError> {
         if !config.file().exists() {
@@ -243,20 +288,29 @@ impl KeyRing {
         Self::new(keys)
     }
 
+    /// Returns all configured signing keys.
+    pub fn keys(&self) -> &[SigningKey] {
+        &self.keys
+    }
+
     /// Returns the only key used for signing.
     pub fn active(&self) -> &SigningKey {
         &self.keys[self.active_index]
+    }
+
+    /// Returns a published verification key by identifier.
+    pub fn verification_key(&self, kid: &str, now: u64) -> Option<&PublicJwk> {
+        self.keys
+            .iter()
+            .find(|key| key.kid() == kid && key.is_published(now))
+            .map(SigningKey::public_jwk)
     }
 
     /// Returns the public keys that may be published at the given time.
     pub fn published_keys(&self, now: u64) -> Vec<&PublicJwk> {
         self.keys
             .iter()
-            .filter(|key| match key.state() {
-                KeyState::Active | KeyState::Next => true,
-                KeyState::Retired => key.publish_until().is_some_and(|until| until > now),
-                KeyState::Compromised => false,
-            })
+            .filter(|key| key.is_published(now))
             .map(SigningKey::public_jwk)
             .collect()
     }

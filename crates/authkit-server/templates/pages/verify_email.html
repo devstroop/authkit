@@ -1,0 +1,8 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+<h1>Verify email</h1>
+<form method="post" action="/verify-email/confirm">
+  <input type="hidden" name="token" value="{{ token }}">
+  <button>Verify email</button>
+</form>
+{% endblock %}
