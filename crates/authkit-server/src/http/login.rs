@@ -15,6 +15,7 @@ use authkit_core::domain::SessionAudience;
 use authkit_core::domain::CredentialKind;
 use crate::session::{SystemClock, SecureIdGenerator};
 use axum::Json;
+use askama::Template;
 use axum::extract::{Extension, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
@@ -44,6 +45,15 @@ const PAGE: &str = r#"<!doctype html>
 </body>
 </html>"#;
 
+#[derive(Template)]
+#[template(path = "pages/login.html")]
+struct LoginTemplate<'a> {
+    title: &'a str,
+    next: &'a str,
+    csrf: &'a str,
+    error: &'a str,
+}
+
 pub(crate) async fn login_page(
     State(state): State<AppState>,
     session: Option<Extension<SessionContext>>,
@@ -53,29 +63,28 @@ pub(crate) async fn login_page(
         .as_deref()
         .and_then(|q| form_value(q, "next"))
         .unwrap_or_default();
-    let mut extra = if next.is_empty() {
-        String::new()
-    } else {
-        format!(r#"<input type="hidden" name="next" value="{}">"#, escape(&next))
-    };
-    if let Some(ext) = session {
+    let csrf_value = if let Some(ext) = session {
         if let Some(sessions) = state.sessions.as_ref() {
-            extra.push_str(&format!(
-                r#"<input type="hidden" name="_csrf" value="{}">"#,
-                escape(&sessions.csrf_token(ext.0.session()))
-            ));
+            sessions.csrf_token(ext.0.session()).to_owned()
+        } else {
+            String::new()
         }
-    }
-    html(
+    } else {
+        String::new()
+    };
+    let template = LoginTemplate {
+        title: "Sign in",
+        next: &next,
+        csrf: &csrf_value,
+        error: "",
+    };
+    let body = template.render().unwrap_or_default();
+    (
         StatusCode::OK,
-        "Sign in",
-        "/login",
-        "Sign in",
-        "",
-        "/register",
-        "Create an account",
-        &extra,
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8"), (header::CACHE_CONTROL, "no-store")],
+        body,
     )
+        .into_response()
 }
 
 pub(crate) async fn register_page(
