@@ -38,6 +38,7 @@ fn run(mut args: impl Iterator<Item = String>) -> Result<(), u8> {
             serve()
         }
         Some("migrate") => migrate(),
+        Some("backup") => backup(args.collect()),
         Some("bootstrap") => bootstrap(),
         Some("doctor") => doctor(),
         Some("key") => match args.next().as_deref() {
@@ -345,6 +346,40 @@ fn audit_verify(args: Vec<String>) -> Result<(), u8> {
             prev = stored_hash;
         }
         if failures == 0 { println!("audit chain: ok"); } else { println!("audit chain: {failures} failures"); }
+        Ok(())
+    })
+}
+
+fn backup(args: Vec<String>) -> Result<(), u8> {
+    let mut output: Option<String> = None;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--output" => {
+                if i + 1 >= args.len() { eprintln!("error: --output requires a value"); return Err(2); }
+                output = Some(args[i + 1].clone());
+                i += 2;
+            }
+            other => { eprintln!("error: unknown argument: {other}"); return Err(2); }
+        }
+    }
+    let output = output.unwrap_or_else(|| "authkit-backup.db".to_owned());
+    let config = Config::from_env().map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    if config.database().kind() != authkit_server::config::DatabaseKind::Sqlite {
+        eprintln!("error: backup command supports SQLite; use pg_dump for PostgreSQL");
+        return Err(1);
+    }
+    let url = config.database().url().to_owned();
+    let max_connections = config.database().max_connections();
+    let store = SqlStore::connect(&url, max_connections).map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    runtime.block_on(async {
+        sqlx::query("VACUUM INTO ?")
+            .bind(&output)
+            .execute(store.pool())
+            .await
+            .map_err(|e| { eprintln!("error: {e}"); 1u8 })?;
+        println!("backup written to {output}");
         Ok(())
     })
 }
