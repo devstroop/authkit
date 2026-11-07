@@ -11,6 +11,7 @@ use authkit_core::ports::{ApplicationRepository, IdGenerator, InvitationReposito
 use authkit_core::application::CreateOrganization;
 use askama::Template;
 use axum::extract::{Extension, Path, State};
+use axum::http::HeaderMap;
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 
@@ -26,14 +27,23 @@ struct OrganizationsTemplate<'a> {
     organizations: Vec<OrganizationView>,
 }
 
+#[derive(Clone)]
 struct OrganizationView {
     name: String,
     slug: String,
     id: String,
 }
 
+#[derive(askama::Template)]
+#[template(path = "fragments/organizations/list.html")]
+struct OrganizationListFragment<'a> {
+    csrf: &'a str,
+    organizations: Vec<OrganizationView>,
+}
+
 pub(crate) async fn organizations_page(
     State(state): State<AppState>,
+    headers: HeaderMap,
     session: Option<Extension<SessionContext>>,
 ) -> Response {
     let Some(Extension(session)) = session else {
@@ -75,6 +85,15 @@ pub(crate) async fn organizations_page(
                 id: org.id().as_str().to_owned(),
             });
         }
+    }
+
+    if headers.get("HX-Request").is_some() {
+        let fragment = OrganizationListFragment {
+            csrf: &csrf,
+            organizations: organizations.clone(),
+        };
+        let body = fragment.render().unwrap_or_default();
+        return html_ok(&body);
     }
 
     let template = OrganizationsTemplate {
