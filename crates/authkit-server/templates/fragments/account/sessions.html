@@ -1,0 +1,10 @@
+<ul id="sessions">
+{% for session in sessions %}
+<li>{{ session.id }} - {{ session.status }}
+  <form method="post" action="/account/sessions/{{ session.id }}/revoke" style="display:inline">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <button type="submit">Revoke</button>
+  </form>
+</li>
+{% endfor %}
+</ul>

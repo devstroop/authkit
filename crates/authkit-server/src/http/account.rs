@@ -23,13 +23,22 @@ struct AccountTemplate<'a> {
     sessions: Vec<SessionView>,
 }
 
+#[derive(Clone)]
 struct SessionView {
     id: String,
     status: String,
 }
 
+#[derive(Template)]
+#[template(path = "fragments/account/sessions.html")]
+struct AccountSessionsFragment<'a> {
+    csrf: &'a str,
+    sessions: Vec<SessionView>,
+}
+
 pub(crate) async fn account_page(
     State(state): State<AppState>,
+    headers: HeaderMap,
     session: Option<Extension<SessionContext>>,
 ) -> Response {
     let Some(Extension(session)) = session else {
@@ -55,6 +64,20 @@ pub(crate) async fn account_page(
                 status: if s.is_valid(sessions.clock().now()) { "active".to_owned() } else { "inactive".to_owned() },
             });
         }
+    }
+
+    if headers.get("HX-Request").is_some() {
+        let fragment = AccountSessionsFragment {
+            csrf: &csrf,
+            sessions: session_views.clone(),
+        };
+        let body = fragment.render().unwrap_or_default();
+        return (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, "text/html; charset=utf-8"), (header::CACHE_CONTROL, "no-store")],
+            body,
+        )
+            .into_response();
     }
 
     let template = AccountTemplate {
