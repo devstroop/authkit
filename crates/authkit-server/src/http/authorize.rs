@@ -1144,7 +1144,6 @@ button.secondary { background: #e8ecf2; color: #17202a; }
 }
 "#;
 
-
 fn oauth_rate_limited(retry_after: u64) -> Response {
     let mut response = (
         StatusCode::TOO_MANY_REQUESTS,
@@ -1183,4 +1182,3 @@ mod tests {
         assert!(parse_prompt(Some("login")).is_err());
     }
 }
-
