@@ -12,6 +12,7 @@ pub mod password;
 pub mod http;
 pub mod metrics;
 pub mod session;
+pub mod totp;
 pub mod signing;
 pub mod telemetry;
 pub mod tokens;

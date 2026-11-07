@@ -12,6 +12,7 @@ use authkit_core::ports::{
 };
 use crate::password::verify_password;
 use authkit_core::domain::SessionAudience;
+use authkit_core::domain::CredentialKind;
 use crate::session::{SystemClock, SecureIdGenerator};
 use axum::Json;
 use axum::extract::{Extension, State};
@@ -305,6 +306,41 @@ pub(crate) async fn login_submit(
         );
     }
 
+    let redirect_to = params.get("next").cloned().unwrap_or_else(|| "/".to_owned());
+    let redirect_to = safe_redirect(&redirect_to);
+    let totp_cred = tokio::task::spawn_blocking({
+        let store = store.clone();
+        let user_id = user.id().clone();
+        move || {
+            CredentialRepository::list_for_user(store.as_ref(), &user_id)
+                .unwrap_or_default()
+                .into_iter()
+                .find(|c| c.kind() == CredentialKind::Totp && c.is_active())
+        }
+    })
+    .await
+    .ok()
+    .flatten();
+    if let Some(_totp) = totp_cred {
+        let pepper = sessions.pepper().to_vec();
+        let challenge = crate::totp::challenge_token(user.id().as_str(), &redirect_to, &pepper);
+        let body = format!(
+            r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>MFA</title></head><body style="font-family: system-ui, sans-serif; max-width: 32rem; margin: 4rem auto; padding: 0 1rem;"><h1>Two-factor authentication</h1><form method="post" action="/login/mfa"><input type="hidden" name="challenge" value="{}"><input type="hidden" name="next" value="{}"><label>Code <input name="code" required></label><button type="submit">Verify</button></form></body></html>"#,
+            escape(&challenge),
+            escape(&redirect_to)
+        );
+        return html(
+            StatusCode::OK,
+            "Two-factor authentication",
+            "/login/mfa",
+            "Two-factor authentication",
+            "",
+            "/login",
+            "Back",
+            &body,
+        );
+    }
+
     if crate::password::needs_rehash(&verifier) {
         if let Ok(new_verifier) = crate::password::hash_password(&password) {
             let original_version = credential.version();
@@ -332,9 +368,8 @@ pub(crate) async fn login_submit(
     };
 
     let cookie = sessions.set_cookie(created.session(), created.token(), now);
-    let redirect_to = params.get("next").cloned().unwrap_or_else(|| "/".to_owned());
-    let redirect_to = safe_redirect(&redirect_to);
     let mut response = redirect(&redirect_to);
+
     if let Ok(value) = axum::http::HeaderValue::from_str(&cookie) {
         response.headers_mut().append(header::SET_COOKIE, value);
     }
@@ -500,7 +535,7 @@ fn parse_form(body: &[u8]) -> Result<std::collections::HashMap<String, String>, 
     Ok(map)
 }
 
-fn safe_redirect(value: &str) -> String {
+pub(crate) fn safe_redirect(value: &str) -> String {
     if value.starts_with('/') && !value.starts_with("//") && !value.contains('\n') && !value.contains('\r') {
         value.to_owned()
     } else {

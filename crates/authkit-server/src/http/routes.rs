@@ -17,6 +17,7 @@ use crate::config::Issuer;
 use crate::http::account;
 use crate::http::admin;
 use crate::http::login;
+use crate::http::mfa;
 use crate::http::organization;
 use crate::http::request_id;
 use crate::http::reset;
@@ -196,6 +197,7 @@ fn base_router(
         .route("/metrics", get(metrics::handler))
         .route("/readyz", get(ready))
         .route("/login", get(login::login_page).post(login::login_submit))
+        .route("/login/mfa", post(mfa::login_verify))
         .route("/register", get(login::register_page).post(login::register_submit))
         .route("/password-reset", get(reset::request_reset_page).post(reset::request_reset_submit))
         .route("/password-reset/confirm", get(reset::confirm_reset_page).post(reset::confirm_reset_submit))
@@ -206,6 +208,10 @@ fn base_router(
         .route("/account/password", post(account::change_password))
         .route("/account/applications", get(account::connected_apps_page))
         .route("/account/consents/{id}/revoke", post(account::revoke_consent))
+        .route("/account/mfa", get(mfa::account_page))
+        .route("/account/mfa/enroll", post(mfa::enroll))
+        .route("/account/mfa/verify", post(mfa::verify_enrollment))
+        .route("/account/mfa/disable", post(mfa::disable))
         .route("/admin/login", get(admin::login_page).post(admin::login_submit))
         .route("/admin", get(admin::dashboard))
         .route("/admin/logout", post(admin::logout))

@@ -4,6 +4,7 @@ pub mod account;
 pub mod admin;
 pub mod authorize;
 pub mod login;
+pub mod mfa;
 pub mod rate_limit;
 pub mod organization;
 pub mod reset;
