@@ -1,13 +1,13 @@
 //! Organization administration pages.
 
 use authkit_core::domain::{
-    DisplayName, DomainError, Email, Id, Membership, Permission,
+    Application, ApplicationKind, DisplayName, DomainError, Email, Id, Membership, Permission,
     PermissionSet, Role, RoleBinding, Slug, TenantContext, WriteOutcome,
 };
 use authkit_core::domain::id::{InvitationEntity, OrganizationEntity, RoleBindingEntity, RoleEntity, UserEntity};
 use base64::Engine;
 use authkit_core::domain::invitation::Invitation;
-use authkit_core::ports::{IdGenerator, InvitationRepository, MembershipRepository, OrganizationRepository, RoleBindingRepository, RoleRepository, UserRepository};
+use authkit_core::ports::{ApplicationRepository, IdGenerator, InvitationRepository, MembershipRepository, OrganizationRepository, RoleBindingRepository, RoleRepository, UserRepository};
 use authkit_core::application::CreateOrganization;
 use axum::extract::{Extension, Path, State};
 use axum::http::{HeaderValue, StatusCode, header};
@@ -676,6 +676,78 @@ pub(crate) async fn bind_role(
     .await;
     if outcome.ok().and_then(|r| r.ok()).map(|o| o.is_applied()).unwrap_or(false) {
         redirect(&format!("/organizations/{}/roles", org_id.as_str()))
+    } else {
+        unavailable()
+    }
+}
+
+
+pub(crate) async fn applications_page(
+    State(state): State<AppState>,
+    session: Option<Extension<SessionContext>>,
+    Path(org_id): Path<String>,
+) -> Response {
+    let Some(Extension(session)) = session else { return redirect("/login"); };
+    let Some(sessions) = state.sessions.as_ref() else { return unavailable(); };
+    let org_id = match Id::<OrganizationEntity>::parse(&org_id) { Ok(v)=>v, Err(_)=>return bad_request() };
+    let user_id = session.session().user_id().clone();
+    let store = sessions.store().clone();
+    let csrf = sessions.csrf_token(session.session());
+    if !can_read_members(&store, &user_id, &org_id) { return forbidden(); }
+    let tenant = TenantContext::new(org_id.clone());
+    let apps = tokio::task::spawn_blocking({
+        let store=store.clone(); let tenant=tenant.clone();
+        move || ApplicationRepository::list(store.as_ref(), &tenant)
+    }).await.ok().and_then(|r|r.ok()).unwrap_or_default();
+    let mut rows = String::new();
+    for a in apps {
+        rows.push_str(&format!("<li>{} ({}) {} {}</li>", escape(a.name().as_str()), escape(a.slug().as_str()), format!("{:?}", a.kind()), if a.is_active() { "active" } else { "disabled" }));
+    }
+    let can_manage = can_manage_members(&store, &user_id, &org_id);
+    let form = if can_manage {
+        format!(r#"<h2>Create application</h2><form method="post" action="/organizations/{}/applications"><input type="hidden" name="_csrf" value="{}"><label>Slug <input name="slug" required></label><br><label>Name <input name="name" required></label><br><label>Kind <select name="kind"><option value="web">web</option><option value="admin">admin</option><option value="native">native</option><option value="service">service</option><option value="cli">cli</option></select></label><br><label><input type="checkbox" name="first_party" value="true"> First-party</label><br><button type="submit">Create</button></form>"#, org_id.as_str(), escape(&csrf))
+    } else { String::new() };
+    let body = format!(r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Applications</title></head><body style="font-family: system-ui, sans-serif; max-width: 40rem; margin: 4rem auto; padding: 0 1rem;"><h1>Applications</h1><ul>{}</ul>{}<p><a href="/organizations/{}/members">Members</a></p></body></html>"#, rows, form, org_id.as_str());
+    html_ok(&body)
+}
+
+pub(crate) async fn create_application(
+    State(state): State<AppState>,
+    session: Option<Extension<SessionContext>>,
+    Path(org_id): Path<String>,
+    body: axum::body::Bytes,
+) -> Response {
+    let Some(Extension(session)) = session else { return redirect("/login"); };
+    let Some(sessions) = state.sessions.as_ref() else { return unavailable(); };
+    let org_id = match Id::<OrganizationEntity>::parse(&org_id) { Ok(v)=>v, Err(_)=>return bad_request() };
+    let user_id = session.session().user_id().clone();
+    let store = sessions.store().clone();
+    if !can_manage_members(&store, &user_id, &org_id) { return forbidden(); }
+    let mut params = parse_form(&body);
+    let slug_str = params.remove("slug").unwrap_or_default();
+    let name_str = params.remove("name").unwrap_or_default();
+    let kind_str = params.remove("kind").unwrap_or_default();
+    let first_party = params.remove("first_party").unwrap_or_default() == "true";
+    let slug = match Slug::parse(&slug_str) { Ok(v)=>v, Err(_)=>return bad_request() };
+    let name = match DisplayName::parse(&name_str) { Ok(v)=>v, Err(_)=>return bad_request() };
+    let kind = match kind_str.as_str() {
+        "web" => ApplicationKind::Web,
+        "admin" => ApplicationKind::Admin,
+        "native" => ApplicationKind::Native,
+        "service" => ApplicationKind::Service,
+        "cli" => ApplicationKind::Cli,
+        _ => return bad_request(),
+    };
+    let tenant = TenantContext::new(org_id.clone());
+    let result = tokio::task::spawn_blocking({
+        let store=store.clone(); let tenant=tenant.clone(); let slug=slug.clone(); let name=name.clone();
+        move || {
+            let uc = authkit_core::application::CreateApplication { tenant, slug, name, kind, first_party };
+            uc.execute(store.as_ref(), &SystemClock, &SecureIdGenerator)
+        }
+    }).await;
+    if result.ok().and_then(|r|r.ok()).is_some() {
+        redirect(&format!("/organizations/{}/applications", org_id.as_str()))
     } else {
         unavailable()
     }

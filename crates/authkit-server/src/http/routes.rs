@@ -227,6 +227,7 @@ fn base_router(
         .route("/organizations/{org_id}/invitations", get(organization::invitations_page).post(organization::create_invitation))
         .route("/organizations/{org_id}/invitations/{invitation_id}/revoke", post(organization::revoke_invitation))
         .route("/organizations/{org_id}/roles", get(organization::roles_page).post(organization::create_role))
+        .route("/organizations/{org_id}/applications", get(organization::applications_page).post(organization::create_application))
         .route("/organizations/{org_id}/role-bindings", post(organization::bind_role))
         .route("/invitations/accept", get(organization::accept_invitation_page).post(organization::accept_invitation))
         .route("/account/verify-email", get(reset::request_verify_page))

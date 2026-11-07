@@ -403,6 +403,14 @@ impl InvitationRepository for SqlStore {
 }
 
 impl ApplicationRepository for SqlStore {
+    fn list(&self, tenant: &TenantContext) -> Result<Vec<Application>, DomainError> {
+        let sql = self.sql("SELECT id, org_id, slug, name, kind, first_party, status, created_at, updated_at, version FROM application WHERE org_id = ? ORDER BY created_at, id");
+        self.block_on(async {
+            let rows = sqlx::query(&sql).bind(tenant.organization_id().as_str()).fetch_all(&self.pool).await.map_err(map_db_error)?;
+            rows.iter().map(map_application).collect()
+        })
+    }
+
     fn find_by_id(
         &self,
         tenant: &TenantContext,

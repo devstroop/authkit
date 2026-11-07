@@ -186,6 +186,9 @@ pub trait InvitationRepository {
 
 /// Read and write access to tenant-owned applications.
 pub trait ApplicationRepository {
+    /// Lists applications in a tenant.
+    fn list(&self, tenant: &TenantContext) -> Result<Vec<Application>, DomainError>;
+
     /// Finds an application by identifier.
     fn find_by_id(
         &self,
