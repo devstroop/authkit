@@ -6,7 +6,7 @@
   <input type="hidden" name="_csrf" value="{{ csrf }}">
   {% endif %}
   <input type="hidden" name="token" value="{{ token }}">
-  <label>New password <input type="password" name="password" required minlength="12"></label>
+  <label>New password <input type="password" name="password" type="password" required minlength="12" autocomplete="new-password" aria-required="true"></label>
   <button>Reset</button>
 </form>
 {% endblock %}

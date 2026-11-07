@@ -5,7 +5,7 @@
   {% if !csrf.is_empty() %}
   <input type="hidden" name="_csrf" value="{{ csrf }}">
   {% endif %}
-  <label>Email <input type="email" name="email" required></label>
+  <label>Email <input type="email" name="email" required autocomplete="email" aria-required="true"></label>
   <button>Send reset link</button>
 </form>
 {% endblock %}

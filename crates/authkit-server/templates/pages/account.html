@@ -14,8 +14,8 @@
 <h1>Change password</h1>
 <form method="post" action="/account/password">
   <input type="hidden" name="_csrf" value="{{ csrf }}">
-  <label>Current password <input type="password" name="current_password" required></label><br>
-  <label>New password <input type="password" name="new_password" required minlength="12"></label><br>
+  <label>Current password <input type="password" name="current_password" type="password" required autocomplete="current-password" aria-required="true"></label><br>
+  <label>New password <input type="password" name="new_password" type="password" required minlength="12" autocomplete="new-password" aria-required="true"></label><br>
   <button type="submit">Update password</button>
 </form>
 {% endblock %}

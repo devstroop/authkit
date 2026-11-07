@@ -16,7 +16,7 @@
 </ul>
 <form method="post" action="/admin/administrators">
   <input type="hidden" name="_csrf" value="{{ csrf }}">
-  <label>Email <input type="email" name="email" required></label>
+  <label>Email <input type="email" name="email" type="email" required autocomplete="email" aria-required="true" autocomplete="email" aria-required="true"></label>
   <button type="submit">Grant admin</button>
 </form>
 <h2>Signing keys</h2>
