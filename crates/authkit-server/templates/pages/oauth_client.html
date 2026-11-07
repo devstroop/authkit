@@ -1,0 +1,29 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+<h1>{{ name }}</h1>
+<p>Client ID: <code>{{ client_id }}</code></p>
+<h2>Redirect URIs</h2>
+<ul>
+{% for uri in redirect_uris %}
+<li>{{ uri }}
+  <form method="post" action="/organizations/{{ org_id }}/oauth-clients/{{ client_id_internal }}/redirect-uris/remove" style="display:inline">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <input type="hidden" name="uri" value="{{ uri }}">
+    <button type="submit">Remove</button>
+  </form>
+</li>
+{% endfor %}
+</ul>
+<form method="post" action="/organizations/{{ org_id }}/oauth-clients/{{ client_id_internal }}/redirect-uris">
+  <input type="hidden" name="_csrf" value="{{ csrf }}">
+  <label>Redirect URI <input name="uri" required></label>
+  <button type="submit">Add</button>
+</form>
+<h2>Scopes</h2>
+<p>{{ scopes }}</p>
+<form method="post" action="/organizations/{{ org_id }}/oauth-clients/{{ client_id_internal }}/scopes">
+  <input type="hidden" name="_csrf" value="{{ csrf }}">
+  <label>Scopes <input name="scopes" value="{{ scopes }}"></label>
+  <button type="submit">Replace</button>
+</form>
+{% endblock %}

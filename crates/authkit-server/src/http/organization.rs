@@ -947,6 +947,19 @@ pub(crate) async fn create_oauth_client(
 }
 
 
+#[derive(askama::Template)]
+#[template(path = "pages/oauth_client.html")]
+struct OAuthClientDetailTemplate<'a> {
+    title: &'a str,
+    csrf: &'a str,
+    org_id: &'a str,
+    client_id_internal: &'a str,
+    name: &'a str,
+    client_id: &'a str,
+    redirect_uris: Vec<String>,
+    scopes: &'a str,
+}
+
 pub(crate) async fn oauth_client_detail(
     State(state): State<AppState>,
     session: Option<Extension<SessionContext>>,
@@ -966,20 +979,19 @@ pub(crate) async fn oauth_client_detail(
         move || OAuthClientRepository::find_by_id(store.as_ref(), &tenant, &client_id)
     }).await.ok().and_then(|r|r.ok().flatten());
     let Some(client) = client else { return bad_request(); };
-    let redirect_rows = client.redirect_uris().iter().map(|u| format!("<li>{} <form method=\"post\" action=\"/organizations/{}/oauth-clients/{}/redirect-uris/remove\" style=\"display:inline\"><input type=\"hidden\" name=\"_csrf\" value=\"{}\"><input type=\"hidden\" name=\"uri\" value=\"{}\"><button type=\"submit\">Remove</button></form></li>", escape(u.as_str()), org_id.as_str(), client.id().as_str(), escape(&csrf), escape(u.as_str()))).collect::<Vec<_>>().join("");
-    let body = format!(r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>OAuth client</title></head><body style="font-family: system-ui, sans-serif; max-width: 40rem; margin: 4rem auto; padding: 0 1rem;"><h1>{}</h1><p>Client ID: <code>{}</code></p><h2>Redirect URIs</h2><ul>{}</ul><form method="post" action="/organizations/{}/oauth-clients/{}/redirect-uris"><input type="hidden" name="_csrf" value="{}"><label>Redirect URI <input name="uri" required></label><button type="submit">Add</button></form><h2>Scopes</h2><p>{}</p><form method="post" action="/organizations/{}/oauth-clients/{}/scopes"><input type="hidden" name="_csrf" value="{}"><label>Scopes <input name="scopes" value="{}"></label><button type="submit">Replace</button></form></body></html>"#,
-        escape(client.name().as_str()),
-        escape(client.client_id().as_str()),
-        redirect_rows,
-        org_id.as_str(),
-        client.id().as_str(),
-        escape(&csrf),
-        escape(&client.allowed_scopes().as_slice().iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" ")),
-        org_id.as_str(),
-        client.id().as_str(),
-        escape(&csrf),
-        escape(&client.allowed_scopes().as_slice().iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" "))
-    );
+    let redirect_uris: Vec<String> = client.redirect_uris().iter().map(|u| u.as_str().to_owned()).collect();
+    let scopes = client.allowed_scopes().as_slice().iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" ");
+    let template = OAuthClientDetailTemplate {
+        title: "OAuth client",
+        csrf: &csrf,
+        org_id: org_id.as_str(),
+        client_id_internal: client.id().as_str(),
+        name: client.name().as_str(),
+        client_id: client.client_id().as_str(),
+        redirect_uris,
+        scopes: &scopes,
+    };
+    let body = template.render().unwrap_or_default();
     html_ok(&body)
 }
 
