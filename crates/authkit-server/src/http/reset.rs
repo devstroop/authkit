@@ -322,11 +322,24 @@ pub(crate) async fn confirm_reset_submit(
     html_page("Password reset", "<p>Your password has been reset. You can now sign in.</p>")
 }
 
+#[derive(askama::Template)]
+#[template(path = "pages/request_verify.html")]
+struct RequestVerifyTemplate {
+    title: &'static str,
+}
+
 pub(crate) async fn request_verify_page(session: Option<axum::extract::Extension<crate::http::session::SessionContext>>) -> Response {
     if session.is_none() {
         return redirect("/login");
     }
-    html_page("Verify email", r#"<form method="post" action="/account/verify-email-request"><button>Send verification email</button></form>"#)
+    let template = RequestVerifyTemplate { title: "Verify email" };
+    let body = template.render().unwrap_or_default();
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8"), (header::CACHE_CONTROL, "no-store")],
+        body,
+    )
+        .into_response()
 }
 
 pub(crate) async fn request_verify_submit(
@@ -424,15 +437,26 @@ pub(crate) async fn request_verify_submit(
     html_page("Verify email", "<p>A verification link has been sent.</p>")
 }
 
+#[derive(askama::Template)]
+#[template(path = "pages/verify_email.html")]
+struct VerifyEmailTemplate<'a> {
+    title: &'a str,
+    token: &'a str,
+}
+
 pub(crate) async fn verify_email_page(Query(q): Query<TokenQuery>) -> Response {
     let token = q.token.clone().unwrap_or_default();
-    html_page(
-        "Verify email",
-        &format!(
-            r#"<form method="post" action="/verify-email/confirm"><input type="hidden" name="token" value="{}"><button>Verify email</button></form>"#,
-            escape(&token)
-        ),
+    let template = VerifyEmailTemplate {
+        title: "Verify email",
+        token: &token,
+    };
+    let body = template.render().unwrap_or_default();
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8"), (header::CACHE_CONTROL, "no-store")],
+        body,
     )
+        .into_response()
 }
 
 pub(crate) async fn verify_email_confirm(
