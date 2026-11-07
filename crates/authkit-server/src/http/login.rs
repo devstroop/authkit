@@ -354,21 +354,21 @@ pub(crate) async fn login_submit(
     if let Some(_totp) = totp_cred {
         let pepper = sessions.pepper().to_vec();
         let challenge = crate::totp::challenge_token(user.id().as_str(), &redirect_to, &pepper);
-        let body = format!(
-            r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>MFA</title></head><body style="font-family: system-ui, sans-serif; max-width: 32rem; margin: 4rem auto; padding: 0 1rem;"><h1>Two-factor authentication</h1><form method="post" action="/login/mfa"><input type="hidden" name="challenge" value="{}"><input type="hidden" name="next" value="{}"><label>Code <input name="code" required></label><button type="submit">Verify</button></form></body></html>"#,
-            escape(&challenge),
-            escape(&redirect_to)
-        );
-        return html(
+        let template = MfaChallengeTemplate {
+            title: "Two-factor authentication",
+            challenge: &challenge,
+            next: &redirect_to,
+        };
+        let body = template.render().unwrap_or_default();
+        return (
             StatusCode::OK,
-            "Two-factor authentication",
-            "/login/mfa",
-            "Two-factor authentication",
-            "",
-            "/login",
-            "Back",
-            &body,
-        );
+            [
+                (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+                (header::CACHE_CONTROL, "no-store"),
+            ],
+            body,
+        )
+            .into_response();
     }
 
     if crate::password::needs_rehash(&verifier)
@@ -587,6 +587,14 @@ pub(crate) fn safe_redirect(value: &str) -> String {
     } else {
         "/".to_owned()
     }
+}
+
+#[derive(askama::Template)]
+#[template(path = "pages/mfa_challenge.html")]
+struct MfaChallengeTemplate<'a> {
+    title: &'a str,
+    challenge: &'a str,
+    next: &'a str,
 }
 
 #[allow(clippy::too_many_arguments)]

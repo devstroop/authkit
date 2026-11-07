@@ -219,6 +219,13 @@ pub(crate) async fn disable(
     redirect("/account/mfa")
 }
 
+#[derive(askama::Template)]
+#[template(path = "pages/recovery_codes_generate.html")]
+struct RecoveryCodesGenerateTemplate<'a> {
+    title: &'a str,
+    csrf: &'a str,
+}
+
 pub(crate) async fn recovery_codes_page(
     State(state): State<AppState>,
     session: Option<Extension<SessionContext>>,
@@ -230,10 +237,11 @@ pub(crate) async fn recovery_codes_page(
         return unavailable();
     };
     let csrf = sessions.csrf_token(session.session());
-    let body = format!(
-        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Recovery codes</title></head><body style="font-family: system-ui, sans-serif; max-width: 32rem; margin: 4rem auto; padding: 0 1rem;"><h1>Recovery codes</h1><form method="post" action="/account/mfa/recovery-codes/generate"><input type="hidden" name="_csrf" value="{}"><button type="submit">Generate new recovery codes</button></form></body></html>"#,
-        escape(&csrf)
-    );
+    let template = RecoveryCodesGenerateTemplate {
+        title: "Recovery codes",
+        csrf: &csrf,
+    };
+    let body = template.render().unwrap_or_default();
     html_ok(&body)
 }
 
@@ -355,14 +363,6 @@ fn html_ok(body: &str) -> Response {
         body.to_owned(),
     )
         .into_response()
-}
-
-fn escape(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
 }
 
 pub(crate) async fn login_verify(
