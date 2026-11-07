@@ -262,6 +262,28 @@ pub(crate) async fn add_member(
     }
 }
 
+#[derive(askama::Template)]
+#[template(path = "pages/invitations.html")]
+struct InvitationsTemplate<'a> {
+    title: &'a str,
+    csrf: &'a str,
+    org_id: &'a str,
+    invitations: Vec<InvitationView>,
+    roles: Vec<RoleOption>,
+    can_manage: bool,
+}
+
+struct InvitationView {
+    email: String,
+    status: String,
+    id: String,
+}
+
+struct RoleOption {
+    id: String,
+    name: String,
+}
+
 pub(crate) async fn invitations_page(
     State(state): State<AppState>,
     session: Option<Extension<SessionContext>>,
@@ -303,48 +325,31 @@ pub(crate) async fn invitations_page(
     .and_then(|r| r.ok())
     .unwrap_or_default();
 
-    let mut rows = String::new();
-    for inv in invitations {
-        rows.push_str(&format!(
-            "<li>{} {} <form method=\"post\" action=\"/organizations/{}/invitations/{}/revoke\" style=\"display:inline\"><input type=\"hidden\" name=\"_csrf\" value=\"{}\"><button type=\"submit\">Revoke</button></form></li>",
-            escape(inv.email().as_str()),
-            inv.status_label(),
-            org_id.as_str(),
-            inv.id().as_str(),
-            escape(&csrf)
-        ));
-    }
-    let mut role_options = String::new();
-    for r in roles {
-        role_options.push_str(&format!(
-            "<option value=\"{}\">{}</option>",
-            r.id().as_str(),
-            escape(r.name().as_str())
-        ));
-    }
+    let invitation_views: Vec<InvitationView> = invitations
+        .into_iter()
+        .map(|inv| InvitationView {
+            email: inv.email().as_str().to_owned(),
+            status: inv.status_label().to_owned(),
+            id: inv.id().as_str().to_owned(),
+        })
+        .collect();
+    let role_options: Vec<RoleOption> = roles
+        .into_iter()
+        .map(|r| RoleOption {
+            id: r.id().as_str().to_owned(),
+            name: r.name().as_str().to_owned(),
+        })
+        .collect();
     let can_manage = can_manage_members(&store, &user_id, &org_id);
-    let create_form = if can_manage {
-        format!(
-            r#"<h2>Invite member</h2><form method="post" action="/organizations/{}/invitations"><input type="hidden" name="_csrf" value="{}"><label>Email <input name="email" type="email" required></label><br><label>Role <select name="role_id">{}</select></label><br><button type="submit">Invite</button></form>"#,
-            org_id.as_str(),
-            escape(&csrf),
-            role_options
-        )
-    } else {
-        String::new()
+    let template = InvitationsTemplate {
+        title: "Invitations",
+        csrf: &csrf,
+        org_id: org_id.as_str(),
+        invitations: invitation_views,
+        roles: role_options,
+        can_manage,
     };
-
-    let body = format!(
-        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Invitations</title></head><body style="font-family: system-ui, sans-serif; max-width: 40rem; margin: 4rem auto; padding: 0 1rem;">
-<h1>Invitations</h1>
-<ul>{rows}</ul>
-{create_form}
-<p><a href="/organizations/{org_id}/members">Members</a></p>
-</body></html>"#,
-        rows = rows,
-        create_form = create_form,
-        org_id = org_id.as_str()
-    );
+    let body = template.render().unwrap_or_default();
     html_ok(&body)
 }
 
