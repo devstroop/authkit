@@ -9,6 +9,7 @@ use authkit_core::domain::grant::{AuthorizationCode, Consent, RefreshFamily, Ref
 use authkit_core::domain::id::{
     ApplicationEntity, AuthorizationCodeEntity, ConsentEntity, CredentialEntity, Id,
     InvitationEntity, MembershipEntity, OAuthClientEntity, OneTimeTokenEntity, OrganizationEntity,
+    SystemAdministratorEntity,
     RefreshFamilyEntity, RefreshTokenEntity, RoleBindingEntity, RoleEntity, SessionEntity, UserEntity,
 };
 use authkit_core::domain::invitation::Invitation;
@@ -22,6 +23,7 @@ use authkit_core::domain::role::{Role, RoleBinding};
 use authkit_core::domain::secret::SecretHash;
 use authkit_core::domain::session::Session;
 use authkit_core::domain::slug::Slug;
+use authkit_core::domain::system_administrator::SystemAdministrator;
 use authkit_core::domain::tenant::TenantContext;
 use authkit_core::domain::user::User;
 use authkit_core::domain::write::WriteOutcome;
@@ -30,14 +32,15 @@ use authkit_core::ports::{
     ApplicationRepository, AuditRepository, AuthorizationCodeRepository, ConsentRepository,
     CredentialRepository, InvitationRepository, MembershipRepository, OAuthClientRepository,
     OrganizationRepository, RefreshFamilyRepository, RefreshTokenRepository, Repositories,
-    RoleBindingRepository, RoleRepository, SessionRepository, UserRepository,
+    RoleBindingRepository, RoleRepository, SessionRepository, SystemAdministratorRepository,
+    UserRepository,
 };
 use sqlx::Any;
 
 use crate::mapping::{
     id as stored_id, map_application, map_audit_event, map_authorization_code, map_consent,
     map_credential, map_invitation, map_membership, map_oauth_client, map_organization,
-    map_refresh_family, map_refresh_token, map_role, map_role_binding, map_session, map_user, text,
+    map_refresh_family, map_refresh_token, map_role, map_role_binding, map_session, map_system_administrator, map_user, text,
 };
 use crate::{SqlStore, invalid_stored_value, map_db_error};
 use crate::mapping::db_timestamp;
@@ -1269,6 +1272,23 @@ impl AuditRepository for SqlStore {
 }
 
 impl SqlStore {
+    /// Lists recent audit events across all tenants.
+    pub fn list_all_audit_events(&self, limit: i64) -> Result<Vec<AuditEvent>, DomainError> {
+        let sql = self.sql(
+            "SELECT id, org_id, actor_type, actor_id, action, target, occurred_at, attributes FROM audit_event ORDER BY occurred_at DESC, id DESC LIMIT ?",
+        );
+        self.block_on(async {
+            let rows = sqlx::query(&sql)
+                .bind(limit)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            rows.iter().map(map_audit_event).collect()
+        })
+    }
+}
+
+impl SqlStore {
     /// Lists audit events for a tenant in occurrence order.
     ///
     /// This read helper is intended for adapter diagnostics and contract tests; audit events
@@ -1325,3 +1345,117 @@ impl SqlStore {
 }
 
 impl Repositories for SqlStore {}
+
+impl SystemAdministratorRepository for SqlStore {
+    fn find_by_id(
+        &self,
+        id: &Id<SystemAdministratorEntity>,
+    ) -> Result<Option<SystemAdministrator>, DomainError> {
+        let sql = self.sql(
+            "SELECT id, user_id, created_by, status, created_at, updated_at, version FROM system_administrator WHERE id = ?",
+        );
+        self.block_on(async {
+            let row = sqlx::query(&sql)
+                .bind(id.as_str())
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            row.as_ref().map(map_system_administrator).transpose()
+        })
+    }
+
+    fn find_by_user(
+        &self,
+        user_id: &Id<UserEntity>,
+    ) -> Result<Option<SystemAdministrator>, DomainError> {
+        let sql = self.sql(
+            "SELECT id, user_id, created_by, status, created_at, updated_at, version FROM system_administrator WHERE user_id = ?",
+        );
+        self.block_on(async {
+            let row = sqlx::query(&sql)
+                .bind(user_id.as_str())
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            row.as_ref().map(map_system_administrator).transpose()
+        })
+    }
+
+    fn list(&self) -> Result<Vec<SystemAdministrator>, DomainError> {
+        let sql = self.sql(
+            "SELECT id, user_id, created_by, status, created_at, updated_at, version FROM system_administrator ORDER BY created_at, id",
+        );
+        self.block_on(async {
+            let rows = sqlx::query(&sql)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            rows.iter().map(map_system_administrator).collect()
+        })
+    }
+
+    fn insert(
+        &self,
+        admin: &SystemAdministrator,
+    ) -> Result<WriteOutcome, DomainError> {
+        let sql = self.sql(
+            "INSERT INTO system_administrator (id, user_id, created_by, status, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        );
+        let status = match admin.status() {
+            authkit_core::domain::SystemAdministratorStatus::Active => "active",
+            authkit_core::domain::SystemAdministratorStatus::Disabled => "disabled",
+        };
+        self.block_on(async {
+            let result = sqlx::query(&sql)
+                .bind(admin.id().as_str())
+                .bind(admin.user_id().as_str())
+                .bind(admin.created_by().map(|v| v.as_str()))
+                .bind(status)
+                .bind(admin.created_at().as_millis() as i64)
+                .bind(admin.updated_at().as_millis() as i64)
+                .bind(admin.version() as i64)
+                .execute(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            if result.rows_affected() == 0 {
+                Ok(WriteOutcome::NotFound)
+            } else {
+                Ok(WriteOutcome::Applied)
+            }
+        })
+    }
+
+    fn update(
+        &self,
+        admin: &SystemAdministrator,
+        expected_version: u64,
+    ) -> Result<WriteOutcome, DomainError> {
+        let sql = self.sql(
+            "UPDATE system_administrator SET user_id = ?, created_by = ?, status = ?, created_at = ?, updated_at = ?, version = ? WHERE id = ? AND version = ?",
+        );
+        let status = match admin.status() {
+            authkit_core::domain::SystemAdministratorStatus::Active => "active",
+            authkit_core::domain::SystemAdministratorStatus::Disabled => "disabled",
+        };
+        self.block_on(async {
+            let result = sqlx::query(&sql)
+                .bind(admin.user_id().as_str())
+                .bind(admin.created_by().map(|v| v.as_str()))
+                .bind(status)
+                .bind(admin.created_at().as_millis() as i64)
+                .bind(admin.updated_at().as_millis() as i64)
+                .bind(admin.version() as i64)
+                .bind(admin.id().as_str())
+                .bind(expected_version as i64)
+                .execute(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            if result.rows_affected() == 0 {
+                // distinguish not found vs conflict not possible here; treat as conflict
+                Ok(WriteOutcome::Conflict)
+            } else {
+                Ok(WriteOutcome::Applied)
+            }
+        })
+    }
+}

@@ -288,6 +288,11 @@ impl KeyRing {
         Self::new(keys)
     }
 
+    /// Returns all configured signing keys.
+    pub fn keys(&self) -> &[SigningKey] {
+        &self.keys
+    }
+
     /// Returns the only key used for signing.
     pub fn active(&self) -> &SigningKey {
         &self.keys[self.active_index]

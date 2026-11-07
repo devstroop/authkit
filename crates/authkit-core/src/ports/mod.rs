@@ -82,6 +82,37 @@ pub trait OrganizationRepository {
 }
 
 /// Read and write access to tenant-owned memberships.
+/// Read and write access to deployment-level system administrators.
+pub trait SystemAdministratorRepository {
+    /// Finds a system administrator by identifier.
+    fn find_by_id(
+        &self,
+        id: &crate::domain::id::Id<crate::domain::id::SystemAdministratorEntity>,
+    ) -> Result<Option<crate::domain::SystemAdministrator>, crate::domain::DomainError>;
+
+    /// Finds the system administrator record for a user, if one exists.
+    fn find_by_user(
+        &self,
+        user_id: &crate::domain::id::Id<crate::domain::id::UserEntity>,
+    ) -> Result<Option<crate::domain::SystemAdministrator>, crate::domain::DomainError>;
+
+    /// Lists all system administrators.
+    fn list(&self) -> Result<Vec<crate::domain::SystemAdministrator>, crate::domain::DomainError>;
+
+    /// Inserts a system administrator.
+    fn insert(
+        &self,
+        admin: &crate::domain::SystemAdministrator,
+    ) -> Result<crate::domain::WriteOutcome, crate::domain::DomainError>;
+
+    /// Updates a system administrator using optimistic concurrency.
+    fn update(
+        &self,
+        admin: &crate::domain::SystemAdministrator,
+        expected_version: u64,
+    ) -> Result<crate::domain::WriteOutcome, crate::domain::DomainError>;
+}
+
 pub trait MembershipRepository {
     /// Finds a membership by identifier.
     fn find_by_id(

@@ -15,6 +15,7 @@ use serde_json::json;
 use crate::authorization::AuthorizationService;
 use crate::config::Issuer;
 use crate::http::account;
+use crate::http::admin;
 use crate::http::login;
 use crate::http::organization;
 use crate::http::request_id;
@@ -195,6 +196,12 @@ fn base_router(
         .route("/account/password", post(account::change_password))
         .route("/account/applications", get(account::connected_apps_page))
         .route("/account/consents/{id}/revoke", post(account::revoke_consent))
+        .route("/admin/login", get(admin::login_page).post(admin::login_submit))
+        .route("/admin", get(admin::dashboard))
+        .route("/admin/logout", post(admin::logout))
+        .route("/admin/administrators", post(admin::grant_admin))
+        .route("/admin/administrators/{id}/disable", post(admin::disable_admin))
+        .route("/admin/signing-keys/rotate", post(admin::rotate_signing_key))
         .route("/organizations", get(organization::organizations_page).post(organization::create_organization))
         .route("/organizations/{org_id}/members", get(organization::members_page).post(organization::add_member))
         .route("/organizations/{org_id}/invitations", get(organization::invitations_page).post(organization::create_invitation))

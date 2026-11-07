@@ -5,6 +5,7 @@
 use std::process::ExitCode;
 
 use authkit_server::config::Config;
+use authkit_core::ports::IdGenerator;
 use authkit_server::signing::KeyRing;
 use authkit_server::telemetry::init_tracing;
 use authkit_store::SqlStore;
@@ -164,6 +165,57 @@ fn migrate() -> Result<(), u8> {
 fn bootstrap() -> Result<(), u8> {
     migrate()?;
     let config = Config::from_env().map_err(|e| { eprintln!("error: {e}"); 1 })?;
+    let now_ts = authkit_core::domain::time::Timestamp::from_millis(
+        (authkit_server::signing::unix_now() as u64) * 1000,
+    );
+    let url = config.database().url().to_owned();
+    let max_connections = config.database().max_connections();
+    let store = SqlStore::connect(&url, max_connections).map_err(|e| { eprintln!("error: {e}"); 1 })?;
+
+    let existing = authkit_core::ports::SystemAdministratorRepository::list(&store)
+        .map_err(|e| { eprintln!("error list: {e}"); 1 })?;
+    if existing.is_empty() {
+        let email_raw = std::env::var("AUTHKIT_ADMIN_EMAIL").unwrap_or_default();
+        let password = std::env::var("AUTHKIT_ADMIN_PASSWORD").unwrap_or_default();
+        if email_raw.is_empty() || password.is_empty() {
+            eprintln!("error: AUTHKIT_ADMIN_EMAIL and AUTHKIT_ADMIN_PASSWORD are required to bootstrap the first system administrator");
+            return Err(1);
+        }
+        let email = authkit_core::domain::Email::parse(&email_raw).map_err(|e| { eprintln!("error: {e}"); 1 })?;
+        let display_name = authkit_core::domain::DisplayName::parse(email_raw.split('@').next().unwrap_or("admin"))
+            .unwrap_or_else(|_| authkit_core::domain::DisplayName::parse("Admin").expect("valid"));
+        let user = if let Some(existing_user) = authkit_core::ports::UserRepository::find_by_email(&store, &email).map_err(|e| { eprintln!("error find user: {e}"); 1 })? {
+            existing_user
+        } else {
+            let user = authkit_core::domain::User::new(
+                authkit_server::session::SecureIdGenerator.generate::<authkit_core::domain::id::UserEntity>().expect("id"),
+                email.clone(),
+                display_name,
+                now_ts,
+            );
+                authkit_core::ports::UserRepository::insert(&store, &user).map_err(|e| { eprintln!("error insert user: {e}"); 1 })?;
+            user
+        };
+        let verifier = authkit_server::password::hash_password(&password).map_err(|e| { eprintln!("error: {e}"); 1 })?;
+        let credential = authkit_core::domain::Credential::password(
+            authkit_server::session::SecureIdGenerator.generate::<authkit_core::domain::id::CredentialEntity>().expect("id"),
+            user.id().clone(),
+            verifier,
+            now_ts,
+        );
+        authkit_core::ports::CredentialRepository::insert(&store, &credential).map_err(|e| { eprintln!("error insert cred: {e}"); 1 })?;
+        let admin = authkit_core::domain::SystemAdministrator::new(
+            authkit_server::session::SecureIdGenerator.generate::<authkit_core::domain::id::SystemAdministratorEntity>().expect("id"),
+            user.id().clone(),
+            None,
+            now_ts,
+        );
+        authkit_core::ports::SystemAdministratorRepository::insert(&store, &admin).map_err(|e| { eprintln!("error insert admin: {e}"); 1 })?;
+        println!("bootstrapped system administrator {}", user.email());
+    } else {
+        println!("system administrators already exist");
+    }
+
     let now = authkit_server::signing::unix_now();
     let ring = KeyRing::load_or_bootstrap(config.signing_keys(), now).map_err(|e| { eprintln!("error: {e}"); 1 })?;
     println!("bootstrapped signing key {}", ring.active().kid());
