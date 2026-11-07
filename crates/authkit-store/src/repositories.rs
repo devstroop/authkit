@@ -944,6 +944,40 @@ impl ConsentRepository for SqlStore {
         )
     }
 
+    fn list_for_user(&self, user_id: &Id<UserEntity>) -> Result<Vec<Consent>, DomainError> {
+        let sql = self.sql(
+            "SELECT id, org_id, user_id, client_id, created_at, updated_at, revoked_at, version FROM consent WHERE user_id = ? ORDER BY created_at, id",
+        );
+        let scopes_sql = self.sql(
+            "SELECT scope AS value FROM consent_scope WHERE consent_id = ? ORDER BY position",
+        );
+        self.block_on(async {
+            let rows = sqlx::query(&sql)
+                .bind(user_id.as_str())
+                .fetch_all(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            let mut result = Vec::with_capacity(rows.len());
+            for row in &rows {
+                let consent_id = stored_id::<ConsentEntity>(row, "id")?;
+                let scope_rows = sqlx::query(&scopes_sql)
+                    .bind(consent_id.as_str())
+                    .fetch_all(&self.pool)
+                    .await
+                    .map_err(map_db_error)?;
+                let scopes: Vec<String> = scope_rows
+                    .iter()
+                    .map(|r| {
+                        use sqlx::Row;
+                        r.get::<String, _>("value")
+                    })
+                    .collect();
+                result.push(map_consent(row, scopes)?);
+            }
+            Ok(result)
+        })
+    }
+
     fn insert(
         &self,
         tenant: &TenantContext,

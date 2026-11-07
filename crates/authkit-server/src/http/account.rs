@@ -2,7 +2,9 @@
 
 use authkit_core::domain::WriteOutcome;
 use authkit_core::domain::id::SessionEntity;
-use authkit_core::ports::{CredentialRepository, SessionRepository};
+use authkit_core::domain::{TenantContext};
+use authkit_core::domain::id::ConsentEntity;
+use authkit_core::ports::{ConsentRepository, CredentialRepository, OAuthClientRepository, SessionRepository};
 use axum::extract::{Extension, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
@@ -219,6 +221,112 @@ fn escape(value: &str) -> String {
         .replace('<', "&lt;")
         .replace('>', "&gt;")
         .replace('"', "&quot;")
+}
+
+pub(crate) async fn connected_apps_page(
+    State(state): State<AppState>,
+    session: Option<Extension<SessionContext>>,
+) -> Response {
+    let Some(Extension(session)) = session else {
+        return redirect("/login");
+    };
+    let Some(sessions) = state.sessions.as_ref() else {
+        return unavailable();
+    };
+    let user_id = session.session().user_id().clone();
+    let store = sessions.store().clone();
+    let csrf = sessions.csrf_token(session.session());
+    let listed = tokio::task::spawn_blocking({
+        let store = store.clone();
+        let user_id = user_id.clone();
+        move || ConsentRepository::list_for_user(store.as_ref(), &user_id)
+    })
+    .await;
+
+    let mut rows = String::new();
+    if let Ok(Ok(consents)) = listed {
+        for c in consents {
+            if c.revoked_at().is_some() {
+                continue;
+            }
+            let tenant = TenantContext::new(c.organization_id().clone());
+            let client_name = tokio::task::spawn_blocking({
+                let store = store.clone();
+                let tenant = tenant.clone();
+                let client_id = c.client_id().clone();
+                move || {
+                    OAuthClientRepository::find_by_id(store.as_ref(), &tenant, &client_id)
+                        .ok()
+                        .flatten()
+                        .map(|client| client.name().as_str().to_owned())
+                        .unwrap_or_else(|| "Unknown client".to_owned())
+                }
+            })
+            .await
+            .unwrap_or_else(|_| "Unknown client".to_owned());
+
+            rows.push_str(&format!(
+                "<li>{} (scopes: {}) <form method=\"post\" action=\"/account/consents/{}/revoke\" style=\"display:inline\"><input type=\"hidden\" name=\"_csrf\" value=\"{}\"><button type=\"submit\">Revoke</button></form></li>",
+                escape(&client_name),
+                escape(&c.scopes().as_slice().iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" ")),
+                c.id().as_str(),
+                escape(&csrf)
+            ));
+        }
+    }
+
+    let body = format!(
+        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Connected applications</title></head><body style="font-family: system-ui, sans-serif; max-width: 32rem; margin: 4rem auto; padding: 0 1rem;"><h1>Connected applications</h1><ul>{rows}</ul></body></html>"#,
+        rows = rows
+    );
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8"), (header::CACHE_CONTROL, "no-store")],
+        body,
+    )
+        .into_response()
+}
+
+pub(crate) async fn revoke_consent(
+    State(state): State<AppState>,
+    session: Option<Extension<SessionContext>>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Response {
+    let Some(Extension(session)) = session else {
+        return redirect("/login");
+    };
+    let Some(sessions) = state.sessions.as_ref() else {
+        return unavailable();
+    };
+    let parsed_id = match authkit_core::domain::Id::<ConsentEntity>::parse(&id) {
+        Ok(v) => v,
+        Err(_) => return bad_request(),
+    };
+    let store = sessions.store().clone();
+    let now = sessions.clock().now();
+    let user_id = session.session().user_id().clone();
+    let outcome = tokio::task::spawn_blocking(move || {
+        // find consent without tenant: search all? We need org. Query by id globally.
+        // ConsentRepository is tenant-scoped; use a direct store query via find_consent? Not exposed.
+        // Instead, iterate user's consents.
+        let consents = ConsentRepository::list_for_user(store.as_ref(), &user_id)?;
+        let consent = consents.into_iter().find(|c| c.id() == &parsed_id && c.is_active());
+        let Some(mut consent) = consent else {
+            return Ok::<_, authkit_core::domain::DomainError>(false);
+        };
+        let tenant = TenantContext::new(consent.organization_id().clone());
+        let expected = consent.version();
+        consent.revoke(now);
+        let result = ConsentRepository::update(store.as_ref(), &tenant, &consent, expected)?;
+        Ok(result.is_applied())
+    })
+    .await;
+
+    if outcome.ok().and_then(|r| r.ok()).unwrap_or(false) {
+        redirect("/account/applications")
+    } else {
+        unavailable()
+    }
 }
 
 fn unavailable() -> Response {

@@ -191,6 +191,8 @@ fn base_router(
         .route("/verify-email/confirm", post(reset::verify_email_confirm))
         .route("/account", get(account::account_page))
         .route("/account/password", post(account::change_password))
+        .route("/account/applications", get(account::connected_apps_page))
+        .route("/account/consents/{id}/revoke", post(account::revoke_consent))
         .route("/account/verify-email", get(reset::request_verify_page))
         .route("/account/verify-email-request", post(reset::request_verify_submit))
         .route(

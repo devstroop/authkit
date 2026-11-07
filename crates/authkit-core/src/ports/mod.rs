@@ -344,6 +344,9 @@ pub trait ConsentRepository {
         user_id: &Id<UserEntity>,
     ) -> Result<Option<Consent>, DomainError>;
 
+    /// Lists consents granted by a user across all tenants.
+    fn list_for_user(&self, user_id: &Id<UserEntity>) -> Result<Vec<Consent>, DomainError>;
+
     /// Inserts a new consent.
     fn insert(
         &self,
