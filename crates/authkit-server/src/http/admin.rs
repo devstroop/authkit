@@ -4,6 +4,7 @@ use authkit_core::domain::{Credential, CredentialKind, Email, Id, SystemAdminist
 use authkit_core::domain::id::{CredentialEntity, SystemAdministratorEntity};
 use authkit_core::ports::{CredentialRepository, IdGenerator, SystemAdministratorRepository, UserRepository};
 use authkit_core::domain::WriteOutcome;
+use askama::Template;
 use axum::extract::{Extension, Path, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
@@ -97,6 +98,35 @@ pub(crate) async fn login_submit(
     response
 }
 
+#[derive(Template)]
+#[template(path = "pages/admin.html")]
+struct AdminTemplate<'a> {
+    title: &'a str,
+    csrf: &'a str,
+    admins: Vec<AdminView>,
+    keys: Vec<KeyView>,
+    events: Vec<EventView>,
+}
+
+struct AdminView {
+    email: String,
+    id: String,
+    status: String,
+    active: bool,
+}
+
+struct KeyView {
+    kid: String,
+    state: String,
+    published: String,
+}
+
+struct EventView {
+    occurred_at: i64,
+    action: String,
+    org: String,
+}
+
 pub(crate) async fn dashboard(
     State(state): State<AppState>,
     session: Option<Extension<SessionContext>>,
@@ -151,7 +181,7 @@ pub(crate) async fn dashboard(
     .ok()
     .and_then(|r| r.ok())
     .unwrap_or_default();
-    let mut admin_rows = String::new();
+    let mut admin_views = Vec::new();
     for a in admins {
         let email = tokio::task::spawn_blocking({
             let store = store.clone();
@@ -160,29 +190,24 @@ pub(crate) async fn dashboard(
         })
         .await
         .unwrap_or_default();
-        admin_rows.push_str(&format!(
-            "<li>{} ({}) {} {}</li>",
-            escape(&email),
-            a.id().as_str(),
-            if a.is_active() { "active" } else { "disabled" },
-            if a.is_active() {
-                format!(r#"<form method="post" action="/admin/administrators/{}/disable" style="display:inline"><input type="hidden" name="_csrf" value="{}"><button type="submit">Disable</button></form>"#, a.id().as_str(), escape(&csrf))
-            } else {
-                String::new()
-            }
-        ));
+        admin_views.push(AdminView {
+            email,
+            id: a.id().as_str().to_owned(),
+            status: if a.is_active() { "active".to_owned() } else { "disabled".to_owned() },
+            active: a.is_active(),
+        });
     }
 
     let keys = state.keys.clone();
-    let mut key_rows = String::new();
-    for k in keys.keys() {
-        key_rows.push_str(&format!(
-            "<li>{} {} {}</li>",
-            escape(k.kid()),
-            format!("{:?}", k.state()),
-            if k.publish_until().is_some() { "published" } else { "" }
-        ));
-    }
+    let key_views: Vec<KeyView> = keys
+        .keys()
+        .iter()
+        .map(|k| KeyView {
+            kid: k.kid().to_owned(),
+            state: format!("{:?}", k.state()),
+            published: if k.publish_until().is_some() { "published".to_owned() } else { String::new() },
+        })
+        .collect();
 
     let events = tokio::task::spawn_blocking({
         let store = store.clone();
@@ -192,34 +217,23 @@ pub(crate) async fn dashboard(
     .ok()
     .and_then(|r| r.ok())
     .unwrap_or_default();
-    let mut event_rows = String::new();
-    for e in events {
-        event_rows.push_str(&format!(
-            "<li>{} {} {}</li>",
-            e.occurred_at().as_millis(),
-            escape(e.action().as_str()),
-            e.organization_id().map(|o| o.as_str()).unwrap_or("-")
-        ));
-    }
+    let event_views: Vec<EventView> = events
+        .into_iter()
+        .map(|e| EventView {
+            occurred_at: e.occurred_at().as_millis() as i64,
+            action: e.action().as_str().to_owned(),
+            org: e.organization_id().map(|o| o.as_str().to_owned()).unwrap_or_else(|| "-".to_owned()),
+        })
+        .collect();
 
-    let body = format!(
-        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>System administration</title></head><body style="font-family: system-ui, sans-serif; max-width: 48rem; margin: 4rem auto; padding: 0 1rem;">
-<h1>System administration</h1>
-<h2>System administrators</h2>
-<ul>{admin_rows}</ul>
-<form method="post" action="/admin/administrators"><input type="hidden" name="_csrf" value="{csrf}"><label>Email <input type="email" name="email" required></label><button type="submit">Grant admin</button></form>
-<h2>Signing keys</h2>
-<ul>{key_rows}</ul>
-<form method="post" action="/admin/signing-keys/rotate"><input type="hidden" name="_csrf" value="{csrf}"><button type="submit">Rotate signing key</button></form>
-<h2>Recent audit events</h2>
-<ul>{event_rows}</ul>
-<form method="post" action="/admin/logout"><input type="hidden" name="_csrf" value="{csrf}"><button type="submit">Sign out</button></form>
-</body></html>"#,
-        admin_rows = admin_rows,
-        csrf = escape(&csrf),
-        key_rows = key_rows,
-        event_rows = event_rows
-    );
+    let template = AdminTemplate {
+        title: "System administration",
+        csrf: &csrf,
+        admins: admin_views,
+        keys: key_views,
+        events: event_views,
+    };
+    let body = template.render().unwrap_or_default();
     html_ok(&body)
 }
 
