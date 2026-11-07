@@ -794,6 +794,29 @@ pub(crate) async fn create_application(
 }
 
 
+#[derive(askama::Template)]
+#[template(path = "pages/oauth_clients.html")]
+struct OAuthClientsTemplate<'a> {
+    title: &'a str,
+    csrf: &'a str,
+    org_id: &'a str,
+    clients: Vec<OAuthClientView>,
+    apps: Vec<AppOption>,
+    can_manage: bool,
+}
+
+struct OAuthClientView {
+    name: String,
+    client_id: String,
+    status: String,
+    id: String,
+}
+
+struct AppOption {
+    id: String,
+    name: String,
+}
+
 pub(crate) async fn oauth_clients_page(
     State(state): State<AppState>,
     session: Option<Extension<SessionContext>>,
@@ -815,19 +838,32 @@ pub(crate) async fn oauth_clients_page(
         let store=store.clone(); let tenant=tenant.clone();
         move || ApplicationRepository::list(store.as_ref(), &tenant)
     }).await.ok().and_then(|r|r.ok()).unwrap_or_default();
-    let mut rows = String::new();
-    for c in clients {
-        rows.push_str(&format!("<li>{} ({}) - {} <a href=\"/organizations/{}/oauth-clients/{}\">Manage</a></li>", escape(c.name().as_str()), escape(c.client_id().as_str()), if c.status() == authkit_core::domain::oauth_client::ClientStatus::Active { "active" } else { "disabled" }, org_id.as_str(), c.id().as_str()));
-    }
-    let mut app_options = String::new();
-    for a in apps {
-        app_options.push_str(&format!("<option value=\"{}\">{}</option>", a.id().as_str(), escape(a.name().as_str())));
-    }
+    let client_views: Vec<OAuthClientView> = clients
+        .into_iter()
+        .map(|c| OAuthClientView {
+            name: c.name().as_str().to_owned(),
+            client_id: c.client_id().as_str().to_owned(),
+            status: if c.status() == authkit_core::domain::oauth_client::ClientStatus::Active { "active".to_owned() } else { "disabled".to_owned() },
+            id: c.id().as_str().to_owned(),
+        })
+        .collect();
+    let app_options: Vec<AppOption> = apps
+        .into_iter()
+        .map(|a| AppOption {
+            id: a.id().as_str().to_owned(),
+            name: a.name().as_str().to_owned(),
+        })
+        .collect();
     let can_manage = can_manage_members(&store, &user_id, &org_id);
-    let form = if can_manage {
-        format!(r#"<h2>Create OAuth client</h2><form method="post" action="/organizations/{}/oauth-clients"><input type="hidden" name="_csrf" value="{}"><label>Application <select name="application_id">{}</select></label><br><label>Name <input name="name" required></label><br><label>Client type <select name="client_type"><option value="public">public</option><option value="confidential">confidential</option></select></label><br><label>Redirect URI <input name="redirect_uri" required></label><br><label>Scopes <input name="scopes" value="openid profile email"></label><br><button type="submit">Create</button></form>"#, org_id.as_str(), escape(&csrf), app_options)
-    } else { String::new() };
-    let body = format!(r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>OAuth clients</title></head><body style="font-family: system-ui, sans-serif; max-width: 40rem; margin: 4rem auto; padding: 0 1rem;"><h1>OAuth clients</h1><ul>{}</ul>{}<p><a href="/organizations/{}/applications">Applications</a></p></body></html>"#, rows, form, org_id.as_str());
+    let template = OAuthClientsTemplate {
+        title: "OAuth clients",
+        csrf: &csrf,
+        org_id: org_id.as_str(),
+        clients: client_views,
+        apps: app_options,
+        can_manage,
+    };
+    let body = template.render().unwrap_or_default();
     html_ok(&body)
 }
 
