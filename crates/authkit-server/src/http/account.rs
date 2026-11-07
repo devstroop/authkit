@@ -5,6 +5,7 @@ use authkit_core::domain::id::SessionEntity;
 use authkit_core::domain::{DisplayName, TenantContext};
 use authkit_core::domain::id::ConsentEntity;
 use authkit_core::ports::{ConsentRepository, CredentialRepository, OAuthClientRepository, SessionRepository, UserRepository};
+use askama::Template;
 use axum::extract::{Extension, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
@@ -13,6 +14,19 @@ use serde_json::json;
 use crate::http::routes::AppState;
 use crate::http::session::SessionContext;
 use crate::password::verify_password;
+
+#[derive(Template)]
+#[template(path = "pages/account.html")]
+struct AccountTemplate<'a> {
+    title: &'a str,
+    csrf: &'a str,
+    sessions: Vec<SessionView>,
+}
+
+struct SessionView {
+    id: String,
+    status: String,
+}
 
 pub(crate) async fn account_page(
     State(state): State<AppState>,
@@ -33,38 +47,22 @@ pub(crate) async fn account_page(
     })
     .await;
 
-    let mut rows = String::new();
+    let mut session_views = Vec::new();
     if let Ok(Ok(sessions_list)) = listed {
         for s in sessions_list {
-            rows.push_str(&format!(
-                "<li>{} - {} <form method=\"post\" action=\"/account/sessions/{}/revoke\" style=\"display:inline\"><input type=\"hidden\" name=\"_csrf\" value=\"{}\"><button type=\"submit\">Revoke</button></form></li>",
-                s.id().as_str(),
-                if s.is_valid(sessions.clock().now()) { "active" } else { "inactive" },
-                s.id().as_str(),
-                escape(&csrf)
-            ));
+            session_views.push(SessionView {
+                id: s.id().as_str().to_owned(),
+                status: if s.is_valid(sessions.clock().now()) { "active".to_owned() } else { "inactive".to_owned() },
+            });
         }
     }
 
-    let body = format!(
-        r#"<!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><title>Account</title></head>
-<body style="font-family: system-ui, sans-serif; max-width: 32rem; margin: 4rem auto; padding: 0 1rem;">
-<h1>Sessions</h1>
-<ul>{rows}</ul>
-<h1>Change password</h1>
-<form method="post" action="/account/password">
-<input type="hidden" name="_csrf" value="{csrf}">
-<label>Current password <input type="password" name="current_password" required></label><br>
-<label>New password <input type="password" name="new_password" required minlength="12"></label><br>
-<button type="submit">Update password</button>
-</form>
-</body>
-</html>"#,
-        rows = rows,
-        csrf = escape(&csrf)
-    );
+    let template = AccountTemplate {
+        title: "Account",
+        csrf: &csrf,
+        sessions: session_views,
+    };
+    let body = template.render().unwrap_or_default();
     (
         StatusCode::OK,
         [(header::CONTENT_TYPE, "text/html; charset=utf-8"), (header::CACHE_CONTROL, "no-store")],
