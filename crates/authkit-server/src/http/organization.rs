@@ -696,6 +696,23 @@ pub(crate) async fn bind_role(
 }
 
 
+#[derive(askama::Template)]
+#[template(path = "pages/applications.html")]
+struct ApplicationsTemplate<'a> {
+    title: &'a str,
+    csrf: &'a str,
+    org_id: &'a str,
+    apps: Vec<ApplicationView>,
+    can_manage: bool,
+}
+
+struct ApplicationView {
+    name: String,
+    slug: String,
+    kind: String,
+    status: String,
+}
+
 pub(crate) async fn applications_page(
     State(state): State<AppState>,
     session: Option<Extension<SessionContext>>,
@@ -713,15 +730,24 @@ pub(crate) async fn applications_page(
         let store=store.clone(); let tenant=tenant.clone();
         move || ApplicationRepository::list(store.as_ref(), &tenant)
     }).await.ok().and_then(|r|r.ok()).unwrap_or_default();
-    let mut rows = String::new();
-    for a in apps {
-        rows.push_str(&format!("<li>{} ({}) {} {}</li>", escape(a.name().as_str()), escape(a.slug().as_str()), format!("{:?}", a.kind()), if a.is_active() { "active" } else { "disabled" }));
-    }
+    let app_views: Vec<ApplicationView> = apps
+        .into_iter()
+        .map(|a| ApplicationView {
+            name: a.name().as_str().to_owned(),
+            slug: a.slug().as_str().to_owned(),
+            kind: format!("{:?}", a.kind()),
+            status: if a.is_active() { "active".to_owned() } else { "disabled".to_owned() },
+        })
+        .collect();
     let can_manage = can_manage_members(&store, &user_id, &org_id);
-    let form = if can_manage {
-        format!(r#"<h2>Create application</h2><form method="post" action="/organizations/{}/applications"><input type="hidden" name="_csrf" value="{}"><label>Slug <input name="slug" required></label><br><label>Name <input name="name" required></label><br><label>Kind <select name="kind"><option value="web">web</option><option value="admin">admin</option><option value="native">native</option><option value="service">service</option><option value="cli">cli</option></select></label><br><label><input type="checkbox" name="first_party" value="true"> First-party</label><br><button type="submit">Create</button></form>"#, org_id.as_str(), escape(&csrf))
-    } else { String::new() };
-    let body = format!(r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Applications</title></head><body style="font-family: system-ui, sans-serif; max-width: 40rem; margin: 4rem auto; padding: 0 1rem;"><h1>Applications</h1><ul>{}</ul>{}<p><a href="/organizations/{}/members">Members</a></p></body></html>"#, rows, form, org_id.as_str());
+    let template = ApplicationsTemplate {
+        title: "Applications",
+        csrf: &csrf,
+        org_id: org_id.as_str(),
+        apps: app_views,
+        can_manage,
+    };
+    let body = template.render().unwrap_or_default();
     html_ok(&body)
 }
 
