@@ -15,6 +15,7 @@ use authkit_core::domain::tenant::TenantContext;
 use authkit_core::domain::user::User;
 use authkit_core::domain::write::WriteOutcome;
 use authkit_core::ports::write::{UnitOfWork, WriteBatch, WriteCommand};
+use sha2::Sha256;
 use sqlx::any::AnyArguments;
 use sqlx::{Any, Transaction};
 
@@ -1511,8 +1512,51 @@ async fn insert_audit_row(
         .iter()
         .map(|attribute| (attribute.key().to_owned(), attribute.value().to_owned()))
         .collect::<Vec<_>>();
+    let prev_sql = if event.organization_id().is_some() {
+        "SELECT hash FROM audit_event WHERE org_id = ? ORDER BY occurred_at DESC, id DESC LIMIT 1"
+    } else {
+        "SELECT hash FROM audit_event WHERE org_id IS NULL ORDER BY occurred_at DESC, id DESC LIMIT 1"
+    };
+    let mut prev_query = sqlx::query(prev_sql);
+    if let Some(org) = event.organization_id() {
+        prev_query = prev_query.bind(org.as_str());
+    }
+    let prev_hash: Option<String> = prev_query
+        .fetch_optional(&mut **tx)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|row| {
+            use sqlx::Row;
+            row.try_get::<Option<String>, _>("hash").ok().flatten()
+        });
+
+    use sha2::Digest;
+    let mut hasher = Sha256::new();
+    if let Some(prev) = &prev_hash {
+        hasher.update(prev.as_bytes());
+    }
+    hasher.update(event.id().as_str().as_bytes());
+    if let Some(org) = event.organization_id() {
+        hasher.update(org.as_str().as_bytes());
+    }
+    hasher.update(actor_type.as_bytes());
+    if let Some(actor) = &actor_id {
+        hasher.update(actor.as_bytes());
+    }
+    hasher.update(event.action().as_str().as_bytes());
+    if let Some(target) = event.target() {
+        hasher.update(target.as_str().as_bytes());
+    }
+    hasher.update(event.occurred_at().as_millis().to_string().as_bytes());
+    for (key, value) in &attributes {
+        hasher.update(key.as_bytes());
+        hasher.update(value.as_bytes());
+    }
+    let hash = format!("{:x}", hasher.finalize());
+
     let sql = dialect.placeholders(
-        "INSERT INTO audit_event (id, org_id, actor_type, actor_id, action, target, occurred_at, attributes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO audit_event (id, org_id, actor_type, actor_id, action, target, occurred_at, attributes, prev_hash, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     );
     match sqlx::query(&sql)
         .bind(event.id().as_str())
@@ -1523,6 +1567,8 @@ async fn insert_audit_row(
         .bind(event.target().map(|target| target.as_str()))
         .bind(db_timestamp(event.occurred_at())?)
         .bind(encode_pairs(&attributes)?)
+        .bind(prev_hash)
+        .bind(hash)
         .execute(&mut **tx)
         .await
     {
