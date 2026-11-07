@@ -57,6 +57,14 @@ pub(crate) async fn account_page(
     html_ok(&body)
 }
 
+#[derive(Template)]
+#[template(path = "pages/mfa_enroll.html")]
+struct MfaEnrollTemplate<'a> {
+    title: &'a str,
+    secret: &'a str,
+    csrf: &'a str,
+}
+
 pub(crate) async fn enroll(
     State(state): State<AppState>,
     session: Option<Extension<SessionContext>>,
@@ -94,11 +102,12 @@ pub(crate) async fn enroll(
     if outcome.ok().and_then(|r| r.ok()) != Some(WriteOutcome::Applied) {
         return unavailable();
     }
-    let body = format!(
-        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>MFA enrollment</title></head><body style="font-family: system-ui, sans-serif; max-width: 32rem; margin: 4rem auto; padding: 0 1rem;"><h1>Enroll MFA</h1><p>Secret: <code>{}</code></p><form method="post" action="/account/mfa/verify"><input type="hidden" name="_csrf" value="{}"><label>Code <input name="code" required></label><button type="submit">Verify</button></form></body></html>"#,
-        escape(&encoded),
-        escape(&csrf)
-    );
+    let template = MfaEnrollTemplate {
+        title: "MFA enrollment",
+        secret: &encoded,
+        csrf: &csrf,
+    };
+    let body = template.render().unwrap_or_default();
     html_ok(&body)
 }
 
