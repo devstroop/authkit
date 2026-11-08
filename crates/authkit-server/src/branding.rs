@@ -81,7 +81,12 @@ pub async fn branding_middleware(
     let brand = if host.is_empty() {
         None
     } else {
-        resolve_for_host(store.as_ref(), &host)
+        let store = store.clone();
+        let host = host.clone();
+        tokio::task::spawn_blocking(move || resolve_for_host(store.as_ref(), &host))
+            .await
+            .ok()
+            .flatten()
     };
     scope(brand, next.run(request)).await
 }
