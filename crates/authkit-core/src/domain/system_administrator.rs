@@ -8,12 +8,19 @@ pub enum SystemAdministratorStatus {
     Disabled,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SystemAdministratorRole {
+    SuperAdmin,
+    Auditor,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SystemAdministrator {
     id: Id<SystemAdministratorEntity>,
     user_id: Id<UserEntity>,
     created_by: Option<Id<UserEntity>>,
     status: SystemAdministratorStatus,
+    role: SystemAdministratorRole,
     created_at: Timestamp,
     updated_at: Timestamp,
     version: u64,
@@ -31,6 +38,7 @@ impl SystemAdministrator {
             user_id,
             created_by,
             status: SystemAdministratorStatus::Active,
+            role: SystemAdministratorRole::SuperAdmin,
             created_at: now,
             updated_at: now,
             version: 0,
@@ -42,6 +50,7 @@ impl SystemAdministrator {
         user_id: Id<UserEntity>,
         created_by: Option<Id<UserEntity>>,
         status: SystemAdministratorStatus,
+        role: SystemAdministratorRole,
         created_at: Timestamp,
         updated_at: Timestamp,
         version: u64,
@@ -56,6 +65,7 @@ impl SystemAdministrator {
             user_id,
             created_by,
             status,
+            role,
             created_at,
             updated_at,
             version,
@@ -73,6 +83,12 @@ impl SystemAdministrator {
     }
     pub const fn status(&self) -> SystemAdministratorStatus {
         self.status
+    }
+    pub const fn role(&self) -> SystemAdministratorRole {
+        self.role
+    }
+    pub const fn is_super_admin(&self) -> bool {
+        matches!(self.role, SystemAdministratorRole::SuperAdmin)
     }
     pub const fn is_active(&self) -> bool {
         matches!(self.status, SystemAdministratorStatus::Active)

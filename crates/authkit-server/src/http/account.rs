@@ -91,7 +91,7 @@ pub(crate) async fn account_page(
     }
 
     let template = AccountTemplate {
-        title: "Account",
+        title: "title_account",
         csrf: &csrf,
         sessions: session_views,
     };
@@ -358,7 +358,7 @@ pub(crate) async fn connected_apps_page(
     }
 
     let template = ConnectedAppsTemplate {
-        title: "Connected applications",
+        title: "title_connected_apps",
         csrf: &csrf,
         apps,
     };
@@ -451,7 +451,7 @@ pub(crate) async fn profile_page(
         .map(|u| u.display_name().as_str().to_owned())
         .unwrap_or_default();
     let template = ProfileTemplate {
-        title: "Profile",
+        title: "title_profile",
         csrf: &csrf,
         display_name: &display_name,
     };

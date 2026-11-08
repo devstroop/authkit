@@ -1,10 +1,17 @@
-<ul id="sessions">
+<ul id="sessions" aria-live="polite" style="list-style:none;padding:0;margin:0;">
 {% for session in sessions %}
-<li>{{ session.id }} - {{ session.status }}
-  <form method="post" action="/account/sessions/{{ session.id }}/revoke" style="display:inline">
+<li style="display:flex;align-items:center;justify-content:space-between;padding:var(--space-3) 0;border-bottom:1px solid var(--border);">
+  <div>
+    <div style="font-weight:500;font-size:0.9rem;">{{ session.id }}</div>
+    <div style="font-size:0.8rem;color:var(--muted);">{{ session.status }}</div>
+  </div>
+  <form method="post" action="/account/sessions/{{ session.id }}/revoke" style="display:inline" hx-post="/account/sessions/{{ session.id }}/revoke" hx-target="#sessions" hx-swap="outerHTML">
     <input type="hidden" name="_csrf" value="{{ csrf }}">
-    <button type="submit">Revoke</button>
+    <button type="submit" class="btn btn-secondary" style="width:auto;padding:0.3rem 0.75rem;font-size:0.85rem;">{{ crate::i18n::t("revoke") }}</button>
   </form>
 </li>
 {% endfor %}
+{% if sessions.is_empty() %}
+<li style="color:var(--muted);padding:var(--space-3) 0;">{{ crate::i18n::t("no_active_sessions") }}</li>
+{% endif %}
 </ul>

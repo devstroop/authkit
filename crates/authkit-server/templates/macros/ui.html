@@ -2,7 +2,7 @@
 <button type="submit" class="btn btn-{{ variant }}">{{ label }}</button>
 {% endmacro %}
 
-{% macro text_input(name, label, input_type, autocomplete="", required=true, minlength="", error="") %}
+{% macro text_input(name, label, input_type, autocomplete="", required=true, minlength="", error="", value="") %}
 <label class="field">
   <span>{{ label }}</span>
   <input
@@ -12,7 +12,8 @@
     {% if required %}required aria-required="true"{% endif %}
     {% if !autocomplete.is_empty() %}autocomplete="{{ autocomplete }}"{% endif %}
     {% if !minlength.is_empty() %}minlength="{{ minlength }}"{% endif %}
-    {% if !error.is_empty() %}aria-invalid="true" aria-describedby="{{ name }}-error"{% endif %}>
+    {% if !error.is_empty() %}aria-invalid="true" aria-describedby="{{ name }}-error"{% endif %}
+    {% if !value.is_empty() %}value="{{ value }}"{% endif %}>
   {% if !error.is_empty() %}
   <span id="{{ name }}-error" class="field-error" role="alert">{{ error }}</span>
   {% endif %}

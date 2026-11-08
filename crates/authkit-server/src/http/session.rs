@@ -15,7 +15,7 @@ use url::Url;
 use crate::config::Issuer;
 use crate::http::request_id::RequestId;
 use crate::session::{SessionError, SessionService, SessionToken};
-use authkit_core::domain::{ErrorCode, Session, SessionAudience};
+use authkit_core::domain::{ErrorCode, Session, SessionAudience, SessionStatus};
 
 /// The maximum accepted form body when looking for a CSRF token.
 const MAX_FORM_BODY: usize = 64 * 1024;
@@ -86,6 +86,10 @@ pub(crate) async fn session_context(
     if session.audience() != audience {
         return invalid_session(request, next, &state.service, audience, "wrong_audience").await;
     }
+    if session.status() == SessionStatus::Revoked && session.rotated_from().is_some() {
+        let _ = state.service.detect_session_reuse(&session, now).await;
+    }
+
     if !session.is_valid(now) {
         return invalid_session(
             request,
@@ -110,24 +114,28 @@ pub(crate) async fn session_context(
             .await;
         }
 
-        let (restored, supplied) = match extract_csrf(request).await {
-            Ok(parts) => parts,
-            Err(CsrfExtractionError::TooLarge) => {
-                return error_response(StatusCode::PAYLOAD_TOO_LARGE, "body_too_large");
+        let skip_csrf = request.uri().path() == "/admin/restore"
+            && is_multipart(request.headers());
+        if !skip_csrf {
+            let (restored, supplied) = match extract_csrf(request).await {
+                Ok(parts) => parts,
+                Err(CsrfExtractionError::TooLarge) => {
+                    return error_response(StatusCode::PAYLOAD_TOO_LARGE, "body_too_large");
+                }
+            };
+            request = restored;
+            let supplied = supplied.unwrap_or_default();
+            if !state.service.csrf_matches(&session, &supplied) {
+                return csrf_rejected(
+                    &state.service,
+                    session.clone(),
+                    request_id(&request),
+                    request.method().as_str().to_owned(),
+                    request.uri().path().to_owned(),
+                    "invalid_csrf",
+                )
+                .await;
             }
-        };
-        request = restored;
-        let supplied = supplied.unwrap_or_default();
-        if !state.service.csrf_matches(&session, &supplied) {
-            return csrf_rejected(
-                &state.service,
-                session.clone(),
-                request_id(&request),
-                request.method().as_str().to_owned(),
-                request.uri().path().to_owned(),
-                "invalid_csrf",
-            )
-            .await;
         }
     }
 
@@ -352,6 +360,18 @@ async fn extract_csrf(request: Request) -> Result<(Request, Option<String>), Csr
     let token = form_csrf_token(&bytes);
     let request = Request::from_parts(parts, Body::from(bytes));
     Ok((request, token))
+}
+
+fn is_multipart(headers: &HeaderMap) -> bool {
+    headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| {
+            value
+                .split(';')
+                .next()
+                .is_some_and(|media_type| media_type.trim().eq_ignore_ascii_case("multipart/form-data"))
+        })
 }
 
 fn is_form(headers: &HeaderMap) -> bool {

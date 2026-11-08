@@ -1,5 +1,11 @@
 {% extends "layouts/base.html" %}
 {% block content %}
-<h1>Signed out</h1>
-<p>Your AuthKit session has ended. You can close this window.</p>
+<div class="auth-card" style="max-width:32rem;text-align:center;">
+  <h1>{{ crate::i18n::t("title_signed_out") }}</h1>
+  <p class="subtitle">{{ crate::i18n::t("subtitle_signed_out") }}</p>
+  <div class="card">
+    <p style="color:var(--muted);">{{ crate::i18n::t("signed_out_hint") }}</p>
+    <p class="links" style="justify-content:center;"><a href="/login">{{ crate::i18n::t("sign_in") }}</a></p>
+  </div>
+</div>
 {% endblock %}

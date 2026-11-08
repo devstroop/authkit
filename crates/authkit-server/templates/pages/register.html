@@ -5,15 +5,15 @@
   <aside class="auth-brand">
     <div class="brand-mark">AuthKit</div>
     <div>
-      <h2 class="brand-headline">Create your <em>account.</em></h2>
-      <p class="brand-sub">Join thousands of teams building on AuthKit's identity platform.</p>
+      <h2 class="brand-headline">{{ crate::i18n::t("brand_headline_register") }}</h2>
+      <p class="brand-sub">{{ crate::i18n::t("brand_sub_register") }}</p>
     </div>
-    <div class="brand-foot">© 2026 AuthKit · MIT / Apache-2.0</div>
+    <div class="brand-foot">{{ crate::i18n::t("brand_foot") }}</div>
   </aside>
   <section class="auth-panel">
     <div class="auth-card">
       <h1>{{ crate::i18n::t("register") }}</h1>
-      <p class="subtitle">Get started in under a minute.</p>
+      <p class="subtitle">{{ crate::i18n::t("subtitle_register") }}</p>
       <form method="post" action="/register">
         {% if !csrf.is_empty() %}
         <input type="hidden" name="_csrf" value="{{ csrf }}">

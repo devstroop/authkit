@@ -185,6 +185,7 @@ pub(crate) fn map_system_administrator(row: &AnyRow) -> Result<SystemAdministrat
         id::<UserEntity>(row, "user_id")?,
         opt_id::<UserEntity>(row, "created_by")?,
         system_administrator_status(&text(row, "status")?)?,
+        system_administrator_role(&text(row, "role")?)?,
         timestamp(row, "created_at")?,
         timestamp(row, "updated_at")?,
         version(row, "version")?,
@@ -552,6 +553,14 @@ fn system_administrator_status(value: &str) -> Result<SystemAdministratorStatus,
     match value {
         "active" => Ok(SystemAdministratorStatus::Active),
         "disabled" => Ok(SystemAdministratorStatus::Disabled),
+        _ => Err(invalid_stored_value()),
+    }
+}
+
+fn system_administrator_role(value: &str) -> Result<authkit_core::domain::SystemAdministratorRole, DomainError> {
+    match value {
+        "super_admin" => Ok(authkit_core::domain::SystemAdministratorRole::SuperAdmin),
+        "auditor" => Ok(authkit_core::domain::SystemAdministratorRole::Auditor),
         _ => Err(invalid_stored_value()),
     }
 }

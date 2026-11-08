@@ -104,7 +104,7 @@ pub(crate) async fn organizations_page(
     }
 
     let template = OrganizationsTemplate {
-        title: "Organizations",
+        title: "title_organizations",
         csrf: &csrf,
         organizations,
     };
@@ -247,7 +247,7 @@ pub(crate) async fn members_page(
         return html_ok(&body);
     }
     let template = MembersTemplate {
-        title: "Members",
+        title: "title_members",
         csrf: &csrf,
         org_id: org_id.as_str(),
         members,
@@ -421,7 +421,7 @@ pub(crate) async fn invitations_page(
         return html_ok(&body);
     }
     let template = InvitationsTemplate {
-        title: "Invitations",
+        title: "title_invitations",
         csrf: &csrf,
         org_id: org_id.as_str(),
         invitations: invitation_views,
@@ -652,7 +652,7 @@ pub(crate) async fn roles_page(
         return html_ok(&body);
     }
     let template = RolesTemplate {
-        title: "Roles",
+        title: "title_roles",
         csrf: &csrf,
         org_id: org_id.as_str(),
         roles: role_views,
@@ -901,7 +901,7 @@ pub(crate) async fn applications_page(
         return html_ok(&body);
     }
     let template = ApplicationsTemplate {
-        title: "Applications",
+        title: "title_applications",
         csrf: &csrf,
         org_id: org_id.as_str(),
         apps: app_views,
@@ -1087,7 +1087,7 @@ pub(crate) async fn oauth_clients_page(
         return html_ok(&body);
     }
     let template = OAuthClientsTemplate {
-        title: "OAuth clients",
+        title: "title_oauth_clients",
         csrf: &csrf,
         org_id: org_id.as_str(),
         clients: client_views,
@@ -1212,7 +1212,7 @@ pub(crate) async fn create_oauth_client(
     }
     let secret_text = secret_plain.unwrap_or_else(|| "(public client)".to_owned());
     let template = OAuthClientCreatedTemplate {
-        title: "OAuth client created",
+        title: "title_oauth_client_created",
         client_id: client.client_id().as_str(),
         secret: &secret_text,
         org_id: org_id.as_str(),
@@ -1294,7 +1294,7 @@ pub(crate) async fn oauth_client_detail(
         .collect::<Vec<_>>()
         .join(" ");
     let template = OAuthClientDetailTemplate {
-        title: "OAuth client",
+        title: "title_oauth_client",
         csrf: &csrf,
         org_id: org_id.as_str(),
         client_id_internal: client.id().as_str(),
@@ -1518,7 +1518,7 @@ pub(crate) async fn accept_invitation_page(
         .and_then(|q| form_value(q, "token"))
         .unwrap_or_default();
     let template = AcceptInvitationTemplate {
-        title: "Accept invitation",
+        title: "title_accept_invitation",
         token: &token,
     };
     let body = template.render().unwrap_or_default();
@@ -1662,6 +1662,24 @@ pub(crate) async fn accept_invitation(
 
 // helpers
 
+#[derive(Clone)]
+struct DomainView {
+    id: String,
+    domain: String,
+    token: String,
+    verified: bool,
+}
+
+#[derive(askama::Template)]
+#[template(path = "pages/domains.html")]
+struct DomainsTemplate<'a> {
+    title: &'a str,
+    csrf: &'a str,
+    org_id: &'a str,
+    domains: Vec<DomainView>,
+    can_manage: bool,
+}
+
 pub(crate) async fn domains_page(
     State(state): State<AppState>,
     Path(org_id): Path<String>,
@@ -1693,53 +1711,26 @@ pub(crate) async fn domains_page(
     .ok()
     .and_then(|r| r.ok())
     .unwrap_or_default();
-    let domain_views: Vec<(String, String, String, bool)> = domains
+    let can_manage = can_manage_members(&store, &user_id, &org_id);
+    let domain_views: Vec<DomainView> = domains
         .into_iter()
-        .map(|d| {
-            (
-                d.id().as_str().to_owned(),
-                d.domain().to_owned(),
-                d.verification_token().to_owned(),
-                d.is_verified(),
-            )
+        .map(|d| DomainView {
+            id: d.id().as_str().to_owned(),
+            domain: d.domain().to_owned(),
+            token: d.verification_token().to_owned(),
+            verified: d.is_verified(),
         })
         .collect();
-    let mut items = String::new();
-    for (id, dom, tok, verified) in &domain_views {
-        items.push_str("<li>");
-        items.push_str(dom);
-        items.push(' ');
-        if *verified {
-            items.push_str("(verified) ");
-            items.push_str(&format!(
-                "<form method=\"post\" action=\"/organizations/{}/domains/{}/revoke\" style=\"display:inline\"><button>Revoke</button></form>",
-                org_id.as_str(),
-                id
-            ));
-        } else {
-            items.push_str("(pending) token=");
-            items.push_str(tok);
-            items.push(' ');
-            items.push_str(&format!(
-                "<form method=\"post\" action=\"/organizations/{}/domains/{}/verify\" style=\"display:inline\"><input name=\"token\" placeholder=\"token\"><button>Verify</button></form> ",
-                org_id.as_str(),
-                id
-            ));
-            items.push_str(&format!(
-                "<form method=\"post\" action=\"/organizations/{}/domains/{}/remove\" style=\"display:inline\"><button>Remove</button></form>",
-                org_id.as_str(),
-                id
-            ));
-        }
-        items.push_str("</li>");
-    }
-    let body = format!(
-        "<h1>Domains</h1><ul>{}</ul><form method=\"post\" action=\"/organizations/{}/domains\"><input name=\"domain\" placeholder=\"example.com\"><button type=\"submit\">Add</button></form>",
-        items,
-        org_id.as_str()
-    );
+    let org_id_str = org_id.as_str().to_owned();
+    let template = DomainsTemplate {
+        title: "title_domains",
+        csrf: &csrf,
+        org_id: &org_id_str,
+        domains: domain_views,
+        can_manage,
+    };
+    let body = template.render().unwrap_or_default();
     let _ = headers;
-    let _ = csrf;
     html_ok(&body)
 }
 

@@ -2,8 +2,8 @@
 {% import "macros/ui.html" as ui %}
 {% block content %}
 <div class="auth-card" style="max-width:48rem;">
-  <h1>Roles</h1>
-  <p class="subtitle">Permission sets for this organization.</p>
+  <h1>{{ crate::i18n::t("title_roles") }}</h1>
+  <p class="subtitle">{{ crate::i18n::t("subtitle_roles") }}</p>
   <ul id="roles" aria-live="polite" style="list-style:none;padding:0;margin:0 0 var(--space-5);">
   {% for role in roles %}
   <li style="padding:var(--space-3) var(--space-4);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:var(--space-2);background:var(--surface);">
@@ -12,19 +12,19 @@
   </li>
   {% endfor %}
   {% if roles.is_empty() %}
-  <li style="color:var(--muted);padding:var(--space-4);text-align:center;">No roles yet.</li>
+  <li style="color:var(--muted);padding:var(--space-4);text-align:center;">{{ crate::i18n::t("no_roles") }}</li>
   {% endif %}
   </ul>
   {% if can_manage %}
-  <h2 style="font-family:var(--font-display);font-size:1.5rem;font-weight:400;margin:var(--space-5) 0 var(--space-3);">Create role</h2>
+  <h2 style="font-family:var(--font-display);font-size:1.5rem;font-weight:400;margin:var(--space-5) 0 var(--space-3);">{{ crate::i18n::t("create_role") }}</h2>
   <form method="post" action="/organizations/{{ org_id }}/roles" hx-post="/organizations/{{ org_id }}/roles" hx-target="#roles" hx-swap="outerHTML">
     <input type="hidden" name="_csrf" value="{{ csrf }}">
-    {{ ui::text_input("slug", "Slug", "text", "") }}
-    {{ ui::text_input("name", "Name", "text", "") }}
-    {{ ui::text_input("permissions", "Permissions (space-separated)", "text", "") }}
-    {{ ui::button("Create") }}
+    {{ ui::text_input("slug", crate::i18n::t("slug"), "text", "") }}
+    {{ ui::text_input("name", crate::i18n::t("name"), "text", "") }}
+    {{ ui::text_input("permissions", crate::i18n::t("permissions_space"), "text", "") }}
+    {{ ui::button(crate::i18n::t("create")) }}
   </form>
   {% endif %}
-  <p class="links"><a href="/organizations/{{ org_id }}/members">Members</a></p>
+  <p class="links"><a href="/organizations/{{ org_id }}/members">{{ crate::i18n::t("members") }}</a></p>
 </div>
 {% endblock %}

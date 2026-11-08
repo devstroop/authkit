@@ -1,8 +1,12 @@
 {% extends "layouts/admin.html" %}
+{% import "macros/ui.html" as ui %}
 {% block admin_content %}
-<h1>MFA required</h1>
-<form method="post" action="/admin/mfa/enroll">
-  <input type="hidden" name="_csrf" value="{{ csrf }}">
-  <button type="submit">Generate secret</button>
-</form>
+<h1>{{ crate::i18n::t("title_mfa_required") }}</h1>
+<div class="card">
+  <p style="color:var(--muted);margin-bottom:var(--space-4);">{{ crate::i18n::t("admin_mfa_required_hint") }}</p>
+  <form method="post" action="/admin/mfa/enroll">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    {{ ui::button(crate::i18n::t("generate_secret")) }}
+  </form>
+</div>
 {% endblock %}

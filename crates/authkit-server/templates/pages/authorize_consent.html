@@ -4,15 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<title>Authorize {{ client }}</title>
+<title>{{ crate::i18n::t("title_authorize") }} {{ client }}</title>
 <link rel="stylesheet" href="/oauth2/authorize.css" referrerpolicy="no-referrer">
 </head>
 <body>
 <main class="card">
-<p class="eyebrow">Authorization request</p>
+<div class="brand">AuthKit</div>
+<p class="eyebrow">{{ crate::i18n::t("consent_title") }}</p>
 <h1>{{ client }}</h1>
-<p><strong>{{ application }}</strong> from {{ organization }} wants to access your AuthKit account.</p>
-<p class="muted">Requested access</p>
+<p><strong>{{ application }}</strong> {{ crate::i18n::t("consent_wants_access") }}</p>
+<p class="muted">{{ crate::i18n::t("consent_requested_access") }}</p>
 <ul class="scopes">{{ scopes | safe }}</ul>
 <form method="post" action="/oauth2/authorize/consent">
 <input type="hidden" name="_csrf" value="{{ csrf }}">
@@ -26,11 +27,11 @@
 {{ state | safe }}
 {{ nonce | safe }}
 <div class="actions">
-<button type="submit" name="decision" value="deny" class="secondary">Deny</button>
-<button type="submit" name="decision" value="allow">Allow access</button>
+<button type="submit" name="decision" value="deny" class="secondary">{{ crate::i18n::t("consent_deny") }}</button>
+<button type="submit" name="decision" value="allow">{{ crate::i18n::t("consent_allow_access") }}</button>
 </div>
 </form>
-<p class="fine">An administrator can revoke this access later.</p>
+<p class="fine">{{ crate::i18n::t("consent_admin_revoke") }}</p>
 </main>
 </body>
 </html>

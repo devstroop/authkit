@@ -2,8 +2,8 @@
 {% import "macros/ui.html" as ui %}
 {% block content %}
 <div class="auth-card" style="max-width:48rem;">
-  <h1>Invitations</h1>
-  <p class="subtitle">Pending and past invitations to this organization.</p>
+  <h1>{{ crate::i18n::t("title_invitations") }}</h1>
+  <p class="subtitle">{{ crate::i18n::t("subtitle_invitations") }}</p>
   <ul id="invitations" aria-live="polite" style="list-style:none;padding:0;margin:0 0 var(--space-5);">
   {% for invitation in invitations %}
   <li style="display:flex;align-items:center;justify-content:space-between;padding:var(--space-3) var(--space-4);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:var(--space-2);background:var(--surface);">
@@ -14,31 +14,31 @@
     {% if can_manage %}
     <form method="post" action="/organizations/{{ org_id }}/invitations/{{ invitation.id }}/revoke" style="display:inline" hx-post="/organizations/{{ org_id }}/invitations/{{ invitation.id }}/revoke" hx-target="#invitations" hx-swap="outerHTML">
       <input type="hidden" name="_csrf" value="{{ csrf }}">
-      <button type="submit" class="btn btn-secondary" style="width:auto;padding:0.3rem 0.75rem;font-size:0.85rem;">Revoke</button>
+      <button type="submit" class="btn btn-secondary" style="width:auto;padding:0.3rem 0.75rem;font-size:0.85rem;">{{ crate::i18n::t("revoke") }}</button>
     </form>
     {% endif %}
   </li>
   {% endfor %}
   {% if invitations.is_empty() %}
-  <li style="color:var(--muted);padding:var(--space-4);text-align:center;">No invitations yet.</li>
+  <li style="color:var(--muted);padding:var(--space-4);text-align:center;">{{ crate::i18n::t("no_invitations") }}</li>
   {% endif %}
   </ul>
   {% if can_manage %}
-  <h2 style="font-family:var(--font-display);font-size:1.5rem;font-weight:400;margin:var(--space-5) 0 var(--space-3);">Invite member</h2>
+  <h2 style="font-family:var(--font-display);font-size:1.5rem;font-weight:400;margin:var(--space-5) 0 var(--space-3);">{{ crate::i18n::t("invite_member") }}</h2>
   <form method="post" action="/organizations/{{ org_id }}/invitations" hx-post="/organizations/{{ org_id }}/invitations" hx-target="#invitations" hx-swap="outerHTML">
     <input type="hidden" name="_csrf" value="{{ csrf }}">
-    {{ ui::text_input("email", "Email", "email", "email") }}
+    {{ ui::text_input("email", crate::i18n::t("email"), "email", "email") }}
     <label class="field">
-      <span>Role</span>
+      <span>{{ crate::i18n::t("role") }}</span>
       <select name="role_id" class="input" required aria-required="true">
         {% for role in roles %}
         <option value="{{ role.id }}">{{ role.name }}</option>
         {% endfor %}
       </select>
     </label>
-    {{ ui::button("Invite") }}
+    {{ ui::button(crate::i18n::t("invite")) }}
   </form>
   {% endif %}
-  <p class="links"><a href="/organizations/{{ org_id }}/members">Members</a></p>
+  <p class="links"><a href="/organizations/{{ org_id }}/members">{{ crate::i18n::t("members") }}</a></p>
 </div>
 {% endblock %}

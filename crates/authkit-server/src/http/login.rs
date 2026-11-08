@@ -57,7 +57,7 @@ pub(crate) async fn login_page(
         String::new()
     };
     let template = LoginTemplate {
-        title: "Sign in",
+        title: "title_sign_in",
         next: &next,
         csrf: &csrf_value,
         error: "",
@@ -103,7 +103,7 @@ pub(crate) async fn register_page(
         String::new()
     };
     let template = RegisterTemplate {
-        title: "Create account",
+        title: "title_register",
         next: &next,
         csrf: &csrf_value,
     };
@@ -323,6 +323,32 @@ pub(crate) async fn login_submit(
         );
     }
 
+    if crate::password::needs_rehash(&verifier)
+        && let Some(sessions) = state.sessions.as_ref()
+    {
+        let store = sessions.store().clone();
+        let now = sessions.clock().now();
+        let original_version = credential.version();
+        let mut updated = credential.clone();
+        let new_verifier = tokio::task::spawn_blocking({
+            let password = password.clone();
+            move || crate::password::hash_password(&password)
+        })
+        .await
+        .ok()
+        .and_then(|r| r.ok());
+        if let Some(new_verifier) = new_verifier
+            && updated.replace_password(new_verifier, now).is_ok()
+        {
+            let _ = tokio::task::spawn_blocking({
+                let store = store.clone();
+                let updated = updated.clone();
+                move || CredentialRepository::update(store.as_ref(), &updated, original_version)
+            })
+            .await;
+        }
+    }
+
     let redirect_to = params
         .get("next")
         .cloned()
@@ -345,7 +371,7 @@ pub(crate) async fn login_submit(
         let pepper = sessions.pepper().to_vec();
         let challenge = crate::totp::challenge_token(user.id().as_str(), &redirect_to, &pepper);
         let template = MfaChallengeTemplate {
-            title: "Two-factor authentication",
+            title: "title_mfa",
             challenge: &challenge,
             next: &redirect_to,
         };

@@ -1,11 +1,21 @@
-<ul>
+{% import "macros/ui.html" as ui %}
+<ul id="organizations" aria-live="polite" style="list-style:none;padding:0;margin:0 0 var(--space-5);">
 {% for org in organizations %}
-<li>{{ org.name }} ({{ org.slug }}) <a href="/organizations/{{ org.id }}/members">Manage</a></li>
+<li style="display:flex;align-items:center;justify-content:space-between;padding:var(--space-3) var(--space-4);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:var(--space-2);background:var(--surface);">
+  <div>
+    <div style="font-weight:600;">{{ org.name }}</div>
+    <div style="font-size:0.85rem;color:var(--muted);">{{ org.slug }}</div>
+  </div>
+  <a href="/organizations/{{ org.id }}/members" style="font-weight:500;font-size:0.9rem;">{{ crate::i18n::t("manage") }} →</a>
+</li>
 {% endfor %}
+{% if organizations.is_empty() %}
+<li style="color:var(--muted);padding:var(--space-4);text-align:center;">{{ crate::i18n::t("no_organizations_yet") }}</li>
+{% endif %}
 </ul>
-<form method="post" action="/organizations">
+<form method="post" action="/organizations" hx-post="/organizations" hx-target="#organizations" hx-swap="beforeend">
   <input type="hidden" name="_csrf" value="{{ csrf }}">
-  <label>Slug <input name="slug" required></label>
-  <label>Name <input name="name" required></label>
-  <button type="submit">Create</button>
+  {{ ui::text_input("slug", crate::i18n::t("slug"), "text", "") }}
+  {{ ui::text_input("name", crate::i18n::t("name"), "text", "") }}
+  {{ ui::button(crate::i18n::t("create")) }}
 </form>

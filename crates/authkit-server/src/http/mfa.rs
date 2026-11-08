@@ -50,7 +50,7 @@ pub(crate) async fn account_page(
     .unwrap_or(false);
 
     let template = MfaTemplate {
-        title: "MFA",
+        title: "title_mfa",
         csrf: &csrf,
         has_mfa,
     };
@@ -106,7 +106,7 @@ pub(crate) async fn enroll(
         return unavailable();
     }
     let template = MfaEnrollTemplate {
-        title: "MFA enrollment",
+        title: "title_mfa_enroll",
         secret: &encoded,
         csrf: &csrf,
     };
@@ -238,7 +238,7 @@ pub(crate) async fn recovery_codes_page(
     };
     let csrf = sessions.csrf_token(session.session());
     let template = RecoveryCodesGenerateTemplate {
-        title: "Recovery codes",
+        title: "title_recovery_codes",
         csrf: &csrf,
     };
     let body = template.render().unwrap_or_default();
@@ -305,7 +305,7 @@ pub(crate) async fn generate_recovery_codes(
     }
     let _ = codes;
     let template = RecoveryCodesTemplate {
-        title: "Recovery codes",
+        title: "title_recovery_codes",
         codes: plaintext_codes.clone(),
     };
     let body = template.render().unwrap_or_default();

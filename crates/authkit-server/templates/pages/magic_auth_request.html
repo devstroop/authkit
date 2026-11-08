@@ -5,23 +5,23 @@
   <aside class="auth-brand">
     <div class="brand-mark">AuthKit</div>
     <div>
-      <h2 class="brand-headline">Passwordless <em>sign-in.</em></h2>
-      <p class="brand-sub">We'll email you a one-time code. No password required.</p>
+      <h2 class="brand-headline">{{ crate::i18n::t("brand_headline_magic") }}</h2>
+      <p class="brand-sub">{{ crate::i18n::t("brand_sub_magic") }}</p>
     </div>
-    <div class="brand-foot">© 2026 AuthKit · MIT / Apache-2.0</div>
+    <div class="brand-foot">{{ crate::i18n::t("brand_foot") }}</div>
   </aside>
   <section class="auth-panel">
     <div class="auth-card">
-      <h1>Sign in with email code</h1>
-      <p class="subtitle">Enter your email and we'll send a code.</p>
+      <h1>{{ crate::i18n::t("title_magic_auth") }}</h1>
+      <p class="subtitle">{{ crate::i18n::t("subtitle_magic_request") }}</p>
       <form method="post" action="/magic-auth">
         {% if !csrf.is_empty() %}
         <input type="hidden" name="_csrf" value="{{ csrf }}">
         {% endif %}
-        {{ ui::text_input("email", "Email", "email", "email") }}
-        {{ ui::button("Send code") }}
+        {{ ui::text_input("email", crate::i18n::t("email"), "email", "email") }}
+        {{ ui::button(crate::i18n::t("send_code")) }}
       </form>
-      <p class="links"><a href="/login">Sign in with password</a></p>
+      <p class="links"><a href="/login">{{ crate::i18n::t("sign_in_password") }}</a></p>
     </div>
   </section>
 </div>

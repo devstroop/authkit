@@ -1,16 +1,22 @@
 {% import "macros/ui.html" as ui %}
-<ul id="roles" aria-live="polite">
+<ul id="roles" aria-live="polite" style="list-style:none;padding:0;margin:0 0 var(--space-5);">
 {% for role in roles %}
-<li>{{ role.name }} ({{ role.slug }}) - {{ role.permissions }}</li>
+<li style="padding:var(--space-3) var(--space-4);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:var(--space-2);background:var(--surface);">
+  <div style="font-weight:600;">{{ role.name }}</div>
+  <div style="font-size:0.8rem;color:var(--muted);">{{ role.slug }} · {{ role.permissions }}</div>
+</li>
 {% endfor %}
+{% if roles.is_empty() %}
+<li style="color:var(--muted);padding:var(--space-4);text-align:center;">{{ crate::i18n::t("no_roles") }}</li>
+{% endif %}
 </ul>
 {% if can_manage %}
-<h2>Create role</h2>
+<h2 style="font-family:var(--font-display);font-size:1.5rem;font-weight:400;margin:var(--space-5) 0 var(--space-3);">{{ crate::i18n::t("create_role") }}</h2>
 <form method="post" action="/organizations/{{ org_id }}/roles" hx-post="/organizations/{{ org_id }}/roles" hx-target="#roles" hx-swap="outerHTML">
   <input type="hidden" name="_csrf" value="{{ csrf }}">
-  {{ ui::text_input("slug", "Slug", "text", "") }}
-  {{ ui::text_input("name", "Name", "text", "") }}
-  {{ ui::text_input("permissions", "Permissions (space-separated)", "text", "") }}
-  {{ ui::button("Create") }}
+  {{ ui::text_input("slug", crate::i18n::t("slug"), "text", "") }}
+  {{ ui::text_input("name", crate::i18n::t("name"), "text", "") }}
+  {{ ui::text_input("permissions", crate::i18n::t("permissions_space"), "text", "") }}
+  {{ ui::button(crate::i18n::t("create")) }}
 </form>
 {% endif %}

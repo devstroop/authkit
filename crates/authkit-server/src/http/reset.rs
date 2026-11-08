@@ -42,7 +42,7 @@ pub(crate) async fn request_reset_page(
         String::new()
     };
     let template = RequestResetTemplate {
-        title: "Reset password",
+        title: "title_reset_password",
         csrf: &csrf_value,
     };
     let body = template.render().unwrap_or_default();
@@ -204,7 +204,7 @@ pub(crate) async fn confirm_reset_page(
         String::new()
     };
     let template = ConfirmResetTemplate {
-        title: "Choose new password",
+        title: "title_choose_new_password",
         csrf: &csrf_value,
         token: &token,
     };
@@ -359,7 +359,7 @@ pub(crate) async fn request_verify_page(
         return redirect("/login");
     }
     let template = RequestVerifyTemplate {
-        title: "Verify email",
+        title: "title_verify_email",
     };
     let body = template.render().unwrap_or_default();
     (
@@ -492,7 +492,7 @@ struct VerifyEmailTemplate<'a> {
 pub(crate) async fn verify_email_page(Query(q): Query<TokenQuery>) -> Response {
     let token = q.token.clone().unwrap_or_default();
     let template = VerifyEmailTemplate {
-        title: "Verify email",
+        title: "title_verify_email",
         token: &token,
     };
     let body = template.render().unwrap_or_default();

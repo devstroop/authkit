@@ -1,0 +1,105 @@
+{% extends "layouts/base.html" %}
+{% import "macros/ui.html" as ui %}
+{% block content %}
+<div class="auth-card" style="max-width:48rem;">
+  <h1>{{ crate::i18n::t("title_passkeys") }}</h1>
+  <p class="subtitle">{{ crate::i18n::t("subtitle_passkeys") }}</p>
+
+  <ul id="passkeys" aria-live="polite" style="list-style:none;padding:0;margin:0 0 var(--space-5);">
+  {% for pk in passkeys %}
+  <li style="display:flex;align-items:center;justify-content:space-between;padding:var(--space-3) var(--space-4);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:var(--space-2);background:var(--surface);">
+    <div>
+      <div style="font-weight:500;font-size:0.9rem;">{{ pk.id }}</div>
+      <div style="font-size:0.8rem;color:var(--muted);font-family:monospace;">{{ pk.credential_id }}</div>
+    </div>
+  </li>
+  {% endfor %}
+  {% if passkeys.is_empty() %}
+  <li style="color:var(--muted);padding:var(--space-4);text-align:center;">{{ crate::i18n::t("no_passkeys") }}</li>
+  {% endif %}
+  </ul>
+
+  <div class="card">
+    <h2 style="font-family:var(--font-display);font-size:1.25rem;font-weight:400;margin:0 0 var(--space-3);">{{ crate::i18n::t("register_passkey") }}</h2>
+    <p style="color:var(--muted);font-size:0.9rem;margin-bottom:var(--space-4);">{{ crate::i18n::t("register_passkey_hint") }}</p>
+    <button type="button" id="pk-register" class="btn">{{ crate::i18n::t("register_passkey") }}</button>
+    <p id="pk-status" style="margin-top:var(--space-3);font-size:0.9rem;color:var(--muted);"></p>
+  </div>
+
+  <p class="links"><a href="/account">{{ crate::i18n::t("back_to_account") }}</a></p>
+</div>
+
+<script>
+window.__AUTHKIT_CSRF = "{{ csrf }}";
+(function() {
+  function b64urlToBuffer(b64url) {
+    var s = b64url.replace(/-/g, '+').replace(/_/g, '/');
+    while (s.length % 4) s += '=';
+    var bin = atob(s);
+    var buf = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+    return buf.buffer;
+  }
+  function bufferToB64url(buf) {
+    var bytes = new Uint8Array(buf);
+    var s = '';
+    for (var i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+    return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
+  var btn = document.getElementById('pk-register');
+  var status = document.getElementById('pk-status');
+  if (!btn) return;
+  btn.addEventListener('click', async function() {
+    btn.disabled = true;
+    status.textContent = '{{ crate::i18n::t("status_starting_registration") }}';
+    try {
+      var r = await fetch('/passkeys/register/begin', { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': window.__AUTHKIT_CSRF } });
+      if (!r.ok) { status.textContent = '{{ crate::i18n::t("status_begin_failed") }}' + r.status; btn.disabled = false; return; }
+      var data = await r.json();
+      var opts = data.options;
+      // webauthn-rs may wrap under publicKey
+      var pk = opts.publicKey ? opts.publicKey : opts;
+      pk.challenge = b64urlToBuffer(pk.challenge);
+      if (pk.user && pk.user.id) pk.user.id = b64urlToBuffer(pk.user.id);
+      if (pk.excludeCredentials) {
+        pk.excludeCredentials = pk.excludeCredentials.map(function(c) {
+          return { type: c.type, id: b64urlToBuffer(c.id), transports: c.transports };
+        });
+      }
+      var cred = await navigator.credentials.create({ publicKey: pk });
+      var att = cred.response;
+      var payload = {
+        token: data.token,
+        credential: {
+          id: cred.id,
+          rawId: bufferToB64url(cred.rawId),
+          type: cred.type,
+          response: {
+            clientDataJSON: bufferToB64url(att.clientDataJSON),
+            attestationObject: bufferToB64url(att.attestationObject)
+          }
+        }
+      };
+      var r2 = await fetch('/passkeys/register/finish', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.__AUTHKIT_CSRF },
+        body: JSON.stringify(payload)
+      });
+      var d2 = await r2.json();
+      if (r2.ok) {
+        status.textContent = '{{ crate::i18n::t("status_registered") }}';
+        setTimeout(function(){ location.reload(); }, 800);
+      } else {
+        status.textContent = '{{ crate::i18n::t("status_finish_failed") }}' + JSON.stringify(d2);
+        btn.disabled = false;
+      }
+    } catch (e) {
+      status.textContent = '{{ crate::i18n::t("status_error") }}' + (e && e.message ? e.message : e);
+      btn.disabled = false;
+    }
+  });
+})();
+</script>
+{% endblock %}

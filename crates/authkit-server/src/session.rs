@@ -14,8 +14,8 @@ use authkit_core::domain::id::{
     AuditEventEntity, Id, OrganizationEntity, SessionEntity, UserEntity,
 };
 use authkit_core::domain::{
-    DomainError, ErrorCode, IdError, SecretHash, Session, SessionAudience, Timestamp, ValueError,
-    WriteOutcome,
+    DomainError, ErrorCode, IdError, SecretHash, Session, SessionAudience, SessionStatus, Timestamp,
+    ValueError, WriteOutcome,
 };
 use authkit_core::ports::write::{WriteBatch, WriteCommand};
 use authkit_core::ports::{Clock, IdGenerator, SessionRepository, UnitOfWork};
@@ -412,6 +412,59 @@ impl SessionService {
             session: replacement,
             token,
         })
+    }
+
+    /// Detects reuse of a rotated session token and revokes the principal's sessions.
+    ///
+    /// A rotated (revoked) session token being presented again is a strong signal of
+    /// session theft. All sessions for the principal are revoked and an audit event is
+    /// recorded. Returns `true` when reuse was detected.
+    pub async fn detect_session_reuse(
+        &self,
+        session: &Session,
+        now: Timestamp,
+    ) -> Result<bool, SessionError> {
+        if session.status() != SessionStatus::Revoked || session.rotated_from().is_none() {
+            return Ok(false);
+        }
+        let user_id = session.user_id().clone();
+        let org = session.organization_id().cloned();
+        let store = self.store.clone();
+        let _ = tokio::task::spawn_blocking({
+            let store = store.clone();
+            let user_id = user_id.clone();
+            move || {
+                let sessions = SessionRepository::list_for_user(store.as_ref(), &user_id)
+                    .unwrap_or_default();
+                for existing in sessions {
+                    if existing.status() == SessionStatus::Active {
+                        let mut revoked = existing;
+                        let expected = revoked.version();
+                        revoked.revoke(now);
+                        let _ = SessionRepository::update(store.as_ref(), &revoked, expected);
+                    }
+                }
+                Ok::<_, DomainError>(())
+            }
+        })
+        .await;
+
+        let action = AuditAction::parse("session.theft.detected").expect("valid action");
+        let event = AuditEvent::new(
+            self.ids.generate::<AuditEventEntity>()?,
+            org,
+            AuditActor::User(user_id),
+            action,
+            session.rotated_from().map(|id| {
+                authkit_core::domain::AuditTarget::parse(id.as_str()).expect("target")
+            }),
+            now,
+            vec![],
+        )
+        .map_err(SessionError::from)?;
+        let store = self.store.clone();
+        let _ = tokio::task::spawn_blocking(move || store.append_security_audit(&event)).await;
+        Ok(true)
     }
 
     /// Records a rejected CSRF request in the audit log.

@@ -64,7 +64,7 @@ pub use secret::SecretHash;
 pub use session::{Session, SessionAudience, SessionStatus};
 pub use slug::Slug;
 pub use system_administrator::{
-    SystemAdministrator, SystemAdministratorStatus, ensure_system_admin_remains,
+    SystemAdministrator, SystemAdministratorRole, SystemAdministratorStatus, ensure_system_admin_remains,
 };
 pub use tenant::TenantContext;
 pub use time::Timestamp;

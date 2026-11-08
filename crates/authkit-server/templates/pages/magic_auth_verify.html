@@ -5,24 +5,24 @@
   <aside class="auth-brand">
     <div class="brand-mark">AuthKit</div>
     <div>
-      <h2 class="brand-headline">Enter your <em>code.</em></h2>
-      <p class="brand-sub">Check your email for the 6-digit sign-in code.</p>
+      <h2 class="brand-headline">{{ crate::i18n::t("brand_headline_enter_code") }}</h2>
+      <p class="brand-sub">{{ crate::i18n::t("brand_sub_enter_code") }}</p>
     </div>
-    <div class="brand-foot">© 2026 AuthKit · MIT / Apache-2.0</div>
+    <div class="brand-foot">{{ crate::i18n::t("brand_foot") }}</div>
   </aside>
   <section class="auth-panel">
     <div class="auth-card">
-      <h1>Enter your code</h1>
-      <p class="subtitle">Type the code we sent to your email.</p>
+      <h1>{{ crate::i18n::t("title_enter_code") }}</h1>
+      <p class="subtitle">{{ crate::i18n::t("subtitle_magic_verify") }}</p>
       <form method="post" action="/magic-auth/verify">
         {% if !csrf.is_empty() %}
         <input type="hidden" name="_csrf" value="{{ csrf }}">
         {% endif %}
         <input type="hidden" name="email" value="{{ email }}">
-        {{ ui::text_input("code", "Code", "text", "one-time-code") }}
-        {{ ui::button("Verify") }}
+        {{ ui::text_input("code", crate::i18n::t("code"), "text", "one-time-code") }}
+        {{ ui::button(crate::i18n::t("verify")) }}
       </form>
-      <p class="links"><a href="/magic-auth">Request a new code</a></p>
+      <p class="links"><a href="/magic-auth">{{ crate::i18n::t("request_new_code") }}</a></p>
     </div>
   </section>
 </div>

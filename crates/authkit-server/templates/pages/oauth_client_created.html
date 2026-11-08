@@ -1,7 +1,15 @@
 {% extends "layouts/base.html" %}
 {% block content %}
-<h1>OAuth client created</h1>
-<p>Client ID: <code>{{ client_id }}</code></p>
-<p>Client secret: <code>{{ secret }}</code></p>
-<p><a href="/organizations/{{ org_id }}/oauth-clients">Back</a></p>
+<div class="auth-card" style="max-width:48rem;">
+  <h1>{{ crate::i18n::t("title_oauth_client_created") }}</h1>
+  <p class="subtitle">{{ crate::i18n::t("subtitle_oauth_client_created") }}</p>
+  <div class="card">
+    <p style="font-size:0.85rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;font-weight:600;margin-bottom:var(--space-2);">{{ crate::i18n::t("client_id") }}</p>
+    <p style="font-family:monospace;font-size:0.95rem;word-break:break-all;margin-bottom:var(--space-4);">{{ client_id }}</p>
+    <p style="font-size:0.85rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;font-weight:600;margin-bottom:var(--space-2);">{{ crate::i18n::t("client_secret") }}</p>
+    <p style="font-family:monospace;font-size:0.95rem;word-break:break-all;padding:var(--space-3);background:var(--accent-soft);border-radius:var(--radius-sm);margin-bottom:var(--space-4);">{{ secret }}</p>
+    <p class="alert" role="alert">{{ crate::i18n::t("store_secret_warning") }}</p>
+  </div>
+  <p class="links"><a href="/organizations/{{ org_id }}/oauth-clients">{{ crate::i18n::t("back_to_clients") }}</a></p>
+</div>
 {% endblock %}

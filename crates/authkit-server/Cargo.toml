@@ -15,7 +15,8 @@ aes-gcm.workspace = true
 argon2.workspace = true
 authkit-core.workspace = true
 authkit-store.workspace = true
-axum.workspace = true
+axum = { workspace = true, features = ["multipart"] }
+native-tls = "0.2"
 askama.workspace = true
 base64.workspace = true
 cookie.workspace = true

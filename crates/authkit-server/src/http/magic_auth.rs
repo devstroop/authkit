@@ -45,7 +45,7 @@ pub(crate) async fn request_page(
         })
         .unwrap_or_default();
     let template = MagicAuthRequestTemplate {
-        title: "Sign in with email code",
+        title: "title_magic_auth",
         csrf: &csrf,
     };
     let body = template.render().unwrap_or_default();
@@ -78,12 +78,12 @@ pub(crate) async fn request_submit(
         Err(_) => {
             return html(
                 StatusCode::BAD_REQUEST,
-                "Sign in with email code",
+                "title_magic_auth",
                 "/magic-auth",
-                "Send code",
-                "Invalid email.",
+                "send_code",
+                "error_invalid_email",
                 "/login",
-                "Sign in with password",
+                "sign_in_password",
                 "",
             );
         }
@@ -190,7 +190,7 @@ pub(crate) async fn verify_page(
         .unwrap_or_default();
     let email = q.get("email").cloned().unwrap_or_default();
     let template = MagicAuthVerifyTemplate {
-        title: "Enter your code",
+        title: "title_enter_code",
         csrf: &csrf,
         email: &email,
     };
@@ -223,12 +223,12 @@ pub(crate) async fn verify_submit(
     if email_str.is_empty() || code_str.is_empty() {
         return html(
             StatusCode::BAD_REQUEST,
-            "Enter your code",
+            "title_enter_code",
             "/magic-auth/verify",
-            "Verify",
-            "Email and code are required.",
+            "verify",
+            "error_email_code_required",
             "/magic-auth",
-            "Request a new code",
+            "request_new_code",
             "",
         );
     }
@@ -237,12 +237,12 @@ pub(crate) async fn verify_submit(
         Err(_) => {
             return html(
                 StatusCode::BAD_REQUEST,
-                "Enter your code",
+                "title_enter_code",
                 "/magic-auth/verify",
-                "Verify",
-                "Invalid email.",
+                "verify",
+                "error_invalid_email",
                 "/magic-auth",
-                "Request a new code",
+                "request_new_code",
                 "",
             );
         }
@@ -275,36 +275,36 @@ pub(crate) async fn verify_submit(
     let Some(token) = token else {
         return html(
             StatusCode::BAD_REQUEST,
-            "Enter your code",
+            "title_enter_code",
             "/magic-auth/verify",
-            "Verify",
-            "Invalid or expired code.",
+            "verify",
+            "error_invalid_or_expired_code",
             "/magic-auth",
-            "Request a new code",
+            "request_new_code",
             "",
         );
     };
     if token.consumed_at().is_some() {
         return html(
             StatusCode::BAD_REQUEST,
-            "Enter your code",
+            "title_enter_code",
             "/magic-auth/verify",
-            "Verify",
-            "Code already used.",
+            "verify",
+            "error_code_already_used",
             "/magic-auth",
-            "Request a new code",
+            "request_new_code",
             "",
         );
     }
     if token.expires_at().is_before(sessions.clock().now()) {
         return html(
             StatusCode::BAD_REQUEST,
-            "Enter your code",
+            "title_enter_code",
             "/magic-auth/verify",
-            "Verify",
-            "Code expired.",
+            "verify",
+            "error_code_expired",
             "/magic-auth",
-            "Request a new code",
+            "request_new_code",
             "",
         );
     }
@@ -323,12 +323,12 @@ pub(crate) async fn verify_submit(
     if user.email().as_str() != parsed_email.as_str() {
         return html(
             StatusCode::BAD_REQUEST,
-            "Enter your code",
+            "title_enter_code",
             "/magic-auth/verify",
-            "Verify",
-            "Invalid or expired code.",
+            "verify",
+            "error_invalid_or_expired_code",
             "/magic-auth",
-            "Request a new code",
+            "request_new_code",
             "",
         );
     }
@@ -344,12 +344,12 @@ pub(crate) async fn verify_submit(
     if consumed.ok().and_then(|r| r.ok()) != Some(WriteOutcome::Applied) {
         return html(
             StatusCode::BAD_REQUEST,
-            "Enter your code",
+            "title_enter_code",
             "/magic-auth/verify",
-            "Verify",
-            "Code already used.",
+            "verify",
+            "error_code_already_used",
             "/magic-auth",
-            "Request a new code",
+            "request_new_code",
             "",
         );
     }

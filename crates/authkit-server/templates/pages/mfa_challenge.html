@@ -1,10 +1,29 @@
 {% extends "layouts/base.html" %}
+{% import "macros/ui.html" as ui %}
 {% block content %}
-<h1>Two-factor authentication</h1>
-<form method="post" action="/login/mfa">
-  <input type="hidden" name="challenge" value="{{ challenge }}">
-  <input type="hidden" name="next" value="{{ next }}">
-  <label>Code <input name="code" required></label>
-  <button type="submit">Verify</button>
-</form>
+<div class="auth-shell">
+  <aside class="auth-brand">
+    <div class="brand-mark">AuthKit</div>
+    <div>
+      <h2 class="brand-headline">{{ crate::i18n::t("brand_headline_mfa") }}</h2>
+      <p class="brand-sub">{{ crate::i18n::t("brand_sub_mfa") }}</p>
+    </div>
+    <div class="brand-foot">{{ crate::i18n::t("brand_foot") }}</div>
+  </aside>
+  <section class="auth-panel">
+    <div class="auth-card">
+      <h1>{{ crate::i18n::t("title_mfa") }}</h1>
+      <p class="subtitle">{{ crate::i18n::t("subtitle_mfa_challenge") }}</p>
+      <form method="post" action="/login/mfa">
+        <input type="hidden" name="challenge" value="{{ challenge }}">
+        {% if !next.is_empty() %}
+        <input type="hidden" name="next" value="{{ next }}">
+        {% endif %}
+        {{ ui::text_input("code", crate::i18n::t("code"), "text", "one-time-code") }}
+        {{ ui::button(crate::i18n::t("verify")) }}
+      </form>
+      <p class="links"><a href="/login">{{ crate::i18n::t("back_to_sign_in") }}</a></p>
+    </div>
+  </section>
+</div>
 {% endblock %}

@@ -46,12 +46,12 @@ pub(crate) async fn page(
     if token.is_empty() {
         return crate::http::login::html(
             StatusCode::BAD_REQUEST,
-            "Select organization",
+            "title_select_organization",
             "/login",
-            "Sign in",
-            "Missing token.",
+            "sign_in",
+            "error_missing_token",
             "/login",
-            "Sign in",
+            "sign_in",
             "",
         );
     }
@@ -81,24 +81,24 @@ pub(crate) async fn page(
     let Some(ott) = ott else {
         return crate::http::login::html(
             StatusCode::BAD_REQUEST,
-            "Select organization",
+            "title_select_organization",
             "/login",
-            "Sign in",
-            "Invalid or expired token.",
+            "sign_in",
+            "error_invalid_or_expired_token",
             "/login",
-            "Sign in",
+            "sign_in",
             "",
         );
     };
     if ott.consumed_at().is_some() || ott.expires_at().is_before(sessions.clock().now()) {
         return crate::http::login::html(
             StatusCode::BAD_REQUEST,
-            "Select organization",
+            "title_select_organization",
             "/login",
-            "Sign in",
-            "Invalid or expired token.",
+            "sign_in",
+            "error_invalid_or_expired_token",
             "/login",
-            "Sign in",
+            "sign_in",
             "",
         );
     }
@@ -132,7 +132,7 @@ pub(crate) async fn page(
         }
     }
     let template = SelectOrgTemplate {
-        title: "Select organization",
+        title: "title_select_organization",
         csrf: &csrf,
         token: &token,
         orgs,
@@ -166,12 +166,12 @@ pub(crate) async fn submit(
     if token.is_empty() || org_id_str.is_empty() {
         return crate::http::login::html(
             StatusCode::BAD_REQUEST,
-            "Select organization",
+            "title_select_organization",
             "/select-organization",
-            "Continue",
-            "Token and organization are required.",
+            "continue",
+            "error_token_org_required",
             "/login",
-            "Sign in",
+            "sign_in",
             "",
         );
     }
@@ -198,24 +198,24 @@ pub(crate) async fn submit(
     let Some(ott) = ott else {
         return crate::http::login::html(
             StatusCode::BAD_REQUEST,
-            "Select organization",
+            "title_select_organization",
             "/select-organization",
-            "Continue",
-            "Invalid or expired token.",
+            "continue",
+            "error_invalid_or_expired_token",
             "/login",
-            "Sign in",
+            "sign_in",
             "",
         );
     };
     if ott.consumed_at().is_some() || ott.expires_at().is_before(sessions.clock().now()) {
         return crate::http::login::html(
             StatusCode::BAD_REQUEST,
-            "Select organization",
+            "title_select_organization",
             "/select-organization",
-            "Continue",
-            "Invalid or expired token.",
+            "continue",
+            "error_invalid_or_expired_token",
             "/login",
-            "Sign in",
+            "sign_in",
             "",
         );
     }
@@ -235,12 +235,12 @@ pub(crate) async fn submit(
         Err(_) => {
             return crate::http::login::html(
                 StatusCode::BAD_REQUEST,
-                "Select organization",
+                "title_select_organization",
                 "/select-organization",
-                "Continue",
-                "Invalid organization.",
+                "continue",
+                "error_invalid_organization",
                 "/login",
-                "Sign in",
+                "sign_in",
                 "",
             );
         }
@@ -251,12 +251,12 @@ pub(crate) async fn submit(
     if !allowed {
         return crate::http::login::html(
             StatusCode::BAD_REQUEST,
-            "Select organization",
+            "title_select_organization",
             "/select-organization",
-            "Continue",
-            "You are not a member of that organization.",
+            "continue",
+            "error_not_member",
             "/login",
-            "Sign in",
+            "sign_in",
             "",
         );
     }
@@ -271,12 +271,12 @@ pub(crate) async fn submit(
     if consumed.ok().and_then(|r| r.ok()) != Some(WriteOutcome::Applied) {
         return crate::http::login::html(
             StatusCode::BAD_REQUEST,
-            "Select organization",
+            "title_select_organization",
             "/select-organization",
-            "Continue",
-            "Token already used.",
+            "continue",
+            "error_token_already_used",
             "/login",
-            "Sign in",
+            "sign_in",
             "",
         );
     }

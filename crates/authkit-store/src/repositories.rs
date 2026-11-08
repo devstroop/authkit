@@ -1438,6 +1438,56 @@ impl AuditRepository for SqlStore {
 }
 
 impl SqlStore {
+    /// Lists audit events across all tenants with optional action filtering and pagination.
+    pub fn list_audit_events_filtered(
+        &self,
+        action: Option<&str>,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<AuditEvent>, DomainError> {
+        let mut sql = String::from(
+            "SELECT id, org_id, actor_type, actor_id, action, target, occurred_at, attributes FROM audit_event",
+        );
+        if action.is_some() {
+            sql.push_str(" WHERE action = ?");
+        }
+        sql.push_str(" ORDER BY occurred_at DESC, id DESC LIMIT ? OFFSET ?");
+        let sql = self.sql(&sql);
+        self.block_on(async {
+            let mut query = sqlx::query(&sql);
+            if let Some(action) = action {
+                query = query.bind(action);
+            }
+            let rows = query
+                .bind(limit)
+                .bind(offset)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            rows.iter().map(map_audit_event).collect()
+        })
+    }
+
+    /// Counts audit events across all tenants with optional action filtering.
+    pub fn count_audit_events(&self, action: Option<&str>) -> Result<i64, DomainError> {
+        let mut sql = String::from("SELECT COUNT(*) AS c FROM audit_event");
+        if action.is_some() {
+            sql.push_str(" WHERE action = ?");
+        }
+        let sql = self.sql(&sql);
+        self.block_on(async {
+            let mut query = sqlx::query(&sql);
+            if let Some(action) = action {
+                query = query.bind(action);
+            }
+            let row = query.fetch_one(&self.pool).await.map_err(map_db_error)?;
+            use sqlx::Row;
+            Ok(row.get::<i64, _>("c"))
+        })
+    }
+}
+
+impl SqlStore {
     /// Lists recent audit events across all tenants.
     pub fn list_all_audit_events(&self, limit: i64) -> Result<Vec<AuditEvent>, DomainError> {
         let sql = self.sql(
@@ -1518,7 +1568,7 @@ impl SystemAdministratorRepository for SqlStore {
         id: &Id<SystemAdministratorEntity>,
     ) -> Result<Option<SystemAdministrator>, DomainError> {
         let sql = self.sql(
-            "SELECT id, user_id, created_by, status, created_at, updated_at, version FROM system_administrator WHERE id = ?",
+            "SELECT id, user_id, created_by, status, role, created_at, updated_at, version FROM system_administrator WHERE id = ?",
         );
         self.block_on(async {
             let row = sqlx::query(&sql)
@@ -1535,7 +1585,7 @@ impl SystemAdministratorRepository for SqlStore {
         user_id: &Id<UserEntity>,
     ) -> Result<Option<SystemAdministrator>, DomainError> {
         let sql = self.sql(
-            "SELECT id, user_id, created_by, status, created_at, updated_at, version FROM system_administrator WHERE user_id = ?",
+            "SELECT id, user_id, created_by, status, role, created_at, updated_at, version FROM system_administrator WHERE user_id = ?",
         );
         self.block_on(async {
             let row = sqlx::query(&sql)
@@ -1549,7 +1599,7 @@ impl SystemAdministratorRepository for SqlStore {
 
     fn list(&self) -> Result<Vec<SystemAdministrator>, DomainError> {
         let sql = self.sql(
-            "SELECT id, user_id, created_by, status, created_at, updated_at, version FROM system_administrator ORDER BY created_at, id",
+            "SELECT id, user_id, created_by, status, role, created_at, updated_at, version FROM system_administrator ORDER BY created_at, id",
         );
         self.block_on(async {
             let rows = sqlx::query(&sql)
@@ -1562,7 +1612,7 @@ impl SystemAdministratorRepository for SqlStore {
 
     fn insert(&self, admin: &SystemAdministrator) -> Result<WriteOutcome, DomainError> {
         let sql = self.sql(
-            "INSERT INTO system_administrator (id, user_id, created_by, status, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO system_administrator (id, user_id, created_by, status, role, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         );
         let status = match admin.status() {
             authkit_core::domain::SystemAdministratorStatus::Active => "active",
@@ -1574,6 +1624,10 @@ impl SystemAdministratorRepository for SqlStore {
                 .bind(admin.user_id().as_str())
                 .bind(admin.created_by().map(|v| v.as_str()))
                 .bind(status)
+                .bind(match admin.role() {
+                    authkit_core::domain::SystemAdministratorRole::SuperAdmin => "super_admin",
+                    authkit_core::domain::SystemAdministratorRole::Auditor => "auditor",
+                })
                 .bind(admin.created_at().as_millis() as i64)
                 .bind(admin.updated_at().as_millis() as i64)
                 .bind(admin.version() as i64)
@@ -1594,7 +1648,7 @@ impl SystemAdministratorRepository for SqlStore {
         expected_version: u64,
     ) -> Result<WriteOutcome, DomainError> {
         let sql = self.sql(
-            "UPDATE system_administrator SET user_id = ?, created_by = ?, status = ?, created_at = ?, updated_at = ?, version = ? WHERE id = ? AND version = ?",
+            "UPDATE system_administrator SET user_id = ?, created_by = ?, status = ?, role = ?, created_at = ?, updated_at = ?, version = ? WHERE id = ? AND version = ?",
         );
         let status = match admin.status() {
             authkit_core::domain::SystemAdministratorStatus::Active => "active",
@@ -1605,6 +1659,10 @@ impl SystemAdministratorRepository for SqlStore {
                 .bind(admin.user_id().as_str())
                 .bind(admin.created_by().map(|v| v.as_str()))
                 .bind(status)
+                .bind(match admin.role() {
+                    authkit_core::domain::SystemAdministratorRole::SuperAdmin => "super_admin",
+                    authkit_core::domain::SystemAdministratorRole::Auditor => "auditor",
+                })
                 .bind(admin.created_at().as_millis() as i64)
                 .bind(admin.updated_at().as_millis() as i64)
                 .bind(admin.version() as i64)

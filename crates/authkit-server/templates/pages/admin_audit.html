@@ -1,18 +1,26 @@
 {% extends "layouts/admin.html" %}
 {% import "macros/ui.html" as ui %}
 {% block admin_content %}
-<h1>Audit log</h1>
+<h1>{{ crate::i18n::t("title_audit") }}</h1>
+<form method="get" action="/admin/audit" style="display:flex;gap:.5rem;align-items:flex-end;margin-bottom:1rem;flex-wrap:wrap;">
+  <label class="field" style="flex:1;min-width:12rem;">
+    <span>{{ crate::i18n::t("filter_by_action") }}</span>
+    <input class="input" type="text" name="action" value="{{ action_filter }}" placeholder="{{ crate::i18n::t("filter_placeholder") }}">
+  </label>
+  <button class="btn btn-secondary" type="submit">{{ crate::i18n::t("filter") }}</button>
+  <a class="btn btn-ghost" href="/admin/audit">{{ crate::i18n::t("clear") }}</a>
+</form>
 <div class="card">
   {% if events.is_empty() %}
-  <p style="color:var(--muted);">No audit events recorded yet.</p>
+  <p style="color:var(--muted);">{{ crate::i18n::t("no_audit_events") }}</p>
   {% else %}
-  <table>
+  <table class="table">
     <thead>
       <tr>
-        <th>Time</th>
-        <th>Action</th>
-        <th>Organization</th>
-        <th>Actor</th>
+        <th>{{ crate::i18n::t("time") }}</th>
+        <th>{{ crate::i18n::t("action") }}</th>
+        <th>{{ crate::i18n::t("organization") }}</th>
+        <th>{{ crate::i18n::t("actor") }}</th>
       </tr>
     </thead>
     <tbody>
@@ -27,5 +35,18 @@
     </tbody>
   </table>
   {% endif %}
+</div>
+<p style="color:var(--muted);font-size:0.85rem;margin-top:0.75rem;">
+  {% if total > 0 %}{{ total }} total events (showing {{ events.len() }}).{% else %}No events.{% endif %}
+</p>
+<div style="display:flex;gap:.5rem;margin-top:.75rem;flex-wrap:wrap;">
+  {% if offset > 0 %}
+  <a class="btn btn-ghost" href="/admin/audit?action={{ action_filter }}&limit={{ limit }}&offset={{ offset - limit }}">Previous</a>
+  {% endif %}
+  {% if offset + limit < total %}
+  <a class="btn btn-ghost" href="/admin/audit?action={{ action_filter }}&limit={{ limit }}&offset={{ offset + limit }}">Next</a>
+  {% endif %}
+  <a class="btn btn-ghost" href="/admin/audit?action={{ action_filter }}&format=csv">Export CSV</a>
+  <a class="btn btn-ghost" href="/admin/audit?action={{ action_filter }}&format=json">Export JSON</a>
 </div>
 {% endblock %}

@@ -148,6 +148,33 @@ pub fn router_with_sessions(
     )
 }
 
+/// Builds the production router with token endpoints and a custom email sender.
+pub fn router_with_sessions_and_tokens_and_email(
+    readiness: Arc<dyn ReadinessProbe>,
+    keys: Arc<KeyRing>,
+    issuer: Issuer,
+    sessions: Arc<SessionService>,
+    authorization: Option<Arc<AuthorizationService>>,
+    tokens: Option<Arc<TokenService>>,
+    email: Arc<dyn EmailSender + Send + Sync>,
+    hsts: bool,
+) -> Router {
+    with_session_security(
+        base_router(
+            readiness,
+            keys,
+            issuer.clone(),
+            Some(sessions.clone()),
+            authorization,
+            tokens,
+            email,
+        ),
+        sessions,
+        issuer,
+        hsts,
+    )
+}
+
 /// Builds the production router with token endpoints enabled.
 pub fn router_with_sessions_and_tokens(
     readiness: Arc<dyn ReadinessProbe>,
@@ -190,6 +217,7 @@ pub fn with_session_security(
     };
     router
         .layer(middleware::from_fn_with_state(state, session_context))
+        .layer(middleware::from_fn(crate::i18n::locale_middleware))
         .layer(middleware::from_fn_with_state(
             SecurityHeaders::new(hsts),
             security_headers,
@@ -264,7 +292,10 @@ fn base_router(
             "/admin/login",
             get(admin::login_page).post(admin::login_submit),
         )
+        .route("/setup", get(admin::setup_page).post(admin::setup_submit))
         .route("/admin", get(admin::dashboard))
+        .route("/admin/backup", get(admin::backup_download))
+        .route("/admin/restore", get(admin::restore_page).post(admin::restore_submit))
         .route("/admin/users", get(admin::users_page))
         .route("/admin/impersonate/{id}", post(admin::impersonate))
         .route("/admin/impersonate/exit", post(admin::impersonate_exit))

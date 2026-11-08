@@ -1,17 +1,24 @@
 {% extends "layouts/base.html" %}
+{% import "macros/ui.html" as ui %}
 {% block content %}
-<h1>MFA</h1>
-{% if has_mfa %}
-<p>MFA enabled.</p>
-<form method="post" action="/account/mfa/disable">
-  <input type="hidden" name="_csrf" value="{{ csrf }}">
-  <button type="submit">Disable MFA</button>
-</form>
-{% else %}
-<p>Enroll MFA.</p>
-<form method="post" action="/account/mfa/enroll">
-  <input type="hidden" name="_csrf" value="{{ csrf }}">
-  <button type="submit">Generate secret</button>
-</form>
-{% endif %}
+<div class="auth-card" style="max-width:48rem;">
+  <h1>{{ crate::i18n::t("title_mfa") }}</h1>
+  <p class="subtitle">{{ crate::i18n::t("subtitle_mfa") }}</p>
+  <div class="card">
+  {% if has_mfa %}
+  <p style="margin-bottom:var(--space-4);">{{ crate::i18n::t("mfa_enabled") }}</p>
+  <form method="post" action="/account/mfa/disable">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    {{ ui::button(crate::i18n::t("disable_mfa"), "danger") }}
+  </form>
+  {% else %}
+  <p style="margin-bottom:var(--space-4);color:var(--muted);">{{ crate::i18n::t("mfa_not_enabled") }}</p>
+  <form method="post" action="/account/mfa/enroll">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    {{ ui::button(crate::i18n::t("generate_secret")) }}
+  </form>
+  {% endif %}
+  </div>
+  <p class="links"><a href="/account/mfa/recovery-codes">{{ crate::i18n::t("recovery_codes") }}</a> · <a href="/account">{{ crate::i18n::t("back_to_account") }}</a></p>
+</div>
 {% endblock %}

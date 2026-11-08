@@ -1,12 +1,29 @@
 {% extends "layouts/base.html" %}
+{% import "macros/ui.html" as ui %}
 {% block content %}
-<h1>Choose new password</h1>
-<form method="post" action="/password-reset/confirm">
-  {% if !csrf.is_empty() %}
-  <input type="hidden" name="_csrf" value="{{ csrf }}">
-  {% endif %}
-  <input type="hidden" name="token" value="{{ token }}">
-  <label>New password <input type="password" name="password" type="password" required minlength="12" autocomplete="new-password" aria-required="true"></label>
-  <button>Reset</button>
-</form>
+<div class="auth-shell">
+  <aside class="auth-brand">
+    <div class="brand-mark">AuthKit</div>
+    <div>
+      <h2 class="brand-headline">{{ crate::i18n::t("brand_headline_new_password") }}</h2>
+      <p class="brand-sub">{{ crate::i18n::t("brand_sub_new_password") }}</p>
+    </div>
+    <div class="brand-foot">{{ crate::i18n::t("brand_foot") }}</div>
+  </aside>
+  <section class="auth-panel">
+    <div class="auth-card">
+      <h1>{{ crate::i18n::t("title_choose_new_password") }}</h1>
+      <p class="subtitle">{{ crate::i18n::t("subtitle_confirm_reset") }}</p>
+      <form method="post" action="/password-reset/confirm">
+        {% if !csrf.is_empty() %}
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        {% endif %}
+        <input type="hidden" name="token" value="{{ token }}">
+        {{ ui::text_input("password", crate::i18n::t("new_password"), "password", "new-password", true, "12") }}
+        {{ ui::button(crate::i18n::t("reset_password")) }}
+      </form>
+      <p class="links"><a href="/login">{{ crate::i18n::t("back_to_sign_in") }}</a></p>
+    </div>
+  </section>
+</div>
 {% endblock %}

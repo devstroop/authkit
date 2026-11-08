@@ -1,53 +1,104 @@
 {% extends "layouts/admin.html" %}
 {% import "macros/ui.html" as ui %}
 {% block admin_content %}
-<h1>System administration</h1>
+<h1>{{ crate::i18n::t("title_admin") }}</h1>
 
 <section class="card">
-  <h2>System administrators</h2>
-  <ul>
-  {% for admin in admins %}
-  <li>{{ admin.email }} ({{ admin.id }}) {{ admin.status }}
-    {% if admin.active %}
-    <form method="post" action="/admin/administrators/{{ admin.id }}/disable" style="display:inline">
-      <input type="hidden" name="_csrf" value="{{ csrf }}">
-      {{ ui::button("Disable", "danger") }}
-    </form>
-    {% endif %}
-  </li>
-  {% endfor %}
-  </ul>
-  <form method="post" action="/admin/administrators">
+  <h2>{{ crate::i18n::t("system_administrators") }}</h2>
+  {% if admins.is_empty() %}
+  <p style="color:var(--muted);">{{ crate::i18n::t("no_administrators") }}</p>
+  {% else %}
+  <table>
+    <thead><tr><th>{{ crate::i18n::t("email") }}</th><th>{{ crate::i18n::t("status") }}</th><th>{{ crate::i18n::t("actions") }}</th></tr></thead>
+    <tbody>
+    {% for admin in admins %}
+    <tr>
+      <td>
+        <div style="font-weight:500;">{{ admin.email }}</div>
+        <div style="font-size:0.8rem;color:var(--muted);font-family:monospace;">{{ admin.id }}</div>
+      </td>
+      <td>{{ admin.status }}</td>
+      <td>
+        {% if admin.active %}
+        {% if can_manage %}
+        <form method="post" action="/admin/administrators/{{ admin.id }}/disable" style="display:inline">
+          <input type="hidden" name="_csrf" value="{{ csrf }}">
+          <input type="text" name="code" placeholder="TOTP code" class="input" style="width:auto;padding:0.2rem 0.5rem;font-size:0.8rem;">
+          <button type="submit" class="btn btn-secondary" style="width:auto;padding:0.3rem 0.75rem;font-size:0.85rem;">{{ crate::i18n::t("disable") }}</button>
+        </form>
+        {% endif %}
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  {% if can_manage %}
+  <form method="post" action="/admin/administrators" style="margin-top:var(--space-4);">
     <input type="hidden" name="_csrf" value="{{ csrf }}">
-    {{ ui::text_input("email", "Email", "email", "email") }}
-    {{ ui::button("Grant admin") }}
+    {{ ui::text_input("email", crate::i18n::t("email"), "email", "email") }}
+    {{ ui::text_input("code", "TOTP code", "text", "one-time-code") }}
+    {{ ui::button(crate::i18n::t("grant_admin")) }}
   </form>
+  {% endif %}
 </section>
 
 <section class="card">
-  <h2>Signing keys</h2>
-  <ul>
-  {% for key in keys %}
-  <li>{{ key.kid }} {{ key.state }} {{ key.published }}</li>
-  {% endfor %}
-  </ul>
-  <form method="post" action="/admin/signing-keys/rotate">
+  <h2>{{ crate::i18n::t("signing_keys") }}</h2>
+  {% if keys.is_empty() %}
+  <p style="color:var(--muted);">{{ crate::i18n::t("no_signing_keys") }}</p>
+  {% else %}
+  <table>
+    <thead><tr><th>KID</th><th>{{ crate::i18n::t("state") }}</th><th>{{ crate::i18n::t("published") }}</th></tr></thead>
+    <tbody>
+    {% for key in keys %}
+    <tr>
+      <td style="font-family:monospace;font-size:0.85rem;">{{ key.kid }}</td>
+      <td>{{ key.state }}</td>
+      <td style="color:var(--muted);font-size:0.85rem;">{{ key.published }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  {% if can_manage %}
+  <form method="post" action="/admin/signing-keys/rotate" style="margin-top:var(--space-4);">
     <input type="hidden" name="_csrf" value="{{ csrf }}">
-    {{ ui::button("Rotate signing key") }}
+    {{ ui::text_input("code", "TOTP code", "text", "one-time-code") }}
+    {{ ui::button(crate::i18n::t("rotate_signing_key")) }}
   </form>
+  {% endif %}
+  {% if can_manage %}
+  <p style="margin-top:var(--space-3);"><a class="btn btn-ghost" href="/admin/backup">Download backup</a></p>
+  {% endif %}
+  {% if can_manage %}
+  <p style="margin-top:var(--space-3);"><a class="btn btn-ghost" href="/admin/restore">Restore database</a></p>
+  {% endif %}
 </section>
 
 <section class="card">
-  <h2>Recent audit events</h2>
-  <ul>
-  {% for event in events %}
-  <li>{{ event.occurred_at }} {{ event.action }} {{ event.org }}</li>
-  {% endfor %}
-  </ul>
+  <h2>{{ crate::i18n::t("recent_audit_events") }}</h2>
+  {% if events.is_empty() %}
+  <p style="color:var(--muted);">{{ crate::i18n::t("no_audit_events") }}</p>
+  {% else %}
+  <table>
+    <thead><tr><th>{{ crate::i18n::t("time") }}</th><th>{{ crate::i18n::t("action") }}</th><th>{{ crate::i18n::t("organization") }}</th></tr></thead>
+    <tbody>
+    {% for event in events %}
+    <tr>
+      <td style="font-size:0.85rem;color:var(--muted);">{{ event.occurred_at }}</td>
+      <td><code style="font-size:0.85rem;">{{ event.action }}</code></td>
+      <td>{{ event.org }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
 </section>
 
-<form method="post" action="/admin/logout">
+<form method="post" action="/admin/logout" style="margin-top:var(--space-4);">
   <input type="hidden" name="_csrf" value="{{ csrf }}">
-  {{ ui::button("Sign out", "secondary") }}
+  {{ ui::button(crate::i18n::t("sign_out"), "secondary") }}
 </form>
 {% endblock %}

@@ -15,6 +15,7 @@ use webauthn_rs::prelude::*;
 
 use crate::http::routes::AppState;
 use crate::http::session::SessionContext;
+use askama::Template;
 use authkit_core::domain::Id;
 use authkit_core::domain::id::UserEntity;
 
@@ -299,6 +300,20 @@ pub(crate) async fn auth_finish(
     response
 }
 
+#[derive(Clone)]
+struct PasskeyView {
+    id: String,
+    credential_id: String,
+}
+
+#[derive(Template)]
+#[template(path = "pages/passkeys.html")]
+struct PasskeysTemplate<'a> {
+    title: &'a str,
+    csrf: &'a str,
+    passkeys: Vec<PasskeyView>,
+}
+
 // Account page listing passkeys
 pub(crate) async fn list_page(
     State(state): State<AppState>,
@@ -311,8 +326,9 @@ pub(crate) async fn list_page(
         return unavailable();
     };
     let user_id = s.session().user_id().as_str().to_owned();
+    let csrf = sessions.csrf_token(s.session());
     let store = sessions.store().clone();
-    let passkeys = tokio::task::spawn_blocking({
+    let passkeys_raw = tokio::task::spawn_blocking({
         let store = store.clone();
         let uid = user_id.clone();
         move || store.list_passkeys(&uid)
@@ -321,14 +337,19 @@ pub(crate) async fn list_page(
     .ok()
     .and_then(|r| r.ok())
     .unwrap_or_default();
-    let body = format!(
-        "<h1>Passkeys</h1><ul>{}</ul><button id=pk-register>Register passkey</button><script>document.getElementById('pk-register').onclick=async()=>{{const r=await fetch('/passkeys/register/begin',{{method:'POST',credentials:'same-origin'}});const d=await r.json();console.log(d);alert('begin: '+JSON.stringify(d));}};</script>",
-        passkeys
-            .iter()
-            .map(|(id, cred)| format!("<li>{} {}</li>", id, cred))
-            .collect::<Vec<_>>()
-            .join("")
-    );
+    let passkey_views: Vec<PasskeyView> = passkeys_raw
+        .into_iter()
+        .map(|(id, cred)| PasskeyView {
+            id,
+            credential_id: cred,
+        })
+        .collect();
+    let template = PasskeysTemplate {
+        title: "title_passkeys",
+        csrf: &csrf,
+        passkeys: passkey_views,
+    };
+    let body = template.render().unwrap_or_default();
     (
         StatusCode::OK,
         [(header::CONTENT_TYPE, "text/html; charset=utf-8")],

@@ -9,7 +9,8 @@ use tracing::info;
 
 use crate::authorization::AuthorizationService;
 use crate::config::{Config, Environment};
-use crate::http::{ReadinessProbe, SqlStoreReadiness, router_with_sessions_and_tokens};
+use crate::email::{DevEmailSender, SmtpEmailSender};
+use crate::http::{ReadinessProbe, SqlStoreReadiness, router_with_sessions_and_tokens_and_email};
 use crate::session::{SessionService, SystemClock};
 use crate::signing::{KeyRing, KeyRingError, unix_now};
 use crate::tokens::TokenService;
@@ -112,13 +113,20 @@ async fn serve_with_store(config: &Config, store: Arc<SqlStore>) -> Result<(), S
         config.tokens(),
         config.session().pepper().to_vec(),
     ));
-    let app = router_with_sessions_and_tokens(
+    let email: Arc<dyn authkit_core::ports::EmailSender + Send + Sync> =
+        if let Some(smtp) = SmtpEmailSender::from_env() {
+            Arc::new(smtp)
+        } else {
+            Arc::new(DevEmailSender)
+        };
+    let app = router_with_sessions_and_tokens_and_email(
         readiness,
         keys,
         config.issuer().clone(),
         sessions,
         Some(authorization),
         Some(tokens),
+        email,
         config.environment() == Environment::Production,
     );
     let listener = TcpListener::bind(config.bind_addr())

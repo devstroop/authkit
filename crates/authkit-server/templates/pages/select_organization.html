@@ -5,15 +5,15 @@
   <aside class="auth-brand">
     <div class="brand-mark">AuthKit</div>
     <div>
-      <h2 class="brand-headline">Choose your <em>organization.</em></h2>
-      <p class="brand-sub">You belong to multiple organizations. Pick one to continue.</p>
+      <h2 class="brand-headline">{{ crate::i18n::t("brand_headline_select_org") }}</h2>
+      <p class="brand-sub">{{ crate::i18n::t("brand_sub_select_org") }}</p>
     </div>
-    <div class="brand-foot">© 2026 AuthKit · MIT / Apache-2.0</div>
+    <div class="brand-foot">{{ crate::i18n::t("brand_foot") }}</div>
   </aside>
   <section class="auth-panel">
     <div class="auth-card">
-      <h1>Select organization</h1>
-      <p class="subtitle">Which workspace would you like to enter?</p>
+      <h1>{{ crate::i18n::t("title_select_organization") }}</h1>
+      <p class="subtitle">{{ crate::i18n::t("subtitle_select_org") }}</p>
       <form method="post" action="/select-organization">
         <input type="hidden" name="token" value="{{ token }}">
         {% if !csrf.is_empty() %}
@@ -27,9 +27,9 @@
           </label>
           {% endfor %}
         </fieldset>
-        {{ ui::button("Continue") }}
+        {{ ui::button(crate::i18n::t("continue")) }}
       </form>
-      <p class="links"><a href="/login">Back to sign in</a></p>
+      <p class="links"><a href="/login">{{ crate::i18n::t("back_to_sign_in") }}</a></p>
     </div>
   </section>
 </div>

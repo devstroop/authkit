@@ -100,7 +100,7 @@ async fn perform(state: &AppState, headers: &HeaderMap, params: &Params) -> Resp
                         ),
                     ],
                     SignedOutTemplate {
-                        title: "Signed out",
+                        title: "title_signed_out",
                     }
                     .render()
                     .unwrap_or_default(),
