@@ -1799,6 +1799,24 @@ impl SqlStore {
         })
     }
 
+    pub fn list_passkey_jsons(&self, user_id: &str) -> Result<Vec<String>, DomainError> {
+        let sql = self.sql("SELECT passkey_json FROM passkey WHERE user_id = ?");
+        self.block_on(async {
+            let rows = sqlx::query(&sql)
+                .bind(user_id)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            let mut out = Vec::new();
+            for row in rows {
+                use sqlx::Row;
+                let j: String = row.get("passkey_json");
+                out.push(j);
+            }
+            Ok(out)
+        })
+    }
+
     pub fn find_passkey_json(&self, credential_id: &str) -> Result<Option<String>, DomainError> {
         let sql = self.sql("SELECT passkey_json FROM passkey WHERE credential_id = ?");
         self.block_on(async {

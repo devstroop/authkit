@@ -23,6 +23,10 @@ enum Pending {
         user_id: Id<UserEntity>,
         state: PasskeyRegistration,
     },
+    Authentication {
+        user_id: Id<UserEntity>,
+        state: PasskeyAuthentication,
+    },
 }
 
 static PENDING: std::sync::LazyLock<Arc<Mutex<HashMap<String, Pending>>>> =
@@ -158,6 +162,115 @@ pub(crate) async fn register_finish(
 fn rand_token() -> u64 {
     use rand_core::{OsRng, RngCore};
     OsRng.next_u64()
+}
+
+
+#[derive(Deserialize)]
+pub struct AuthBeginRequest {
+    pub email: String,
+}
+
+pub(crate) async fn auth_begin(
+    State(state): State<AppState>,
+    Json(req): Json<AuthBeginRequest>,
+) -> Response {
+    let Some(wa) = state.webauthn.as_ref() else {
+        return unavailable();
+    };
+    let Some(sessions) = state.sessions.as_ref() else {
+        return unavailable();
+    };
+    let email = match authkit_core::domain::Email::parse(&req.email) {
+        Ok(v) => v,
+        Err(_) => return bad_request("invalid email"),
+    };
+    let store = sessions.store().clone();
+    let user = tokio::task::spawn_blocking({
+        let store = store.clone();
+        let email = email.clone();
+        move || authkit_core::ports::UserRepository::find_by_email(store.as_ref(), &email)
+    })
+    .await
+    .ok()
+    .and_then(|r| r.ok().flatten());
+    let Some(user) = user else {
+        return bad_request("user not found");
+    };
+    let user_id = user.id().clone();
+    let jsons = tokio::task::spawn_blocking({
+        let store = sessions.store().clone();
+        let uid = user_id.as_str().to_owned();
+        move || store.list_passkey_jsons(&uid)
+    })
+    .await
+    .ok()
+    .and_then(|r| r.ok())
+    .unwrap_or_default();
+    let mut passkeys = Vec::new();
+    for j in jsons {
+        if let Ok(pk) = serde_json::from_str::<Passkey>(&j) {
+            passkeys.push(pk);
+        }
+    }
+    if passkeys.is_empty() {
+        return bad_request("no passkeys registered");
+    }
+    let (rcr, pa) = match wa.start_passkey_authentication(&passkeys) {
+        Ok(v) => v,
+        Err(_) => return bad_request("auth begin failed"),
+    };
+    let token = format!("{:x}", rand_token());
+    PENDING.lock().unwrap().insert(
+        token.clone(),
+        Pending::Authentication {
+            user_id: user_id.clone(),
+            state: pa,
+        },
+    );
+    (
+        StatusCode::OK,
+        Json(json!({"token": token, "options": rcr})),
+    )
+        .into_response()
+}
+
+#[derive(Deserialize)]
+pub struct AuthFinishRequest {
+    pub token: String,
+    pub credential: PublicKeyCredential,
+}
+
+pub(crate) async fn auth_finish(
+    State(state): State<AppState>,
+    Json(req): Json<AuthFinishRequest>,
+) -> Response {
+    let Some(wa) = state.webauthn.as_ref() else {
+        return unavailable();
+    };
+    let Some(sessions) = state.sessions.as_ref() else {
+        return unavailable();
+    };
+    let pending = PENDING.lock().unwrap().remove(&req.token);
+    let (user_id, pa_state) = match pending {
+        Some(Pending::Authentication { user_id, state }) => (user_id, state),
+        _ => return bad_request("invalid or expired token"),
+    };
+    let result = match wa.finish_passkey_authentication(&req.credential, &pa_state) {
+        Ok(v) => v,
+        Err(_) => return bad_request("authentication failed"),
+    };
+    let now = sessions.clock().now();
+    let created = match sessions.create(user_id.clone(), None, authkit_core::domain::SessionAudience::Account, now).await {
+        Ok(v) => v,
+        Err(_) => return unavailable(),
+    };
+    let _ = result;
+    let cookie = sessions.set_cookie(created.session(), created.token(), now);
+    let mut response = axum::response::Redirect::to("/").into_response();
+    if let Ok(value) = axum::http::HeaderValue::from_str(&cookie) {
+        response.headers_mut().append(axum::http::header::SET_COOKIE, value);
+    }
+    response
 }
 
 // Account page listing passkeys

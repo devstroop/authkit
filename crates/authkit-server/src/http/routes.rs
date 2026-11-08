@@ -348,6 +348,8 @@ fn base_router(
         .route("/passkeys", get(passkeys::list_page))
         .route("/passkeys/register/begin", post(passkeys::register_begin))
         .route("/passkeys/register/finish", post(passkeys::register_finish))
+        .route("/passkeys/authenticate/begin", post(passkeys::auth_begin))
+        .route("/passkeys/authenticate/finish", post(passkeys::auth_finish))
         .route(
             "/invitations/accept",
             get(organization::accept_invitation_page).post(organization::accept_invitation),
