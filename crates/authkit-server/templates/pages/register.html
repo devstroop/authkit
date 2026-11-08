@@ -1,6 +1,6 @@
 {% extends "layouts/base.html" %}
 {% block content %}
-<h1>Create account</h1>
+<h1>{{ crate::i18n::t("register") }}</h1>
 <form method="post" action="/register">
   {% if !csrf.is_empty() %}
   <input type="hidden" name="_csrf" value="{{ csrf }}">
@@ -10,7 +10,7 @@
   {% endif %}
   <label>Email <input type="email" name="email" required autocomplete="email" aria-required="true"></label>
   <label>Password <input type="password" name="password" type="password" required minlength="12" autocomplete="new-password" aria-required="true"></label>
-  <button type="submit">Create account</button>
+  <button type="submit">{{ crate::i18n::t("register") }}</button>
 </form>
-<p><a href="/login">Sign in instead</a></p>
+<p><a href="/login">{{ crate::i18n::t("sign_in") }}</a></p>
 {% endblock %}

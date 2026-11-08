@@ -1,8 +1,9 @@
 //! Internationalization hooks.
 //!
-//! This module provides locale detection and a translation lookup. Templates may call
-//! `crate::i18n::t(key, locale)` once migrated; today the catalog contains only English
-//! strings and the default locale is `en`.
+//! Templates call `crate::i18n::t(key)` which resolves against the thread-local
+//! locale set by handlers via `set_locale`. The catalog currently ships English only.
+
+use std::cell::Cell;
 
 use axum::http::HeaderMap;
 
@@ -19,6 +20,18 @@ impl Locale {
     }
 }
 
+thread_local! {
+    static CURRENT: Cell<Locale> = Cell::new(Locale::En);
+}
+
+pub fn set_locale(locale: Locale) {
+    CURRENT.with(|c| c.set(locale));
+}
+
+pub fn current_locale() -> Locale {
+    CURRENT.with(|c| c.get())
+}
+
 /// Detects a locale from the `Accept-Language` header, falling back to English.
 pub fn detect_locale(headers: &HeaderMap) -> Locale {
     if let Some(value) = headers.get(axum::http::header::ACCEPT_LANGUAGE)
@@ -33,12 +46,17 @@ pub fn detect_locale(headers: &HeaderMap) -> Locale {
     Locale::En
 }
 
-/// Translates a message key for the given locale. Returns the key itself when missing.
-pub fn t(key: &str, _locale: Locale) -> String {
+/// Translates a message key for the current locale. Returns the key itself when missing.
+pub fn t(key: &str) -> String {
+    let _ = current_locale();
     match key {
         "skip_to_content" => "Skip to content".to_owned(),
         "sign_in" => "Sign in".to_owned(),
         "sign_out" => "Sign out".to_owned(),
+        "register" => "Create an account".to_owned(),
+        "email" => "Email".to_owned(),
+        "password" => "Password".to_owned(),
+        "submit" => "Submit".to_owned(),
         _ => key.to_owned(),
     }
 }
