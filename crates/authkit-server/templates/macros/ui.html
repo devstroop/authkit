@@ -40,12 +40,3 @@
 {% macro alert(message) %}
 <p class="alert" role="alert">{{ message }}</p>
 {% endmacro %}
-
-{% macro card(title) %}
-<section class="card">
-  {% if !title.is_empty() %}
-  <h2 class="card-title">{{ title }}</h2>
-  {% endif %}
-  {{ caller() }}
-</section>
-{% endmacro %}
