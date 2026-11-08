@@ -474,6 +474,12 @@ pub(crate) async fn login_submit(
     let cookie = sessions.set_cookie(created.session(), created.token(), now);
     let mut response = redirect(&redirect_to);
 
+    let _ = state.email.send(
+        user.email(),
+        "New sign-in to your account",
+        "A new sign-in to your account was recorded. If this was not you, revoke your sessions.",
+    );
+
     if let Ok(value) = axum::http::HeaderValue::from_str(&cookie) {
         response.headers_mut().append(header::SET_COOKIE, value);
     }
