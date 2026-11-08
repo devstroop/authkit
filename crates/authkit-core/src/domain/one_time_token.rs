@@ -9,6 +9,7 @@ pub enum OneTimeTokenPurpose {
     EmailVerification,
     MagicAuth,
     OrgSelection,
+    EmailChange,
 }
 
 impl OneTimeTokenPurpose {
@@ -18,6 +19,7 @@ impl OneTimeTokenPurpose {
             Self::EmailVerification => "email_verification",
             Self::MagicAuth => "magic_auth",
             Self::OrgSelection => "org_selection",
+            Self::EmailChange => "email_change",
         }
     }
 
@@ -27,6 +29,7 @@ impl OneTimeTokenPurpose {
             "email_verification" => Ok(Self::EmailVerification),
             "magic_auth" => Ok(Self::MagicAuth),
             "org_selection" => Ok(Self::OrgSelection),
+            "email_change" => Ok(Self::EmailChange),
             _ => Err(DomainError::invalid("unknown one-time token purpose")),
         }
     }

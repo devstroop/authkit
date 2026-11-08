@@ -398,6 +398,14 @@ fn base_router(
             post(reset::request_verify_submit),
         )
         .route(
+            "/account/email-change-request",
+            post(account::request_email_change),
+        )
+        .route(
+            "/account/email-change/confirm",
+            get(account::email_change_confirm_page).post(account::confirm_email_change),
+        )
+        .route(
             "/account/sessions/{id}/revoke",
             post(account::revoke_session),
         )

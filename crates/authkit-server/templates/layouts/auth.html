@@ -2,6 +2,12 @@
 {% block site_header %}{% endblock %}
 {% block site_footer %}{% endblock %}
 {% block content %}
+<div class="auth-lang-switcher">
+  <select class="lang-select" aria-label="Language" onchange="setLang(this.value)">
+    <option value="en" {% if crate::i18n::current_locale().as_str() == "en" %}selected{% endif %}>English</option>
+    <option value="es" {% if crate::i18n::current_locale().as_str() == "es" %}selected{% endif %}>Español</option>
+  </select>
+</div>
 <div class="auth-shell-wrap">
   {% block auth_content %}{% endblock %}
 </div>

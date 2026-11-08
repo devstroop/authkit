@@ -508,13 +508,13 @@ pub(crate) async fn register_submit(
         );
     }
 
-    if !confirm_password.is_empty() && password != confirm_password {
+    if confirm_password.is_empty() || password != confirm_password {
         return html(
             StatusCode::BAD_REQUEST,
             "title_register",
             "/register",
             "register",
-            "Passwords do not match.",
+            "passwords_do_not_match",
             "/login",
             "sign_in",
             "",

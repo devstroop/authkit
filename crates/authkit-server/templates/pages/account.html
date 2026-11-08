@@ -28,6 +28,15 @@
   </div>
 
   <div class="card">
+    <h2>{{ crate::i18n::t("change_email") }}</h2>
+    <form method="post" action="/account/email-change-request">
+      <input type="hidden" name="_csrf" value="{{ csrf }}">
+      {{ ui::text_input("new_email", crate::i18n::t("new_email"), "email", "email") }}
+      {{ ui::button(crate::i18n::t("update_email")) }}
+    </form>
+  </div>
+
+  <div class="card">
     <h2>{{ crate::i18n::t("change_password") }}</h2>
     <form method="post" action="/account/password">
       <input type="hidden" name="_csrf" value="{{ csrf }}">
