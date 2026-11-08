@@ -1,5 +1,5 @@
 {% import "macros/ui.html" as ui %}
-<ul id="members">
+<ul id="members" aria-live="polite">
 {% for member in members %}
 <li>{{ member.email }} {{ member.status }} ({{ member.id }})</li>
 {% endfor %}

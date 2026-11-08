@@ -2,7 +2,7 @@
 {% import "macros/ui.html" as ui %}
 {% block content %}
 <h1>Applications</h1>
-<ul id="applications">
+<ul id="applications" aria-live="polite">
 {% for app in apps %}
 <li>{{ app.name }} ({{ app.slug }}) {{ app.kind }} {{ app.status }}</li>
 {% endfor %}

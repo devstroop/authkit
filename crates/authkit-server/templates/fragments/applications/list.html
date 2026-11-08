@@ -1,5 +1,5 @@
 {% import "macros/ui.html" as ui %}
-<ul id="applications">
+<ul id="applications" aria-live="polite">
 {% for app in apps %}
 <li>{{ app.name }} ({{ app.slug }}) {{ app.kind }} {{ app.status }}</li>
 {% endfor %}

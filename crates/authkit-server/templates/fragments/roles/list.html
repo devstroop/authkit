@@ -1,5 +1,5 @@
 {% import "macros/ui.html" as ui %}
-<ul id="roles">
+<ul id="roles" aria-live="polite">
 {% for role in roles %}
 <li>{{ role.name }} ({{ role.slug }}) - {{ role.permissions }}</li>
 {% endfor %}

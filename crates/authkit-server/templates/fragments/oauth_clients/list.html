@@ -1,5 +1,5 @@
 {% import "macros/ui.html" as ui %}
-<ul id="oauth-clients">
+<ul id="oauth-clients" aria-live="polite">
 {% for client in clients %}
 <li>{{ client.name }} ({{ client.client_id }}) - {{ client.status }} <a href="/organizations/{{ org_id }}/oauth-clients/{{ client.id }}">Manage</a></li>
 {% endfor %}

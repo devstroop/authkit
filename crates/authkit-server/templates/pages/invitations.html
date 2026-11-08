@@ -2,7 +2,7 @@
 {% import "macros/ui.html" as ui %}
 {% block content %}
 <h1>Invitations</h1>
-<ul id="invitations">
+<ul id="invitations" aria-live="polite">
 {% for invitation in invitations %}
 <li>{{ invitation.email }} {{ invitation.status }}
   {% if can_manage %}

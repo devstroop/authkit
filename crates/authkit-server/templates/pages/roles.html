@@ -2,7 +2,7 @@
 {% import "macros/ui.html" as ui %}
 {% block content %}
 <h1>Roles</h1>
-<ul id="roles">
+<ul id="roles" aria-live="polite">
 {% for role in roles %}
 <li>{{ role.name }} ({{ role.slug }}) - {{ role.permissions }}</li>
 {% endfor %}

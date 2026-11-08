@@ -2,7 +2,7 @@
 {% import "macros/ui.html" as ui %}
 {% block content %}
 <h1>Organizations</h1>
-<ul id="organizations">
+<ul id="organizations" aria-live="polite">
 {% for org in organizations %}
 <li>{{ org.name }} ({{ org.slug }}) <a href="/organizations/{{ org.id }}/members">Manage</a></li>
 {% endfor %}
