@@ -45,6 +45,7 @@ impl SystemAdministrator {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn restore(
         id: Id<SystemAdministratorEntity>,
         user_id: Id<UserEntity>,

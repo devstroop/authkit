@@ -351,10 +351,10 @@ pub(crate) async fn audit_page(
                     }
                 }
                 (Some("offset"), Some(v)) => {
-                    if let Ok(n) = v.parse::<i64>() {
-                        if n >= 0 {
-                            offset = n;
-                        }
+                    if let Ok(n) = v.parse::<i64>()
+                        && n >= 0
+                    {
+                        offset = n;
                     }
                 }
                 (Some("format"), Some(v)) => format = v.to_owned(),

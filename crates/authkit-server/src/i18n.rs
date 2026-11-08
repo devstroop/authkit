@@ -76,14 +76,26 @@ pub async fn locale_middleware(
     request: axum::http::Request<axum::body::Body>,
     next: axum::middleware::Next,
 ) -> axum::response::Response {
-    let locale = detect_locale(request.headers());
+    let mut locale = detect_locale(request.headers());
+    if let Some(cookie) = request.headers().get(axum::http::header::COOKIE)
+        && let Ok(text) = cookie.to_str()
+    {
+        for part in text.split(';') {
+            let mut kv = part.trim().splitn(2, '=');
+            if let (Some("authkit_lang"), Some(val)) = (kv.next(), kv.next())
+                && let Some(l) = Locale::from_code(val.trim())
+            {
+                locale = l;
+            }
+        }
+    }
     if let Some(q) = request.uri().query() {
         for pair in q.split('&') {
             let mut parts = pair.splitn(2, '=');
-            if let (Some("lang"), Some(val)) = (parts.next(), parts.next()) {
-                if let Some(l) = Locale::from_code(val) {
-                    return scope(l, next.run(request)).await;
-                }
+            if let (Some("lang"), Some(val)) = (parts.next(), parts.next())
+                && let Some(l) = Locale::from_code(val)
+            {
+                locale = l;
             }
         }
     }

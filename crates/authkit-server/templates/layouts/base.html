@@ -68,7 +68,7 @@
       }
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { height: 100%; }
+
     body {
       font-family: var(--font-body);
       font-size: 16px;
@@ -76,9 +76,11 @@
       background: var(--bg);
       color: var(--fg);
       min-height: 100vh;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
       -webkit-font-smoothing: antialiased;
       text-rendering: optimizeLegibility;
-      overflow-x: hidden;
     }
     .skip-link {
       position: absolute; left: -9999px; top: auto; width: 1px; height: 1px; overflow: hidden;
@@ -89,15 +91,15 @@
       border-radius: var(--radius-sm); z-index: 100; font-weight: 600;
     }
     main {
-      max-width: 72rem;
-      margin: 0 auto;
-      padding: var(--space-4);
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
     /* Auth shell */
     .auth-shell {
       display: grid;
       grid-template-columns: 1.1fr 1fr;
-      min-height: calc(100vh - 8rem);
       border-radius: var(--radius-lg);
       overflow: hidden;
       box-shadow: var(--shadow-xl);
@@ -213,6 +215,11 @@
       line-height: 1.5;
     }
     .field { display: block; margin: var(--space-3) 0; }
+
+    .password-wrap { position: relative; display: flex; align-items: center; }
+    .password-wrap .input { padding-right: 2.5rem; }
+    .password-toggle { position: absolute; right: 0.6rem; top: 50%; transform: translateY(-50%); background: transparent; border: 0; cursor: pointer; color: var(--muted); padding: 0.25rem; display: flex; align-items: center; }
+    .password-toggle:hover { color: var(--fg); }
     .field > span {
       display: block;
       font-size: 0.8rem;
@@ -362,13 +369,12 @@
       .admin-nav { flex-direction: row; flex-wrap: wrap; position: static; }
     }
     @media (max-width: 40rem) {
-      .auth-shell { grid-template-columns: 1fr; min-height: auto; border-radius: 0; box-shadow: none; }
+      .auth-shell { grid-template-columns: 1fr; min-height: 0; border-radius: 0; box-shadow: none; }
       .auth-brand { padding: var(--space-6) var(--space-5); min-height: 10rem; }
       .brand-headline { font-size: 1.875rem; }
       .brand-sub { font-size: 0.95rem; }
       .auth-panel { padding: var(--space-5) var(--space-4); }
       .auth-card h1 { font-size: 2.25rem; }
-      main { padding: var(--space-3); }
     }
   
     /* Responsive helpers */
@@ -413,7 +419,7 @@
     .app-sidebar a { padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); color: var(--fg); text-decoration: none; font-size: 0.9rem; font-weight: 500; }
     .app-sidebar a:hover { background: var(--bg-2); }
     .app-content { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-6); box-shadow: var(--shadow); }
-    .auth-shell-wrap { max-width: 72rem; margin: 0 auto; padding: var(--space-4); }
+    .auth-shell-wrap { max-width: 72rem; width: 100%; }
     @media (max-width: 48rem) {
       .app-layout { grid-template-columns: 1fr; }
       .app-sidebar { position: static; }
@@ -436,6 +442,7 @@
       margin-top: var(--space-8);
     }
     .site-footer-inner { max-width: 76rem; margin: 0 auto; }
+    .lang-select { padding: 0.25rem 0.5rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--fg); font-size: 0.85rem; cursor: pointer; }
     /* Dialog / modal */
     dialog.modal {
       border: 1px solid var(--border); border-radius: var(--radius-lg);
@@ -451,7 +458,6 @@
     .modal-header h2 { font-family: var(--font-display); font-size: 1.5rem; font-weight: 400; margin: 0; }
     .modal-body { padding: var(--space-5) var(--space-6); }
     .modal-close { background: transparent; border: 0; font-size: 1.25rem; cursor: pointer; color: var(--muted); }
-    .btn-primary { width: auto; }
 </style>
   <script src="/static/htmx.min.js" defer></script>
   <script defer>
@@ -470,22 +476,36 @@
   <header class="site-header">
     <div class="site-header-inner">
       <a class="brand-mark" href="/">AuthKit</a>
-      <div class="lang-switcher" aria-label="Language">
-        <a href="?lang=en">EN</a>
-        <span aria-hidden="true">|</span>
-        <a href="?lang=es">ES</a>
-      </div>
     </div>
   </header>
   {% endblock %}
   <main id="main" aria-live="polite">
     {% block content %}{% endblock %}
   </main>
+  {% block site_footer %}
   <footer class="site-footer">
-    <div class="site-footer-inner">
-      <span>© 2026 AuthKit · MIT / Apache-2.0</span>
+    <div class="site-footer-inner" style="display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);flex-wrap:wrap;">
+      <span>© 2026 AuthKit · MIT / Apache-2.0 · Powered by <a href="https://devstroop.com" target="_blank" rel="noopener noreferrer" style="color:var(--muted);text-decoration:none;font-weight:500;">Devstroop</a></span>
+      <label style="display:flex;align-items:center;gap:var(--space-2);font-size:0.85rem;color:var(--muted);">
+        <span>Language</span>
+        <select id="lang-select" class="lang-select" aria-label="Language" onchange="setLang(this.value)">
+          <option value="en" {% if crate::i18n::current_locale().as_str() == "en" %}selected{% endif %}>English</option>
+          <option value="es" {% if crate::i18n::current_locale().as_str() == "es" %}selected{% endif %}>Español</option>
+        </select>
+      </label>
     </div>
   </footer>
+  {% endblock %}
+<script>
+var EYE_OPEN = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+var EYE_CLOSED = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+function togglePassword(id, btn) {
+  var input = document.getElementById(id);
+  if (!input) return;
+  if (input.type === "password") { input.type = "text"; btn.innerHTML = EYE_CLOSED; btn.setAttribute("aria-label", "Hide password"); }
+  else { input.type = "password"; btn.innerHTML = EYE_OPEN; btn.setAttribute("aria-label", "Show password"); }
+}
+</script>
 <script>
 (function(){var m=document.cookie.match(/(?:^|; )authkit_impersonating=([^;]*)/);if(m){var b=document.createElement("div");b.style.cssText="position:fixed;top:0;left:0;right:0;background:#c25a38;color:#fff;padding:.7rem 1rem;text-align:center;z-index:9999;font-family:Manrope,sans-serif;font-size:.9rem;font-weight:500";b.textContent="{{ crate::i18n::t("impersonating") }}";var f=document.createElement("form");f.method="post";f.action="/admin/impersonate/exit";f.style.display="inline";f.style.marginLeft="1rem";var btn=document.createElement("button");btn.type="submit";btn.textContent="{{ crate::i18n::t("exit") }}";btn.style.cssText="background:#fff;color:#c25a38;border:0;padding:.25rem .75rem;border-radius:.375rem;cursor:pointer;font-weight:600;font-size:.85rem";f.appendChild(btn);b.appendChild(f);document.body.prepend(b);}})();
 </script>

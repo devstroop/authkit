@@ -494,6 +494,7 @@ pub(crate) async fn register_submit(
     };
     let email = params.get("email").cloned().unwrap_or_default();
     let password = params.get("password").cloned().unwrap_or_default();
+    let confirm_password = params.get("confirm_password").cloned().unwrap_or_default();
     if email.is_empty() || password.is_empty() {
         return html(
             StatusCode::BAD_REQUEST,
@@ -507,6 +508,18 @@ pub(crate) async fn register_submit(
         );
     }
 
+    if !confirm_password.is_empty() && password != confirm_password {
+        return html(
+            StatusCode::BAD_REQUEST,
+            "title_register",
+            "/register",
+            "register",
+            "Passwords do not match.",
+            "/login",
+            "sign_in",
+            "",
+        );
+    }
     let email_parsed = match Email::parse(&email) {
         Ok(value) => value,
         Err(_) => {

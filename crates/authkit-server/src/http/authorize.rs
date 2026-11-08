@@ -280,7 +280,6 @@ pub(crate) async fn authorize(
 struct AuthorizeConsentTemplate<'a> {
     client: &'a str,
     application: &'a str,
-    organization: &'a str,
     scopes: &'a str,
     csrf: &'a str,
     client_id: &'a str,
@@ -844,7 +843,6 @@ fn render_consent(context: &ClientContext, validated: &Validated, csrf_token: &s
     let template = AuthorizeConsentTemplate {
         client: context.client().name().as_str(),
         application: context.application().name().as_str(),
-        organization: context.organization().name().as_str(),
         scopes: &scopes,
         csrf: csrf_token,
         client_id: context.client().client_id().as_str(),
