@@ -1,5 +1,5 @@
 use authkit_core::domain::id::{Id, UserEntity};
-use authkit_core::domain::{AuditAction, AuditTarget, DisplayName, Email, Permission, Scope, Slug};
+use authkit_core::domain::{AuditAction, DisplayName, Email, Permission, Scope, Slug};
 use proptest::prelude::*;
 
 proptest! {

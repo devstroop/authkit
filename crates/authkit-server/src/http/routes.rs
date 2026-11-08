@@ -15,8 +15,8 @@ use serde_json::json;
 use crate::authorization::AuthorizationService;
 use crate::config::Issuer;
 use crate::http::account;
-use crate::http::home;
 use crate::http::admin;
+use crate::http::home;
 use crate::http::login;
 use crate::http::magic_auth;
 use crate::http::mfa;
@@ -150,6 +150,7 @@ pub fn router_with_sessions(
 }
 
 /// Builds the production router with token endpoints and a custom email sender.
+#[allow(clippy::too_many_arguments)]
 pub fn router_with_sessions_and_tokens_and_email(
     readiness: Arc<dyn ReadinessProbe>,
     keys: Arc<KeyRing>,
@@ -470,7 +471,11 @@ async fn static_htmx() -> Response {
 }
 
 async fn favicon() -> Response {
-    (StatusCode::NO_CONTENT, [(header::CACHE_CONTROL, "public, max-age=86400")]).into_response()
+    (
+        StatusCode::NO_CONTENT,
+        [(header::CACHE_CONTROL, "public, max-age=86400")],
+    )
+        .into_response()
 }
 
 async fn health() -> Response {
