@@ -41,3 +41,14 @@
 {% macro alert(message) %}
 <p class="alert" role="alert">{{ message }}</p>
 {% endmacro %}
+{% macro dialog(id, title) %}
+<dialog id="{{ id }}" class="modal" aria-labelledby="{{ id }}-title">
+  <div class="modal-header">
+    <h2 id="{{ id }}-title">{{ title }}</h2>
+    <button type="button" class="modal-close" onclick="document.getElementById('{{ id }}').close()" aria-label="Close">×</button>
+  </div>
+  <div class="modal-body">
+    {{ caller() }}
+  </div>
+</dialog>
+{% endmacro %}

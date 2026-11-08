@@ -18,12 +18,22 @@
   {% endif %}
   </ul>
   {% if can_manage %}
-  <h2 style="font-family:var(--font-display);font-size:1.5rem;font-weight:400;margin:var(--space-5) 0 var(--space-3);">{{ crate::i18n::t("add_member") }}</h2>
-  <form method="post" action="/organizations/{{ org_id }}/members" hx-post="/organizations/{{ org_id }}/members" hx-target="#members" hx-swap="beforeend">
-    <input type="hidden" name="_csrf" value="{{ csrf }}">
-    {{ ui::text_input("email", crate::i18n::t("user_email"), "email", "email") }}
-    {{ ui::button(crate::i18n::t("add")) }}
-  </form>
+  <div style="margin:var(--space-5) 0 var(--space-3);">
+    <button type="button" class="btn btn-primary" style="width:auto;" onclick="document.getElementById('add-member-dialog').showModal()">{{ crate::i18n::t("add_member") }}</button>
+  </div>
+  <dialog id="add-member-dialog" class="modal">
+    <div class="modal-header">
+      <h2>{{ crate::i18n::t("add_member") }}</h2>
+      <button type="button" class="modal-close" onclick="document.getElementById('add-member-dialog').close()" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <form method="post" action="/organizations/{{ org_id }}/members" hx-post="/organizations/{{ org_id }}/members" hx-target="#members" hx-swap="beforeend">
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        {{ ui::text_input("email", crate::i18n::t("user_email"), "email", "email") }}
+        {{ ui::button(crate::i18n::t("add")) }}
+      </form>
+    </div>
+  </dialog>
   {% endif %}
   <p class="links">
     <a href="/organizations/{{ org_id }}/invitations">{{ crate::i18n::t("invitations") }}</a>

@@ -18,26 +18,34 @@
   {% endif %}
   </ul>
   {% if can_manage %}
-  <h2 style="font-family:var(--font-display);font-size:1.5rem;font-weight:400;margin:var(--space-5) 0 var(--space-3);">{{ crate::i18n::t("create_application") }}</h2>
-  <div class="card">
-    <form method="post" action="/organizations/{{ org_id }}/applications" hx-post="/organizations/{{ org_id }}/applications" hx-target="#applications" hx-swap="outerHTML">
-      <input type="hidden" name="_csrf" value="{{ csrf }}">
-      {{ ui::text_input("slug", crate::i18n::t("slug"), "text", "") }}
-      {{ ui::text_input("name", crate::i18n::t("name"), "text", "") }}
-      <label class="field">
-        <span>{{ crate::i18n::t("kind") }}</span>
-        <select name="kind" class="input" required aria-required="true">
-          <option value="web">web</option>
-          <option value="admin">admin</option>
-          <option value="native">native</option>
-          <option value="service">service</option>
-          <option value="cli">cli</option>
-        </select>
-      </label>
-      {{ ui::checkbox("first_party", crate::i18n::t("first_party")) }}
-      {{ ui::button(crate::i18n::t("create")) }}
-    </form>
+  <div style="margin:var(--space-5) 0 var(--space-3);">
+    <button type="button" class="btn btn-primary" style="width:auto;" onclick="document.getElementById('create-application-dialog').showModal()">{{ crate::i18n::t("create_application") }}</button>
   </div>
+  <dialog id="create-application-dialog" class="modal">
+    <div class="modal-header">
+      <h2>{{ crate::i18n::t("create_application") }}</h2>
+      <button type="button" class="modal-close" onclick="document.getElementById('create-application-dialog').close()" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <form method="post" action="/organizations/{{ org_id }}/applications" hx-post="/organizations/{{ org_id }}/applications" hx-target="#applications" hx-swap="outerHTML">
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        {{ ui::text_input("slug", crate::i18n::t("slug"), "text", "") }}
+        {{ ui::text_input("name", crate::i18n::t("name"), "text", "") }}
+        <label class="field">
+          <span>{{ crate::i18n::t("kind") }}</span>
+          <select name="kind" class="input" required aria-required="true">
+            <option value="web">web</option>
+            <option value="admin">admin</option>
+            <option value="native">native</option>
+            <option value="service">service</option>
+            <option value="cli">cli</option>
+          </select>
+        </label>
+        {{ ui::checkbox("first_party", crate::i18n::t("first_party")) }}
+        {{ ui::button(crate::i18n::t("create")) }}
+      </form>
+    </div>
+  </dialog>
   {% endif %}
   <p class="links">
     <a href="/organizations/{{ org_id }}/members">{{ crate::i18n::t("members") }}</a>

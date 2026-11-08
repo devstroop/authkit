@@ -18,12 +18,22 @@
   <li style="color:var(--muted);padding:var(--space-4);text-align:center;">{{ crate::i18n::t("no_organizations_yet") }}</li>
   {% endif %}
   </ul>
-  <h2 style="font-family:var(--font-display);font-size:1.5rem;font-weight:400;margin:var(--space-5) 0 var(--space-3);">{{ crate::i18n::t("create_organization") }}</h2>
-  <form method="post" action="/organizations" hx-post="/organizations" hx-target="#organizations" hx-swap="beforeend">
-    <input type="hidden" name="_csrf" value="{{ csrf }}">
-    {{ ui::text_input("slug", crate::i18n::t("slug"), "text", "") }}
-    {{ ui::text_input("name", crate::i18n::t("name"), "text", "") }}
-    {{ ui::button(crate::i18n::t("create")) }}
-  </form>
+  <div style="margin:var(--space-5) 0 var(--space-3);">
+    <button type="button" class="btn btn-primary" style="width:auto;" onclick="document.getElementById('create-org-dialog').showModal()">{{ crate::i18n::t("create_organization") }}</button>
+  </div>
+  <dialog id="create-org-dialog" class="modal">
+    <div class="modal-header">
+      <h2>{{ crate::i18n::t("create_organization") }}</h2>
+      <button type="button" class="modal-close" onclick="document.getElementById('create-org-dialog').close()" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <form method="post" action="/organizations" hx-post="/organizations" hx-target="#organizations" hx-swap="beforeend">
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        {{ ui::text_input("slug", crate::i18n::t("slug"), "text", "") }}
+        {{ ui::text_input("name", crate::i18n::t("name"), "text", "") }}
+        {{ ui::button(crate::i18n::t("create")) }}
+      </form>
+    </div>
+  </dialog>
 </div>
 {% endblock %}

@@ -44,14 +44,22 @@
   </ul>
 
   {% if can_manage %}
-  <div class="card">
-    <h2 style="font-family:var(--font-display);font-size:1.25rem;font-weight:400;margin:0 0 var(--space-3);">{{ crate::i18n::t("add_domain") }}</h2>
-    <form method="post" action="/organizations/{{ org_id }}/domains">
-      <input type="hidden" name="_csrf" value="{{ csrf }}">
-      {{ ui::text_input("domain", crate::i18n::t("domain"), "text", "") }}
-      {{ ui::button(crate::i18n::t("add")) }}
-    </form>
+  <div style="margin:var(--space-5) 0 var(--space-3);">
+    <button type="button" class="btn btn-primary" style="width:auto;" onclick="document.getElementById('add-domain-dialog').showModal()">{{ crate::i18n::t("add_domain") }}</button>
   </div>
+  <dialog id="add-domain-dialog" class="modal">
+    <div class="modal-header">
+      <h2>{{ crate::i18n::t("add_domain") }}</h2>
+      <button type="button" class="modal-close" onclick="document.getElementById('add-domain-dialog').close()" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <form method="post" action="/organizations/{{ org_id }}/domains">
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        {{ ui::text_input("domain", crate::i18n::t("domain"), "text", "") }}
+        {{ ui::button(crate::i18n::t("add")) }}
+      </form>
+    </div>
+  </dialog>
   {% endif %}
 
   <p class="links"><a href="/organizations/{{ org_id }}/members">{{ crate::i18n::t("members") }}</a></p>

@@ -396,14 +396,28 @@
 </head>
 <body>
   <a class="skip-link" href="#main">{{ crate::i18n::t("skip_to_content") }}</a>
-  <div class="lang-switcher" aria-label="Language">
-    <a href="?lang=en">EN</a>
-    <span aria-hidden="true">|</span>
-    <a href="?lang=es">ES</a>
-  </div>
+  <header class="site-header">
+    <div class="site-header-inner">
+      <a class="brand-mark" href="/">AuthKit</a>
+      <nav class="site-nav" aria-label="Primary">
+        <a href="/account">{{ crate::i18n::t("account") }}</a>
+        <a href="/organizations">{{ crate::i18n::t("organizations") }}</a>
+      </nav>
+      <div class="lang-switcher" aria-label="Language">
+        <a href="?lang=en">EN</a>
+        <span aria-hidden="true">|</span>
+        <a href="?lang=es">ES</a>
+      </div>
+    </div>
+  </header>
   <main id="main" aria-live="polite">
     {% block content %}{% endblock %}
   </main>
+  <footer class="site-footer">
+    <div class="site-footer-inner">
+      <span>© 2026 AuthKit · MIT / Apache-2.0</span>
+    </div>
+  </footer>
 <script>
 (function(){var m=document.cookie.match(/(?:^|; )authkit_impersonating=([^;]*)/);if(m){var b=document.createElement("div");b.style.cssText="position:fixed;top:0;left:0;right:0;background:#c25a38;color:#fff;padding:.7rem 1rem;text-align:center;z-index:9999;font-family:Manrope,sans-serif;font-size:.9rem;font-weight:500";b.textContent="{{ crate::i18n::t("impersonating") }}";var f=document.createElement("form");f.method="post";f.action="/admin/impersonate/exit";f.style.display="inline";f.style.marginLeft="1rem";var btn=document.createElement("button");btn.type="submit";btn.textContent="{{ crate::i18n::t("exit") }}";btn.style.cssText="background:#fff;color:#c25a38;border:0;padding:.25rem .75rem;border-radius:.375rem;cursor:pointer;font-weight:600;font-size:.85rem";f.appendChild(btn);b.appendChild(f);document.body.prepend(b);}})();
 </script>

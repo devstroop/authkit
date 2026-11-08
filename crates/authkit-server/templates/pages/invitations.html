@@ -24,20 +24,30 @@
   {% endif %}
   </ul>
   {% if can_manage %}
-  <h2 style="font-family:var(--font-display);font-size:1.5rem;font-weight:400;margin:var(--space-5) 0 var(--space-3);">{{ crate::i18n::t("invite_member") }}</h2>
-  <form method="post" action="/organizations/{{ org_id }}/invitations" hx-post="/organizations/{{ org_id }}/invitations" hx-target="#invitations" hx-swap="outerHTML">
-    <input type="hidden" name="_csrf" value="{{ csrf }}">
-    {{ ui::text_input("email", crate::i18n::t("email"), "email", "email") }}
-    <label class="field">
-      <span>{{ crate::i18n::t("role") }}</span>
-      <select name="role_id" class="input" required aria-required="true">
-        {% for role in roles %}
-        <option value="{{ role.id }}">{{ role.name }}</option>
-        {% endfor %}
-      </select>
-    </label>
-    {{ ui::button(crate::i18n::t("invite")) }}
-  </form>
+  <div style="margin:var(--space-5) 0 var(--space-3);">
+    <button type="button" class="btn btn-primary" style="width:auto;" onclick="document.getElementById('invite-member-dialog').showModal()">{{ crate::i18n::t("invite_member") }}</button>
+  </div>
+  <dialog id="invite-member-dialog" class="modal">
+    <div class="modal-header">
+      <h2>{{ crate::i18n::t("invite_member") }}</h2>
+      <button type="button" class="modal-close" onclick="document.getElementById('invite-member-dialog').close()" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <form method="post" action="/organizations/{{ org_id }}/invitations" hx-post="/organizations/{{ org_id }}/invitations" hx-target="#invitations" hx-swap="outerHTML">
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        {{ ui::text_input("email", crate::i18n::t("email"), "email", "email") }}
+        <label class="field">
+          <span>{{ crate::i18n::t("role") }}</span>
+          <select name="role_id" class="input" required aria-required="true">
+            {% for role in roles %}
+            <option value="{{ role.id }}">{{ role.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        {{ ui::button(crate::i18n::t("invite")) }}
+      </form>
+    </div>
+  </dialog>
   {% endif %}
   <p class="links"><a href="/organizations/{{ org_id }}/members">{{ crate::i18n::t("members") }}</a></p>
 </div>

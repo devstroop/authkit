@@ -19,31 +19,39 @@
   {% endif %}
   </ul>
   {% if can_manage %}
-  <h2 style="font-family:var(--font-display);font-size:1.5rem;font-weight:400;margin:var(--space-5) 0 var(--space-3);">{{ crate::i18n::t("create_oauth_client") }}</h2>
-  <div class="card">
-    <form method="post" action="/organizations/{{ org_id }}/oauth-clients" hx-post="/organizations/{{ org_id }}/oauth-clients" hx-target="#oauth-clients" hx-swap="outerHTML">
-      <input type="hidden" name="_csrf" value="{{ csrf }}">
-      <label class="field">
-        <span>{{ crate::i18n::t("application") }}</span>
-        <select name="application_id" class="input" required aria-required="true">
-          {% for app in apps %}
-          <option value="{{ app.id }}">{{ app.name }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      {{ ui::text_input("name", crate::i18n::t("name"), "text", "") }}
-      <label class="field">
-        <span>{{ crate::i18n::t("client_type") }}</span>
-        <select name="client_type" class="input" required aria-required="true">
-          <option value="public">{{ crate::i18n::t("public") }}</option>
-          <option value="confidential">{{ crate::i18n::t("confidential") }}</option>
-        </select>
-      </label>
-      {{ ui::text_input("redirect_uri", crate::i18n::t("redirect_uri"), "text", "") }}
-      {{ ui::text_input("scopes", crate::i18n::t("scopes"), "text", "") }}
-      {{ ui::button(crate::i18n::t("create")) }}
-    </form>
+  <div style="margin:var(--space-5) 0 var(--space-3);">
+    <button type="button" class="btn btn-primary" style="width:auto;" onclick="document.getElementById('create-oauth-client-dialog').showModal()">{{ crate::i18n::t("create_oauth_client") }}</button>
   </div>
+  <dialog id="create-oauth-client-dialog" class="modal">
+    <div class="modal-header">
+      <h2>{{ crate::i18n::t("create_oauth_client") }}</h2>
+      <button type="button" class="modal-close" onclick="document.getElementById('create-oauth-client-dialog').close()" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <form method="post" action="/organizations/{{ org_id }}/oauth-clients" hx-post="/organizations/{{ org_id }}/oauth-clients" hx-target="#oauth-clients" hx-swap="outerHTML">
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        <label class="field">
+          <span>{{ crate::i18n::t("application") }}</span>
+          <select name="application_id" class="input" required aria-required="true">
+            {% for app in apps %}
+            <option value="{{ app.id }}">{{ app.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        {{ ui::text_input("name", crate::i18n::t("name"), "text", "") }}
+        <label class="field">
+          <span>{{ crate::i18n::t("client_type") }}</span>
+          <select name="client_type" class="input" required aria-required="true">
+            <option value="public">{{ crate::i18n::t("public") }}</option>
+            <option value="confidential">{{ crate::i18n::t("confidential") }}</option>
+          </select>
+        </label>
+        {{ ui::text_input("redirect_uri", crate::i18n::t("redirect_uri"), "text", "") }}
+        {{ ui::text_input("scopes", crate::i18n::t("scopes"), "text", "") }}
+        {{ ui::button(crate::i18n::t("create")) }}
+      </form>
+    </div>
+  </dialog>
   {% endif %}
   <p class="links"><a href="/organizations/{{ org_id }}/applications">{{ crate::i18n::t("applications") }}</a></p>
 </div>

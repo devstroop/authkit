@@ -35,12 +35,23 @@
   </table>
   {% endif %}
   {% if can_manage %}
-  <form method="post" action="/admin/administrators" style="margin-top:var(--space-4);">
-    <input type="hidden" name="_csrf" value="{{ csrf }}">
-    {{ ui::text_input("email", crate::i18n::t("email"), "email", "email") }}
-    {{ ui::text_input("code", "TOTP code", "text", "one-time-code") }}
-    {{ ui::button(crate::i18n::t("grant_admin")) }}
-  </form>
+  <div style="margin:var(--space-4) 0;">
+    <button type="button" class="btn btn-primary" style="width:auto;" onclick="document.getElementById('grant-admin-dialog').showModal()">{{ crate::i18n::t("grant_admin") }}</button>
+  </div>
+  <dialog id="grant-admin-dialog" class="modal">
+    <div class="modal-header">
+      <h2>{{ crate::i18n::t("grant_admin") }}</h2>
+      <button type="button" class="modal-close" onclick="document.getElementById('grant-admin-dialog').close()" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <form method="post" action="/admin/administrators" style="margin-top:var(--space-4);">
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        {{ ui::text_input("email", crate::i18n::t("email"), "email", "email") }}
+        {{ ui::text_input("code", "TOTP code", "text", "one-time-code") }}
+        {{ ui::button(crate::i18n::t("grant_admin")) }}
+      </form>
+    </div>
+  </dialog>
   {% endif %}
 </section>
 
