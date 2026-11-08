@@ -7,6 +7,7 @@ use crate::domain::time::Timestamp;
 pub enum OneTimeTokenPurpose {
     PasswordReset,
     EmailVerification,
+    MagicAuth,
 }
 
 impl OneTimeTokenPurpose {
@@ -14,6 +15,7 @@ impl OneTimeTokenPurpose {
         match self {
             Self::PasswordReset => "password_reset",
             Self::EmailVerification => "email_verification",
+            Self::MagicAuth => "magic_auth",
         }
     }
 
@@ -21,6 +23,7 @@ impl OneTimeTokenPurpose {
         match value {
             "password_reset" => Ok(Self::PasswordReset),
             "email_verification" => Ok(Self::EmailVerification),
+            "magic_auth" => Ok(Self::MagicAuth),
             _ => Err(DomainError::invalid("unknown one-time token purpose")),
         }
     }

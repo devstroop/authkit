@@ -5,6 +5,7 @@ pub mod admin;
 pub mod authorize;
 pub mod login;
 pub mod logout;
+pub mod magic_auth;
 pub mod mfa;
 pub mod organization;
 pub mod rate_limit;

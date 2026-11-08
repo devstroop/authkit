@@ -1,0 +1,14 @@
+{% extends "layouts/base.html" %}
+{% import "macros/ui.html" as ui %}
+{% block content %}
+<h1>Enter your code</h1>
+<form method="post" action="/magic-auth/verify">
+  {% if !csrf.is_empty() %}
+  <input type="hidden" name="_csrf" value="{{ csrf }}">
+  {% endif %}
+  <input type="hidden" name="email" value="{{ email }}">
+  {{ ui::text_input("code", "Code", "text", "one-time-code") }}
+  {{ ui::button("Verify") }}
+</form>
+<p><a href="/magic-auth">Request a new code</a></p>
+{% endblock %}

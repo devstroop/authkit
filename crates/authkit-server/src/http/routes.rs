@@ -17,6 +17,7 @@ use crate::config::Issuer;
 use crate::http::account;
 use crate::http::admin;
 use crate::http::login;
+use crate::http::magic_auth;
 use crate::http::mfa;
 use crate::http::organization;
 use crate::http::request_id;
@@ -206,6 +207,14 @@ fn base_router(
         .route("/metrics", get(metrics::handler))
         .route("/readyz", get(ready))
         .route("/login", get(login::login_page).post(login::login_submit))
+        .route(
+            "/magic-auth",
+            get(magic_auth::request_page).post(magic_auth::request_submit),
+        )
+        .route(
+            "/magic-auth/verify",
+            get(magic_auth::verify_page).post(magic_auth::verify_submit),
+        )
         .route("/login/mfa", post(mfa::login_verify))
         .route(
             "/register",
