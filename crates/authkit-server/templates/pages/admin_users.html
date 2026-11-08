@@ -2,12 +2,38 @@
 {% import "macros/ui.html" as ui %}
 {% block admin_content %}
 <h1>Users</h1>
-<ul>
-{% for user in users %}
-<li>{{ user.email }} ({{ user.id }}) {{ user.status }} {% if user.verified %}(verified){% endif %} <form method="post" action="/admin/impersonate/{{ user.id }}" style="display:inline"><button type="submit">Impersonate</button></form></li>
-{% endfor %}
-</ul>
-{% if users.is_empty() %}
-<p>No users yet.</p>
-{% endif %}
+<div class="card">
+  {% if users.is_empty() %}
+  <p style="color:var(--muted);">No users yet.</p>
+  {% else %}
+  <table>
+    <thead>
+      <tr>
+        <th>Email</th>
+        <th>Status</th>
+        <th>Verified</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for user in users %}
+    <tr>
+      <td>
+        <div style="font-weight:500;">{{ user.email }}</div>
+        <div style="font-size:0.8rem;color:var(--muted);font-family:monospace;">{{ user.id }}</div>
+      </td>
+      <td>{{ user.status }}</td>
+      <td>{% if user.verified %}<span style="color:var(--primary);font-weight:600;">✓</span>{% else %}<span style="color:var(--muted);">—</span>{% endif %}</td>
+      <td>
+        <form method="post" action="/admin/impersonate/{{ user.id }}" style="display:inline">
+          <input type="hidden" name="_csrf" value="{{ csrf }}">
+          <button type="submit" class="btn btn-secondary" style="width:auto;padding:0.3rem 0.75rem;font-size:0.85rem;">Impersonate</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
 {% endblock %}

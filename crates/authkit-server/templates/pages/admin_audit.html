@@ -2,12 +2,30 @@
 {% import "macros/ui.html" as ui %}
 {% block admin_content %}
 <h1>Audit log</h1>
-<ul>
-{% for event in events %}
-<li>{{ event.occurred_at }} {{ event.action }} {{ event.org }} — {{ event.actor }}</li>
-{% endfor %}
-</ul>
-{% if events.is_empty() %}
-<p>No audit events.</p>
-{% endif %}
+<div class="card">
+  {% if events.is_empty() %}
+  <p style="color:var(--muted);">No audit events recorded yet.</p>
+  {% else %}
+  <table>
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>Action</th>
+        <th>Organization</th>
+        <th>Actor</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for event in events %}
+    <tr>
+      <td style="font-size:0.85rem;color:var(--muted);">{{ event.occurred_at }}</td>
+      <td><code style="font-size:0.85rem;">{{ event.action }}</code></td>
+      <td>{{ event.org }}</td>
+      <td style="font-size:0.85rem;">{{ event.actor }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
 {% endblock %}
