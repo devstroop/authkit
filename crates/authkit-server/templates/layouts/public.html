@@ -1,5 +1,10 @@
 {% extends "layouts/base.html" %}
 {% block content %}
+<style>
+  main:has(.public-layout) { align-items: stretch; justify-content: flex-start; }
+  .hero { padding: var(--space-6) var(--space-4); }
+  .features { padding: var(--space-5) var(--space-4); }
+</style>
 <div class="public-layout">
   {% block public_content %}{% endblock %}
 </div>
