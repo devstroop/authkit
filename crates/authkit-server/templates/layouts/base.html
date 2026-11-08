@@ -108,5 +108,8 @@
   <main id="main" aria-live="polite">
     {% block content %}{% endblock %}
   </main>
+<script>
+(function(){var m=document.cookie.match(/(?:^|; )authkit_impersonating=([^;]*)/);if(m){var b=document.createElement("div");b.style.cssText="position:fixed;top:0;left:0;right:0;background:#f59e0b;color:#000;padding:.5rem;text-align:center;z-index:9999";b.textContent="Impersonating a user";var x=document.createElement("form");x.method="post";x.action="/admin/impersonate/exit";var btn=document.createElement("button");btn.type="submit";btn.textContent="Exit";x.appendChild(btn);b.appendChild(x);document.body.prepend(b);}})();
+</script>
 </body>
 </html>

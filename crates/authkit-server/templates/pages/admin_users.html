@@ -4,7 +4,7 @@
 <h1>Users</h1>
 <ul>
 {% for user in users %}
-<li>{{ user.email }} ({{ user.id }}) {{ user.status }} {% if user.verified %}(verified){% endif %}</li>
+<li>{{ user.email }} ({{ user.id }}) {{ user.status }} {% if user.verified %}(verified){% endif %} <form method="post" action="/admin/impersonate/{{ user.id }}" style="display:inline"><button type="submit">Impersonate</button></form></li>
 {% endfor %}
 </ul>
 {% if users.is_empty() %}

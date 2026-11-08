@@ -261,6 +261,8 @@ fn base_router(
         )
         .route("/admin", get(admin::dashboard))
         .route("/admin/users", get(admin::users_page))
+        .route("/admin/impersonate/{id}", post(admin::impersonate))
+        .route("/admin/impersonate/exit", post(admin::impersonate_exit))
         .route("/admin/audit", get(admin::audit_page))
         .route("/admin/logout", post(admin::logout))
         .route("/admin/administrators", post(admin::grant_admin))

@@ -11,7 +11,6 @@ use crate::domain::Timestamp;
 use crate::domain::application::Application;
 use crate::domain::audit::AuditEvent;
 use crate::domain::credential::Credential;
-use crate::domain::verified_domain::Domain;
 use crate::domain::email::Email;
 use crate::domain::grant::{AuthorizationCode, Consent, RefreshFamily, RefreshToken};
 use crate::domain::id::{
@@ -31,6 +30,7 @@ use crate::domain::session::Session;
 use crate::domain::slug::Slug;
 use crate::domain::tenant::TenantContext;
 use crate::domain::user::User;
+use crate::domain::verified_domain::Domain;
 use crate::domain::write::WriteOutcome;
 
 /// Supplies the current time to domain and application code.

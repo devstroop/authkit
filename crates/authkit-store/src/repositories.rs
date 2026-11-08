@@ -4,7 +4,6 @@ use authkit_core::domain::DomainError;
 use authkit_core::domain::application::Application;
 use authkit_core::domain::audit::AuditEvent;
 use authkit_core::domain::credential::Credential;
-use authkit_core::domain::verified_domain::Domain;
 use authkit_core::domain::email::Email;
 use authkit_core::domain::grant::{AuthorizationCode, Consent, RefreshFamily, RefreshToken};
 use authkit_core::domain::id::{
@@ -27,6 +26,7 @@ use authkit_core::domain::system_administrator::SystemAdministrator;
 use authkit_core::domain::tenant::TenantContext;
 use authkit_core::domain::time::Timestamp;
 use authkit_core::domain::user::User;
+use authkit_core::domain::verified_domain::Domain;
 use authkit_core::domain::write::WriteOutcome;
 use authkit_core::ports::OneTimeTokenRepository;
 use authkit_core::ports::write::{UnitOfWork, WriteBatch, WriteCommand};

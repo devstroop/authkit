@@ -2,7 +2,7 @@
 
 use askama::Template;
 use authkit_core::domain::WriteOutcome;
-use authkit_core::domain::id::{CredentialEntity, SystemAdministratorEntity};
+use authkit_core::domain::id::{CredentialEntity, SystemAdministratorEntity, UserEntity};
 use authkit_core::domain::{Credential, CredentialKind, Email, Id, SystemAdministrator};
 use authkit_core::ports::{
     CredentialRepository, IdGenerator, SystemAdministratorRepository, UserRepository,
@@ -720,6 +720,68 @@ fn redirect(location: &str) -> Response {
             .into_response(),
         Err(_) => unavailable(),
     }
+}
+
+pub(crate) async fn impersonate(
+    State(state): State<AppState>,
+    Path(user_id): Path<String>,
+    session: Option<Extension<SessionContext>>,
+) -> Response {
+    let Some(Extension(_admin_session)) = session else {
+        return redirect("/admin/login");
+    };
+    let Some(sessions) = state.sessions.as_ref() else {
+        return unavailable();
+    };
+    let uid = match Id::<UserEntity>::parse(user_id) {
+        Ok(v) => v,
+        Err(_) => return bad_request(),
+    };
+    let user = tokio::task::spawn_blocking({
+        let store = sessions.store().clone();
+        let uid = uid.clone();
+        move || UserRepository::find_by_id(store.as_ref(), &uid)
+    })
+    .await
+    .ok()
+    .and_then(|r| r.ok().flatten());
+    let Some(user) = user else {
+        return bad_request();
+    };
+    let now = sessions.clock().now();
+    let created = match sessions
+        .create(user.id().clone(), None, SessionAudience::Account, now)
+        .await
+    {
+        Ok(v) => v,
+        Err(_) => return unavailable(),
+    };
+    let cookie = sessions.set_cookie(created.session(), created.token(), now);
+    let flag_cookie = "authkit_impersonating=1; Path=/; Max-Age=3600";
+    let mut response = redirect("/");
+    if let Ok(value) = HeaderValue::from_str(&cookie) {
+        response.headers_mut().append(header::SET_COOKIE, value);
+    }
+    if let Ok(value) = HeaderValue::from_str(flag_cookie) {
+        response.headers_mut().append(header::SET_COOKIE, value);
+    }
+    response
+}
+
+pub(crate) async fn impersonate_exit(State(state): State<AppState>) -> Response {
+    let clear_account = state
+        .sessions
+        .as_ref()
+        .map(|s| s.clear_cookie(SessionAudience::Account))
+        .unwrap_or_else(|| "authkit_account=; Path=/; Max-Age=0".to_owned());
+    let mut response = redirect("/admin");
+    if let Ok(value) = HeaderValue::from_str(&clear_account) {
+        response.headers_mut().append(header::SET_COOKIE, value);
+    }
+    if let Ok(value) = HeaderValue::from_str("authkit_impersonating=; Path=/; Max-Age=0") {
+        response.headers_mut().append(header::SET_COOKIE, value);
+    }
+    response
 }
 
 fn unavailable() -> Response {
