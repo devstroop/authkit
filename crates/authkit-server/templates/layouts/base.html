@@ -3,7 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ crate::i18n::t(title) }}</title>
+  <title>{{ crate::branding::current_title(&crate::i18n::t(title)) }}</title>
+  {% if !crate::branding::current_favicon().is_empty() %}
+  <link rel="icon" href="{{ crate::branding::current_favicon() }}">
+  {% endif %}
+  {% if !crate::branding::current_custom_css().is_empty() %}
+  <style>{{ crate::branding::current_custom_css() | safe }}</style>
+  {% endif %}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..600&family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">

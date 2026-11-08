@@ -3,6 +3,7 @@ use authkit_core::domain::application::{Application, ApplicationKind, Applicatio
 use authkit_core::domain::audit::{
     AuditAction, AuditActor, AuditAttribute, AuditEvent, AuditTarget,
 };
+use authkit_core::domain::brand::Brand;
 use authkit_core::domain::client_id::ClientId;
 use authkit_core::domain::credential::{
     AuthenticatorTransport, Credential, CredentialData, CredentialKind, CredentialStatus,
@@ -12,10 +13,10 @@ use authkit_core::domain::credential::{
 use authkit_core::domain::email::Email;
 use authkit_core::domain::grant::{AuthorizationCode, Consent, RefreshFamily, RefreshToken};
 use authkit_core::domain::id::{
-    ApplicationEntity, AuditEventEntity, AuthorizationCodeEntity, ConsentEntity, DomainEntity,
-    Entity, Id, InvitationEntity, MembershipEntity, OAuthClientEntity, OrganizationEntity,
-    RecoveryCodeEntity, RefreshFamilyEntity, RefreshTokenEntity, RoleBindingEntity, RoleEntity,
-    SessionEntity, SystemAdministratorEntity, UserEntity,
+    ApplicationEntity, AuditEventEntity, AuthorizationCodeEntity, BrandEntity, ConsentEntity,
+    DomainEntity, Entity, Id, InvitationEntity, MembershipEntity, OAuthClientEntity,
+    OrganizationEntity, RecoveryCodeEntity, RefreshFamilyEntity, RefreshTokenEntity,
+    RoleBindingEntity, RoleEntity, SessionEntity, SystemAdministratorEntity, UserEntity,
 };
 use authkit_core::domain::invitation::{Invitation, InvitationStatus};
 use authkit_core::domain::membership::{Membership, MembershipStatus};
@@ -161,6 +162,37 @@ pub(crate) fn map_organization(row: &AnyRow) -> Result<Organization, DomainError
         timestamp(row, "updated_at")?,
         version(row, "version")?,
     )
+}
+
+pub(crate) fn map_brand(row: &AnyRow) -> Result<Brand, DomainError> {
+    use sqlx::Row;
+    let id = id::<BrandEntity>(row, "id")?;
+    let org_id: Option<String> = row.try_get("org_id").map_err(|_| invalid_stored_value())?;
+    let org_id = match org_id {
+        Some(v) if !v.is_empty() => Some(
+            Id::<authkit_core::domain::id::OrganizationEntity>::parse(&v)
+                .map_err(|_| invalid_stored_value())?,
+        ),
+        _ => None,
+    };
+    let domain = text(row, "domain").ok().filter(|v| !v.is_empty());
+    let title = text(row, "title")?;
+    let logo_url = text(row, "logo_url").ok().filter(|v| !v.is_empty());
+    let favicon_url = text(row, "favicon_url").ok().filter(|v| !v.is_empty());
+    let custom_css = text(row, "custom_css").ok().filter(|v| !v.is_empty());
+    Brand::restore(
+        id,
+        org_id,
+        domain,
+        title,
+        logo_url,
+        favicon_url,
+        custom_css,
+        timestamp(row, "created_at")?,
+        timestamp(row, "updated_at")?,
+        version(row, "version")?,
+    )
+    .map_err(|_| invalid_stored_value())
 }
 
 pub(crate) fn map_domain(

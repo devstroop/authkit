@@ -3,14 +3,15 @@ use std::collections::HashMap;
 use authkit_core::domain::DomainError;
 use authkit_core::domain::application::Application;
 use authkit_core::domain::audit::AuditEvent;
+use authkit_core::domain::brand::Brand;
 use authkit_core::domain::credential::Credential;
 use authkit_core::domain::email::Email;
 use authkit_core::domain::grant::{AuthorizationCode, Consent, RefreshFamily, RefreshToken};
 use authkit_core::domain::id::{
-    ApplicationEntity, AuthorizationCodeEntity, ConsentEntity, CredentialEntity, DomainEntity, Id,
-    InvitationEntity, MembershipEntity, OAuthClientEntity, OneTimeTokenEntity, OrganizationEntity,
-    RecoveryCodeEntity, RefreshFamilyEntity, RefreshTokenEntity, RoleBindingEntity, RoleEntity,
-    SessionEntity, SystemAdministratorEntity, UserEntity,
+    ApplicationEntity, AuthorizationCodeEntity, BrandEntity, ConsentEntity, CredentialEntity,
+    DomainEntity, Id, InvitationEntity, MembershipEntity, OAuthClientEntity, OneTimeTokenEntity,
+    OrganizationEntity, RecoveryCodeEntity, RefreshFamilyEntity, RefreshTokenEntity,
+    RoleBindingEntity, RoleEntity, SessionEntity, SystemAdministratorEntity, UserEntity,
 };
 use authkit_core::domain::invitation::Invitation;
 use authkit_core::domain::membership::Membership;
@@ -31,21 +32,21 @@ use authkit_core::domain::write::WriteOutcome;
 use authkit_core::ports::OneTimeTokenRepository;
 use authkit_core::ports::write::{UnitOfWork, WriteBatch, WriteCommand};
 use authkit_core::ports::{
-    ApplicationRepository, AuditRepository, AuthorizationCodeRepository, ConsentRepository,
-    CredentialRepository, DomainRepository, InvitationRepository, MembershipRepository,
-    OAuthClientRepository, OrganizationRepository, RateLimitExceeded, RateLimiter,
-    RecoveryCodeRepository, RefreshFamilyRepository, RefreshTokenRepository, Repositories,
-    RoleBindingRepository, RoleRepository, SessionRepository, SystemAdministratorRepository,
-    UserRepository,
+    ApplicationRepository, AuditRepository, AuthorizationCodeRepository, BrandRepository,
+    ConsentRepository, CredentialRepository, DomainRepository, InvitationRepository,
+    MembershipRepository, OAuthClientRepository, OrganizationRepository, RateLimitExceeded,
+    RateLimiter, RecoveryCodeRepository, RefreshFamilyRepository, RefreshTokenRepository,
+    Repositories, RoleBindingRepository, RoleRepository, SessionRepository,
+    SystemAdministratorRepository, UserRepository,
 };
 use sqlx::Any;
 
 use crate::mapping::db_timestamp;
 use crate::mapping::{
-    id as stored_id, map_application, map_audit_event, map_authorization_code, map_consent,
-    map_credential, map_domain, map_invitation, map_membership, map_oauth_client, map_organization,
-    map_recovery_code, map_refresh_family, map_refresh_token, map_role, map_role_binding,
-    map_session, map_system_administrator, map_user, text,
+    id as stored_id, map_application, map_audit_event, map_authorization_code, map_brand,
+    map_consent, map_credential, map_domain, map_invitation, map_membership, map_oauth_client,
+    map_organization, map_recovery_code, map_refresh_family, map_refresh_token, map_role,
+    map_role_binding, map_session, map_system_administrator, map_user, text,
 };
 use crate::{SqlStore, invalid_stored_value, map_db_error};
 
@@ -194,6 +195,99 @@ impl OrganizationRepository for SqlStore {
             organization: organization.clone(),
             expected_version,
         }))
+    }
+}
+
+impl BrandRepository for SqlStore {
+    fn find_by_id(&self, id: &Id<BrandEntity>) -> Result<Option<Brand>, DomainError> {
+        let sql = self.sql(
+            "SELECT id, org_id, domain, title, logo_url, favicon_url, custom_css, created_at, updated_at, version FROM brand WHERE id = ?",
+        );
+        self.block_on(async {
+            let row = sqlx::query(&sql)
+                .bind(id.as_str())
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            row.as_ref().map(map_brand).transpose()
+        })
+    }
+
+    fn find_by_domain(&self, domain: &str) -> Result<Option<Brand>, DomainError> {
+        let sql = self.sql(
+            "SELECT id, org_id, domain, title, logo_url, favicon_url, custom_css, created_at, updated_at, version FROM brand WHERE domain = ?",
+        );
+        self.block_on(async {
+            let row = sqlx::query(&sql)
+                .bind(domain)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            row.as_ref().map(map_brand).transpose()
+        })
+    }
+
+    fn find_by_org(&self, org_id: &Id<OrganizationEntity>) -> Result<Option<Brand>, DomainError> {
+        let sql = self.sql(
+            "SELECT id, org_id, domain, title, logo_url, favicon_url, custom_css, created_at, updated_at, version FROM brand WHERE org_id = ?",
+        );
+        self.block_on(async {
+            let row = sqlx::query(&sql)
+                .bind(org_id.as_str())
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            row.as_ref().map(map_brand).transpose()
+        })
+    }
+
+    fn insert(&self, brand: &Brand) -> Result<WriteOutcome, DomainError> {
+        let sql = self.sql(
+            "INSERT INTO brand (id, org_id, domain, title, logo_url, favicon_url, custom_css, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        );
+        self.block_on(async {
+            sqlx::query(&sql)
+                .bind(brand.id().as_str())
+                .bind(brand.org_id().map(|v| v.as_str()))
+                .bind(brand.domain())
+                .bind(brand.title())
+                .bind(brand.logo_url())
+                .bind(brand.favicon_url())
+                .bind(brand.custom_css())
+                .bind(brand.created_at().as_millis() as i64)
+                .bind(brand.updated_at().as_millis() as i64)
+                .bind(brand.version() as i64)
+                .execute(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            Ok(WriteOutcome::Applied)
+        })
+    }
+
+    fn update(&self, brand: &Brand, expected_version: u64) -> Result<WriteOutcome, DomainError> {
+        let sql = self.sql(
+            "UPDATE brand SET org_id = ?, domain = ?, title = ?, logo_url = ?, favicon_url = ?, custom_css = ?, updated_at = ?, version = version + 1 WHERE id = ? AND version = ?",
+        );
+        self.block_on(async {
+            let result = sqlx::query(&sql)
+                .bind(brand.org_id().map(|v| v.as_str()))
+                .bind(brand.domain())
+                .bind(brand.title())
+                .bind(brand.logo_url())
+                .bind(brand.favicon_url())
+                .bind(brand.custom_css())
+                .bind(brand.updated_at().as_millis() as i64)
+                .bind(brand.id().as_str())
+                .bind(expected_version as i64)
+                .execute(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            if result.rows_affected() == 0 {
+                Ok(WriteOutcome::Conflict)
+            } else {
+                Ok(WriteOutcome::Applied)
+            }
+        })
     }
 }
 

@@ -213,6 +213,7 @@ pub fn with_session_security(
     issuer: Issuer,
     hsts: bool,
 ) -> Router {
+    let store = sessions.store().clone();
     let state = SessionSecurityState {
         service: sessions,
         issuer,
@@ -220,6 +221,10 @@ pub fn with_session_security(
     router
         .layer(middleware::from_fn_with_state(state, session_context))
         .layer(middleware::from_fn(crate::i18n::locale_middleware))
+        .layer(middleware::from_fn_with_state(
+            store,
+            crate::branding::branding_middleware,
+        ))
         .layer(middleware::from_fn_with_state(
             SecurityHeaders::new(hsts),
             security_headers,

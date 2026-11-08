@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 
 pub mod authorization;
+pub mod branding;
 pub mod config;
 pub mod email;
 pub mod http;
