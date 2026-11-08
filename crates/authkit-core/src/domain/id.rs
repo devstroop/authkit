@@ -39,6 +39,11 @@ entity!(
     "org"
 );
 entity!(
+    /// A verified or pending email domain for an organization.
+    DomainEntity,
+    "dom"
+);
+entity!(
     /// A product surface owned by one organization.
     ApplicationEntity,
     "app"

@@ -2,9 +2,7 @@
 
 use askama::Template;
 use authkit_core::domain::id::OrganizationEntity;
-use authkit_core::domain::{
-    Id, OneTimeTokenPurpose, SecretHash, WriteOutcome,
-};
+use authkit_core::domain::{Id, OneTimeTokenPurpose, SecretHash, WriteOutcome};
 use authkit_core::ports::{MembershipRepository, OneTimeTokenRepository, OrganizationRepository};
 use axum::body::Bytes;
 use axum::extract::{Extension, Query, State};
@@ -337,4 +335,3 @@ fn redirect(location: &str) -> Response {
             .into_response(),
     }
 }
-

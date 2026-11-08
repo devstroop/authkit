@@ -323,6 +323,22 @@ fn base_router(
             post(organization::bind_role),
         )
         .route(
+            "/organizations/{org_id}/domains",
+            get(organization::domains_page).post(organization::add_domain),
+        )
+        .route(
+            "/organizations/{org_id}/domains/{domain_id}/verify",
+            post(organization::verify_domain),
+        )
+        .route(
+            "/organizations/{org_id}/domains/{domain_id}/remove",
+            post(organization::remove_domain),
+        )
+        .route(
+            "/organizations/{org_id}/domains/{domain_id}/revoke",
+            post(organization::remove_domain),
+        )
+        .route(
             "/invitations/accept",
             get(organization::accept_invitation_page).post(organization::accept_invitation),
         )

@@ -6,6 +6,8 @@ pub mod application;
 pub mod audit;
 pub mod client_id;
 pub mod credential;
+pub mod verified_domain;
+pub use verified_domain::Domain;
 pub mod email;
 pub mod error;
 pub mod grant;

@@ -11,10 +11,11 @@ use crate::domain::Timestamp;
 use crate::domain::application::Application;
 use crate::domain::audit::AuditEvent;
 use crate::domain::credential::Credential;
+use crate::domain::verified_domain::Domain;
 use crate::domain::email::Email;
 use crate::domain::grant::{AuthorizationCode, Consent, RefreshFamily, RefreshToken};
 use crate::domain::id::{
-    ApplicationEntity, AuthorizationCodeEntity, ConsentEntity, Entity, Id, IdError,
+    ApplicationEntity, AuthorizationCodeEntity, ConsentEntity, DomainEntity, Entity, Id, IdError,
     InvitationEntity, MembershipEntity, OAuthClientEntity, OneTimeTokenEntity, OrganizationEntity,
     RefreshFamilyEntity, RefreshTokenEntity, RoleBindingEntity, RoleEntity, SessionEntity,
     UserEntity,
@@ -115,6 +116,19 @@ pub trait SystemAdministratorRepository {
         admin: &crate::domain::SystemAdministrator,
         expected_version: u64,
     ) -> Result<crate::domain::WriteOutcome, crate::domain::DomainError>;
+}
+
+/// Read and write access to organization domains.
+pub trait DomainRepository {
+    fn find_by_id(&self, id: &Id<DomainEntity>) -> Result<Option<Domain>, DomainError>;
+    fn find_by_domain(&self, domain: &str) -> Result<Option<Domain>, DomainError>;
+    fn list_for_organization(
+        &self,
+        org_id: &Id<OrganizationEntity>,
+    ) -> Result<Vec<Domain>, DomainError>;
+    fn insert(&self, domain: &Domain) -> Result<WriteOutcome, DomainError>;
+    fn update(&self, domain: &Domain, expected_version: u64) -> Result<WriteOutcome, DomainError>;
+    fn delete(&self, id: &Id<DomainEntity>) -> Result<WriteOutcome, DomainError>;
 }
 
 pub trait MembershipRepository {
@@ -575,6 +589,7 @@ pub trait RecoveryCodeRepository {
 pub trait Repositories:
     UserRepository
     + OrganizationRepository
+    + DomainRepository
     + MembershipRepository
     + InvitationRepository
     + ApplicationRepository

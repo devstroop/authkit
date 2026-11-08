@@ -4,10 +4,11 @@ use authkit_core::domain::DomainError;
 use authkit_core::domain::application::Application;
 use authkit_core::domain::audit::AuditEvent;
 use authkit_core::domain::credential::Credential;
+use authkit_core::domain::verified_domain::Domain;
 use authkit_core::domain::email::Email;
 use authkit_core::domain::grant::{AuthorizationCode, Consent, RefreshFamily, RefreshToken};
 use authkit_core::domain::id::{
-    ApplicationEntity, AuthorizationCodeEntity, ConsentEntity, CredentialEntity, Id,
+    ApplicationEntity, AuthorizationCodeEntity, ConsentEntity, CredentialEntity, DomainEntity, Id,
     InvitationEntity, MembershipEntity, OAuthClientEntity, OneTimeTokenEntity, OrganizationEntity,
     RecoveryCodeEntity, RefreshFamilyEntity, RefreshTokenEntity, RoleBindingEntity, RoleEntity,
     SessionEntity, SystemAdministratorEntity, UserEntity,
@@ -31,17 +32,18 @@ use authkit_core::ports::OneTimeTokenRepository;
 use authkit_core::ports::write::{UnitOfWork, WriteBatch, WriteCommand};
 use authkit_core::ports::{
     ApplicationRepository, AuditRepository, AuthorizationCodeRepository, ConsentRepository,
-    CredentialRepository, InvitationRepository, MembershipRepository, OAuthClientRepository,
-    OrganizationRepository, RateLimitExceeded, RateLimiter, RecoveryCodeRepository,
-    RefreshFamilyRepository, RefreshTokenRepository, Repositories, RoleBindingRepository,
-    RoleRepository, SessionRepository, SystemAdministratorRepository, UserRepository,
+    CredentialRepository, DomainRepository, InvitationRepository, MembershipRepository,
+    OAuthClientRepository, OrganizationRepository, RateLimitExceeded, RateLimiter,
+    RecoveryCodeRepository, RefreshFamilyRepository, RefreshTokenRepository, Repositories,
+    RoleBindingRepository, RoleRepository, SessionRepository, SystemAdministratorRepository,
+    UserRepository,
 };
 use sqlx::Any;
 
 use crate::mapping::db_timestamp;
 use crate::mapping::{
     id as stored_id, map_application, map_audit_event, map_authorization_code, map_consent,
-    map_credential, map_invitation, map_membership, map_oauth_client, map_organization,
+    map_credential, map_domain, map_invitation, map_membership, map_oauth_client, map_organization,
     map_recovery_code, map_refresh_family, map_refresh_token, map_role, map_role_binding,
     map_session, map_system_administrator, map_user, text,
 };
@@ -192,6 +194,107 @@ impl OrganizationRepository for SqlStore {
             organization: organization.clone(),
             expected_version,
         }))
+    }
+}
+
+impl DomainRepository for SqlStore {
+    fn find_by_id(&self, id: &Id<DomainEntity>) -> Result<Option<Domain>, DomainError> {
+        let sql = self.sql(
+            "SELECT id, organization_id, domain, verification_token, verified_at, created_at, updated_at, version FROM domain WHERE id = ?",
+        );
+        self.block_on(async {
+            let row = sqlx::query(&sql)
+                .bind(id.as_str())
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            row.as_ref().map(map_domain).transpose()
+        })
+    }
+
+    fn find_by_domain(&self, domain: &str) -> Result<Option<Domain>, DomainError> {
+        let sql = self.sql(
+            "SELECT id, organization_id, domain, verification_token, verified_at, created_at, updated_at, version FROM domain WHERE domain = ?",
+        );
+        self.block_on(async {
+            let row = sqlx::query(&sql)
+                .bind(domain)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            row.as_ref().map(map_domain).transpose()
+        })
+    }
+
+    fn list_for_organization(
+        &self,
+        org_id: &Id<OrganizationEntity>,
+    ) -> Result<Vec<Domain>, DomainError> {
+        let sql = self.sql(
+            "SELECT id, organization_id, domain, verification_token, created_at, updated_at, version, verified_at FROM domain WHERE organization_id = ? ORDER BY created_at, id",
+        );
+        self.block_on(async {
+            let rows = sqlx::query(&sql)
+                .bind(org_id.as_str())
+                .fetch_all(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            rows.iter().map(map_domain).collect()
+        })
+    }
+
+    fn insert(&self, domain: &Domain) -> Result<WriteOutcome, DomainError> {
+        let sql = self.sql(
+            "INSERT INTO domain (id, organization_id, domain, verification_token, verified_at, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        );
+        self.block_on(async {
+            sqlx::query(&sql)
+                .bind(domain.id().as_str())
+                .bind(domain.organization_id().as_str())
+                .bind(domain.domain())
+                .bind(domain.verification_token())
+                .bind(domain.verified_at().map(|t| t.as_millis() as i64))
+                .bind(domain.created_at().as_millis() as i64)
+                .bind(domain.updated_at().as_millis() as i64)
+                .bind(domain.version() as i64)
+                .execute(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            Ok(WriteOutcome::Applied)
+        })
+    }
+
+    fn update(&self, domain: &Domain, expected_version: u64) -> Result<WriteOutcome, DomainError> {
+        let sql = self.sql(
+            "UPDATE domain SET verified_at = ?, updated_at = ?, version = version + 1 WHERE id = ? AND version = ?",
+        );
+        self.block_on(async {
+            let result = sqlx::query(&sql)
+                .bind(domain.verified_at().map(|t| t.as_millis() as i64))
+                .bind(domain.updated_at().as_millis() as i64)
+                .bind(domain.id().as_str())
+                .bind(expected_version as i64)
+                .execute(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            if result.rows_affected() == 0 {
+                Ok(WriteOutcome::Conflict)
+            } else {
+                Ok(WriteOutcome::Applied)
+            }
+        })
+    }
+
+    fn delete(&self, id: &Id<DomainEntity>) -> Result<WriteOutcome, DomainError> {
+        let sql = self.sql("DELETE FROM domain WHERE id = ?");
+        self.block_on(async {
+            sqlx::query(&sql)
+                .bind(id.as_str())
+                .execute(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            Ok(WriteOutcome::Applied)
+        })
     }
 }
 

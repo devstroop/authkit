@@ -3,18 +3,18 @@
 use askama::Template;
 use authkit_core::application::CreateOrganization;
 use authkit_core::domain::id::{
-    InvitationEntity, OrganizationEntity, RoleBindingEntity, RoleEntity, UserEntity,
+    DomainEntity, InvitationEntity, OrganizationEntity, RoleBindingEntity, RoleEntity, UserEntity,
 };
 use authkit_core::domain::invitation::Invitation;
 use authkit_core::domain::{
-    ApplicationKind, ClientId, ClientType, DisplayName, DomainError, Email, GrantType, Id,
+    ApplicationKind, ClientId, ClientType, DisplayName, Domain, DomainError, Email, GrantType, Id,
     Membership, OAuthClient, OAuthClientSpec, Permission, PermissionSet, RedirectUri, Role,
     RoleBinding, Scope, ScopeSet, Slug, TenantContext, TokenEndpointAuthMethod, WriteOutcome,
 };
 use authkit_core::ports::{
-    ApplicationRepository, IdGenerator, InvitationRepository, MembershipRepository,
-    OAuthClientRepository, OrganizationRepository, RoleBindingRepository, RoleRepository,
-    UserRepository,
+    ApplicationRepository, DomainRepository, IdGenerator, InvitationRepository,
+    MembershipRepository, OAuthClientRepository, OrganizationRepository, RoleBindingRepository,
+    RoleRepository, UserRepository,
 };
 use axum::extract::{Extension, Path, State};
 use axum::http::HeaderMap;
@@ -1661,6 +1661,224 @@ pub(crate) async fn accept_invitation(
 }
 
 // helpers
+
+pub(crate) async fn domains_page(
+    State(state): State<AppState>,
+    Path(org_id): Path<String>,
+    headers: HeaderMap,
+    session: Option<Extension<SessionContext>>,
+) -> Response {
+    let Some(Extension(session)) = session else {
+        return redirect("/login");
+    };
+    let Some(sessions) = state.sessions.as_ref() else {
+        return unavailable();
+    };
+    let org_id = match Id::<OrganizationEntity>::parse(org_id) {
+        Ok(v) => v,
+        Err(_) => return bad_request(),
+    };
+    let user_id = session.session().user_id().clone();
+    let store = sessions.store().clone();
+    let csrf = sessions.csrf_token(session.session());
+    if !can_read_members(&store, &user_id, &org_id) {
+        return forbidden();
+    }
+    let domains = tokio::task::spawn_blocking({
+        let store = store.clone();
+        let org_id = org_id.clone();
+        move || DomainRepository::list_for_organization(store.as_ref(), &org_id)
+    })
+    .await
+    .ok()
+    .and_then(|r| r.ok())
+    .unwrap_or_default();
+    let domain_views: Vec<(String, String, String, bool)> = domains
+        .into_iter()
+        .map(|d| {
+            (
+                d.id().as_str().to_owned(),
+                d.domain().to_owned(),
+                d.verification_token().to_owned(),
+                d.is_verified(),
+            )
+        })
+        .collect();
+    let mut items = String::new();
+    for (id, dom, tok, verified) in &domain_views {
+        items.push_str("<li>");
+        items.push_str(dom);
+        items.push(' ');
+        if *verified {
+            items.push_str("(verified) ");
+            items.push_str(&format!(
+                "<form method=\"post\" action=\"/organizations/{}/domains/{}/revoke\" style=\"display:inline\"><button>Revoke</button></form>",
+                org_id.as_str(),
+                id
+            ));
+        } else {
+            items.push_str("(pending) token=");
+            items.push_str(tok);
+            items.push(' ');
+            items.push_str(&format!(
+                "<form method=\"post\" action=\"/organizations/{}/domains/{}/verify\" style=\"display:inline\"><input name=\"token\" placeholder=\"token\"><button>Verify</button></form> ",
+                org_id.as_str(),
+                id
+            ));
+            items.push_str(&format!(
+                "<form method=\"post\" action=\"/organizations/{}/domains/{}/remove\" style=\"display:inline\"><button>Remove</button></form>",
+                org_id.as_str(),
+                id
+            ));
+        }
+        items.push_str("</li>");
+    }
+    let body = format!(
+        "<h1>Domains</h1><ul>{}</ul><form method=\"post\" action=\"/organizations/{}/domains\"><input name=\"domain\" placeholder=\"example.com\"><button type=\"submit\">Add</button></form>",
+        items,
+        org_id.as_str()
+    );
+    let _ = headers;
+    let _ = csrf;
+    html_ok(&body)
+}
+
+pub(crate) async fn add_domain(
+    State(state): State<AppState>,
+    Path(org_id): Path<String>,
+    session: Option<Extension<SessionContext>>,
+    body: axum::body::Bytes,
+) -> Response {
+    let Some(Extension(session)) = session else {
+        return redirect("/login");
+    };
+    let Some(sessions) = state.sessions.as_ref() else {
+        return unavailable();
+    };
+    let org_id = match Id::<OrganizationEntity>::parse(org_id) {
+        Ok(v) => v,
+        Err(_) => return bad_request(),
+    };
+    let user_id = session.session().user_id().clone();
+    let store = sessions.store().clone();
+    if !can_manage_members(&store, &user_id, &org_id) {
+        return forbidden();
+    }
+    let params = parse_form(&body);
+    let domain_str = params.get("domain").cloned().unwrap_or_default();
+    if domain_str.is_empty() {
+        return bad_request();
+    }
+    // generate token
+    use rand_core::{OsRng, RngCore};
+    let mut bytes = [0u8; 16];
+    OsRng.fill_bytes(&mut bytes);
+    let token: String = bytes.iter().map(|b| format!("{:02x}", b)).collect();
+    let now = sessions.clock().now();
+    let id = crate::session::SecureIdGenerator
+        .generate::<DomainEntity>()
+        .expect("id");
+    let domain = match Domain::new(id, org_id.clone(), domain_str, token, now) {
+        Ok(v) => v,
+        Err(_) => return bad_request(),
+    };
+    let _ = tokio::task::spawn_blocking({
+        let store = store.clone();
+        let domain = domain.clone();
+        move || DomainRepository::insert(store.as_ref(), &domain)
+    })
+    .await;
+    redirect(&format!("/organizations/{}/domains", org_id.as_str()))
+}
+
+pub(crate) async fn verify_domain(
+    State(state): State<AppState>,
+    Path((org_id, domain_id)): Path<(String, String)>,
+    session: Option<Extension<SessionContext>>,
+    body: axum::body::Bytes,
+) -> Response {
+    let Some(Extension(session)) = session else {
+        return redirect("/login");
+    };
+    let Some(sessions) = state.sessions.as_ref() else {
+        return unavailable();
+    };
+    let org_id = match Id::<OrganizationEntity>::parse(org_id) {
+        Ok(v) => v,
+        Err(_) => return bad_request(),
+    };
+    let domain_id = match Id::<DomainEntity>::parse(domain_id) {
+        Ok(v) => v,
+        Err(_) => return bad_request(),
+    };
+    let user_id = session.session().user_id().clone();
+    let store = sessions.store().clone();
+    if !can_manage_members(&store, &user_id, &org_id) {
+        return forbidden();
+    }
+    let params = parse_form(&body);
+    let token = params.get("token").cloned().unwrap_or_default();
+    let domain = match tokio::task::spawn_blocking({
+        let store = store.clone();
+        let did = domain_id.clone();
+        move || DomainRepository::find_by_id(store.as_ref(), &did)
+    })
+    .await
+    .ok()
+    .and_then(|r| r.ok().flatten())
+    {
+        Some(d) => d,
+        None => return bad_request(),
+    };
+    if domain.verification_token() != token {
+        return html_ok("<p>Invalid verification token.</p>");
+    }
+    let mut domain = domain;
+    let now = sessions.clock().now();
+    domain.mark_verified(now);
+    let expected = domain.version().saturating_sub(1);
+    let _ = tokio::task::spawn_blocking({
+        let store = store.clone();
+        let domain = domain.clone();
+        move || DomainRepository::update(store.as_ref(), &domain, expected)
+    })
+    .await;
+    redirect(&format!("/organizations/{}/domains", org_id.as_str()))
+}
+
+pub(crate) async fn remove_domain(
+    State(state): State<AppState>,
+    Path((org_id, domain_id)): Path<(String, String)>,
+    session: Option<Extension<SessionContext>>,
+) -> Response {
+    let Some(Extension(session)) = session else {
+        return redirect("/login");
+    };
+    let Some(sessions) = state.sessions.as_ref() else {
+        return unavailable();
+    };
+    let org_id = match Id::<OrganizationEntity>::parse(org_id) {
+        Ok(v) => v,
+        Err(_) => return bad_request(),
+    };
+    let domain_id = match Id::<DomainEntity>::parse(domain_id) {
+        Ok(v) => v,
+        Err(_) => return bad_request(),
+    };
+    let user_id = session.session().user_id().clone();
+    let store = sessions.store().clone();
+    if !can_manage_members(&store, &user_id, &org_id) {
+        return forbidden();
+    }
+    let _ = tokio::task::spawn_blocking({
+        let store = store.clone();
+        let did = domain_id.clone();
+        move || DomainRepository::delete(store.as_ref(), &did)
+    })
+    .await;
+    redirect(&format!("/organizations/{}/domains", org_id.as_str()))
+}
+
 fn can_read_members(
     store: &std::sync::Arc<authkit_store::SqlStore>,
     user_id: &authkit_core::domain::Id<UserEntity>,

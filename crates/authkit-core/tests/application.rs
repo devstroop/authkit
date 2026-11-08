@@ -4,20 +4,20 @@ use std::cell::{Cell, RefCell};
 
 use authkit_core::application::{CreateOrganization, CreateUser};
 use authkit_core::domain::id::{
-    ApplicationEntity, Id as TypedId, MembershipEntity, OAuthClientEntity, OrganizationEntity,
-    RoleBindingEntity, RoleEntity, UserEntity,
+    ApplicationEntity, DomainEntity, Id as TypedId, MembershipEntity, OAuthClientEntity,
+    OrganizationEntity, RoleBindingEntity, RoleEntity, UserEntity,
 };
 use authkit_core::domain::write::WriteOutcome;
 use authkit_core::domain::{
-    AuditAction, AuditActor, AuditEvent, AuthorizationCode, DisplayName, DomainError, Email,
-    Entity, ErrorCode, IdError, Invitation, InvitationStatus, Membership, Organization,
+    AuditAction, AuditActor, AuditEvent, AuthorizationCode, DisplayName, Domain, DomainError,
+    Email, Entity, ErrorCode, IdError, Invitation, InvitationStatus, Membership, Organization,
     PkceChallenge, RedirectUri, RefreshFamily, RefreshToken, Role, RoleBinding, Scope, ScopeSet,
     SecretHash, Slug, TenantContext, Timestamp, User,
 };
 use authkit_core::ports::write::{EntityKind, UnitOfWork, WriteBatch, WriteCommand};
 use authkit_core::ports::{
-    Clock, IdGenerator, MembershipRepository, OrganizationRepository, RoleBindingRepository,
-    RoleRepository, UserRepository,
+    Clock, DomainRepository, IdGenerator, MembershipRepository, OrganizationRepository,
+    RoleBindingRepository, RoleRepository, UserRepository,
 };
 
 #[derive(Default)]
@@ -45,6 +45,7 @@ impl Clock for FixedClock {
 struct Data {
     users: Vec<User>,
     organizations: Vec<Organization>,
+    domains: Vec<Domain>,
     memberships: Vec<Membership>,
     roles: Vec<Role>,
     bindings: Vec<RoleBinding>,
@@ -181,6 +182,55 @@ impl OrganizationRepository for MemoryStore {
             organization: organization.clone(),
             expected_version,
         }))
+    }
+}
+
+impl DomainRepository for MemoryStore {
+    fn find_by_id(&self, id: &TypedId<DomainEntity>) -> Result<Option<Domain>, DomainError> {
+        Ok(self
+            .data
+            .borrow()
+            .domains
+            .iter()
+            .find(|d| d.id() == id)
+            .cloned())
+    }
+    fn find_by_domain(&self, domain: &str) -> Result<Option<Domain>, DomainError> {
+        Ok(self
+            .data
+            .borrow()
+            .domains
+            .iter()
+            .find(|d| d.domain() == domain)
+            .cloned())
+    }
+    fn list_for_organization(
+        &self,
+        org_id: &TypedId<OrganizationEntity>,
+    ) -> Result<Vec<Domain>, DomainError> {
+        Ok(self
+            .data
+            .borrow()
+            .domains
+            .iter()
+            .filter(|d| d.organization_id() == org_id)
+            .cloned()
+            .collect())
+    }
+    fn insert(&self, domain: &Domain) -> Result<WriteOutcome, DomainError> {
+        self.data.borrow_mut().domains.push(domain.clone());
+        Ok(WriteOutcome::Applied)
+    }
+    fn update(&self, domain: &Domain, _expected_version: u64) -> Result<WriteOutcome, DomainError> {
+        let mut data = self.data.borrow_mut();
+        if let Some(existing) = data.domains.iter_mut().find(|d| d.id() == domain.id()) {
+            *existing = domain.clone();
+        }
+        Ok(WriteOutcome::Applied)
+    }
+    fn delete(&self, id: &TypedId<DomainEntity>) -> Result<WriteOutcome, DomainError> {
+        self.data.borrow_mut().domains.retain(|d| d.id() != id);
+        Ok(WriteOutcome::Applied)
     }
 }
 

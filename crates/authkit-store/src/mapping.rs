@@ -12,10 +12,10 @@ use authkit_core::domain::credential::{
 use authkit_core::domain::email::Email;
 use authkit_core::domain::grant::{AuthorizationCode, Consent, RefreshFamily, RefreshToken};
 use authkit_core::domain::id::{
-    ApplicationEntity, AuditEventEntity, AuthorizationCodeEntity, ConsentEntity, Entity, Id,
-    InvitationEntity, MembershipEntity, OAuthClientEntity, OrganizationEntity, RecoveryCodeEntity,
-    RefreshFamilyEntity, RefreshTokenEntity, RoleBindingEntity, RoleEntity, SessionEntity,
-    SystemAdministratorEntity, UserEntity,
+    ApplicationEntity, AuditEventEntity, AuthorizationCodeEntity, ConsentEntity, DomainEntity,
+    Entity, Id, InvitationEntity, MembershipEntity, OAuthClientEntity, OrganizationEntity,
+    RecoveryCodeEntity, RefreshFamilyEntity, RefreshTokenEntity, RoleBindingEntity, RoleEntity,
+    SessionEntity, SystemAdministratorEntity, UserEntity,
 };
 use authkit_core::domain::invitation::{Invitation, InvitationStatus};
 use authkit_core::domain::membership::{Membership, MembershipStatus};
@@ -157,6 +157,22 @@ pub(crate) fn map_organization(row: &AnyRow) -> Result<Organization, DomainError
         Slug::parse(text(row, "slug")?).map_err(|_| invalid_stored_value())?,
         DisplayName::parse(text(row, "name")?).map_err(|_| invalid_stored_value())?,
         organization_status(&text(row, "status")?)?,
+        timestamp(row, "created_at")?,
+        timestamp(row, "updated_at")?,
+        version(row, "version")?,
+    )
+}
+
+pub(crate) fn map_domain(
+    row: &AnyRow,
+) -> Result<authkit_core::domain::verified_domain::Domain, DomainError> {
+    use authkit_core::domain::verified_domain::Domain;
+    Domain::restore(
+        id::<DomainEntity>(row, "id")?,
+        id::<OrganizationEntity>(row, "organization_id")?,
+        text(row, "domain")?,
+        text(row, "verification_token")?,
+        opt_timestamp(row, "verified_at")?,
         timestamp(row, "created_at")?,
         timestamp(row, "updated_at")?,
         version(row, "version")?,
