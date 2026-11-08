@@ -1,7 +1,7 @@
 CREATE TABLE one_time_token (
   id          TEXT PRIMARY KEY,
   user_id     TEXT NOT NULL REFERENCES user_account(id),
-  purpose     TEXT NOT NULL CHECK (purpose IN ('password_reset','email_verification','magic_auth','org_selection')),
+  purpose     TEXT NOT NULL CHECK (purpose IN ('password_reset','email_verification')),
   token_hash  TEXT NOT NULL,
   expires_at  INTEGER NOT NULL,
   consumed_at INTEGER,

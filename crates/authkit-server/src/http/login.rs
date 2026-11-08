@@ -38,9 +38,11 @@ struct LoginTemplate<'a> {
 
 pub(crate) async fn login_page(
     State(state): State<AppState>,
+    headers: HeaderMap,
     session: Option<Extension<SessionContext>>,
     axum::extract::RawQuery(query): axum::extract::RawQuery,
 ) -> Response {
+    crate::i18n::set_locale(crate::i18n::detect_locale(&headers));
     let next = query
         .as_deref()
         .and_then(|q| form_value(q, "next"))
@@ -82,9 +84,11 @@ struct RegisterTemplate<'a> {
 
 pub(crate) async fn register_page(
     State(state): State<AppState>,
+    headers: HeaderMap,
     session: Option<Extension<SessionContext>>,
     axum::extract::RawQuery(query): axum::extract::RawQuery,
 ) -> Response {
+    crate::i18n::set_locale(crate::i18n::detect_locale(&headers));
     let next = query
         .as_deref()
         .and_then(|q| form_value(q, "next"))

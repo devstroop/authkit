@@ -21,7 +21,7 @@ impl Locale {
 }
 
 thread_local! {
-    static CURRENT: Cell<Locale> = Cell::new(Locale::En);
+    static CURRENT: Cell<Locale> = const { Cell::new(Locale::En) };
 }
 
 pub fn set_locale(locale: Locale) {

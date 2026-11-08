@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use axum::Json;
 use axum::extract::{Extension, State};
@@ -22,10 +23,12 @@ enum Pending {
     Registration {
         user_id: Id<UserEntity>,
         state: PasskeyRegistration,
+        expires_at: Instant,
     },
     Authentication {
         user_id: Id<UserEntity>,
         state: PasskeyAuthentication,
+        expires_at: Instant,
     },
 }
 
@@ -86,12 +89,14 @@ pub(crate) async fn register_begin(
         Ok(v) => v,
         Err(_) => return bad_request("registration start failed"),
     };
-    let token = format!("{:x}", rand_token());
+    let token = rand_token_hex();
+    let expires_at = Instant::now() + Duration::from_secs(300);
     PENDING.lock().unwrap().insert(
         token.clone(),
         Pending::Registration {
             user_id: user_id.clone(),
             state: pr,
+            expires_at,
         },
     );
     (
@@ -124,7 +129,11 @@ pub(crate) async fn register_finish(
     };
     let pending = PENDING.lock().unwrap().remove(&req.token);
     let (user_id, pr_state) = match pending {
-        Some(Pending::Registration { user_id, state }) => (user_id, state),
+        Some(Pending::Registration {
+            user_id,
+            state,
+            expires_at,
+        }) if Instant::now() <= expires_at => (user_id, state),
         _ => return bad_request("invalid or expired token"),
     };
     // ensure same user
@@ -159,11 +168,12 @@ pub(crate) async fn register_finish(
     (StatusCode::OK, Json(json!({"status": "registered"}))).into_response()
 }
 
-fn rand_token() -> u64 {
+fn rand_token_hex() -> String {
     use rand_core::{OsRng, RngCore};
-    OsRng.next_u64()
+    let mut bytes = [0u8; 32];
+    OsRng.fill_bytes(&mut bytes);
+    bytes.iter().map(|b| format!("{:02x}", b)).collect()
 }
-
 
 #[derive(Deserialize)]
 pub struct AuthBeginRequest {
@@ -219,12 +229,14 @@ pub(crate) async fn auth_begin(
         Ok(v) => v,
         Err(_) => return bad_request("auth begin failed"),
     };
-    let token = format!("{:x}", rand_token());
+    let token = rand_token_hex();
+    let expires_at = Instant::now() + Duration::from_secs(300);
     PENDING.lock().unwrap().insert(
         token.clone(),
         Pending::Authentication {
             user_id: user_id.clone(),
             state: pa,
+            expires_at,
         },
     );
     (
@@ -252,7 +264,11 @@ pub(crate) async fn auth_finish(
     };
     let pending = PENDING.lock().unwrap().remove(&req.token);
     let (user_id, pa_state) = match pending {
-        Some(Pending::Authentication { user_id, state }) => (user_id, state),
+        Some(Pending::Authentication {
+            user_id,
+            state,
+            expires_at,
+        }) if Instant::now() <= expires_at => (user_id, state),
         _ => return bad_request("invalid or expired token"),
     };
     let result = match wa.finish_passkey_authentication(&req.credential, &pa_state) {
@@ -260,7 +276,15 @@ pub(crate) async fn auth_finish(
         Err(_) => return bad_request("authentication failed"),
     };
     let now = sessions.clock().now();
-    let created = match sessions.create(user_id.clone(), None, authkit_core::domain::SessionAudience::Account, now).await {
+    let created = match sessions
+        .create(
+            user_id.clone(),
+            None,
+            authkit_core::domain::SessionAudience::Account,
+            now,
+        )
+        .await
+    {
         Ok(v) => v,
         Err(_) => return unavailable(),
     };
@@ -268,7 +292,9 @@ pub(crate) async fn auth_finish(
     let cookie = sessions.set_cookie(created.session(), created.token(), now);
     let mut response = axum::response::Redirect::to("/").into_response();
     if let Ok(value) = axum::http::HeaderValue::from_str(&cookie) {
-        response.headers_mut().append(axum::http::header::SET_COOKIE, value);
+        response
+            .headers_mut()
+            .append(axum::http::header::SET_COOKIE, value);
     }
     response
 }
