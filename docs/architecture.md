@@ -236,12 +236,14 @@ The exact Rust signatures will evolve, but the port categories are stable:
 | Port | Purpose | Runtime notes |
 | --- | --- | --- |
 | `UserRepository`, `OrganizationRepository`, `ApplicationRepository` | Aggregate reads and guarded writes. | All tenant-owned methods require `TenantContext`. |
+| `UnitOfWork` | Executes a precomputed `WriteBatch` atomically. | Native adapters use one SQL transaction; D1 uses one `batch()` call with the same guards. |
+| `CredentialRepository` | Type-specific password, passkey, and TOTP credential persistence. | Adapters hash passwords, encrypt TOTP secrets, and enforce the stored credential type. |
 | `ClientRepository` | OAuth client lookup, secret verifier rotation, redirect URI registration. | Client IDs are deployment-global. |
 | `MembershipRepository`, `RoleRepository` | Membership and role-binding queries. | Permission checks must be expressible as one query or a bounded set. |
 | `SessionRepository` | Session creation, rotation, idle/absolute expiry, revocation. | Auth-critical reads should target the primary on D1. |
 | `GrantRepository` | Authorization codes, consents, refresh-token families, revocation records. | One-time consumption must be a conditional write. |
 | `AuditSink` | Append-only audit events and export. | Must not block the user response; use an outbox or batch. |
-| `KeyStore` | Active signing key, public JWKS, rotation state. | Backed by encrypted DB rows or platform secret storage. |
+| `KeyStore` | Active signing key, public JWKS, rotation state. | Backed by an encrypted keyring file or platform secret storage. |
 | `Clock`, `IdGenerator` | Deterministic testing and portable IDs. | Injected; no direct `SystemTime` or `Uuid::now_v7()` in domain logic. |
 | `PasswordHasher` | Argon2id and parameter policy. | Native only unless the Workers decision says otherwise. |
 | `TokenSigner`, `TokenHasher` | JWT signing and opaque-token hashing. | Asymmetric signing only for OIDC tokens. |
@@ -263,10 +265,32 @@ A use case performs this sequence:
 4. If the batch fails a guard, re-read and return a conflict or a safe OAuth error. Do not
    retry blindly for one-time grants.
 
-The native adapter executes the batch inside a SQL transaction. The D1 adapter executes a
-D1 `batch()` and uses the same guards. Because no read occurs inside the transaction, the
-core does not need interactive transactions. See [Domain model](domain-model.md) for the
-schema implications and [Runtime targets](runtime-targets.md) for D1 caveats.
+The portable contract is `authkit_core::ports::write`: a `WriteBatch` holds ordered
+`WriteCommand` values, and `UnitOfWork::commit` applies the batch. The command values carry
+domain aggregates, tenant contexts, and the version or one-time guard the use case read.
+They contain no SQLx, SQLite, PostgreSQL, or runtime transaction type. The command set covers
+users, organizations, memberships, invitations, applications, OAuth clients, credentials,
+sessions, roles, role bindings, authorization codes, consents, refresh families and tokens,
+and audit events.
+
+The native adapter executes the batch inside one SQL transaction. A SQLite adapter uses a
+write transaction with a busy timeout; a PostgreSQL adapter uses one transaction with
+per-statement guards and unique constraints. The D1 adapter translates the same ordered
+commands into one D1 `batch()` and uses the same guards; because D1 has no interactive
+transactions, a use case must precompute every value and must not read a value written
+earlier in the batch. A guard failure or statement error rolls back the whole batch and is
+reported as `WriteOutcome::Conflict` or `WriteOutcome::NotFound`. Callers reload and either
+return a safe conflict or retry only operations that are safe to retry; one-time grants are
+never retried blindly.
+
+Each adapter must pass the same conformance cases: a duplicate or stale guard returns
+`Conflict`, a missing row returns `NotFound`, an injected late failure leaves no earlier
+write visible, and the audit row is committed with the state change. The in-memory test
+double covers these cases today; native and D1 adapter tests must repeat them when those
+adapters land.
+
+See [Domain model](domain-model.md) for the schema implications and
+[Runtime targets](runtime-targets.md) for D1 caveats.
 
 ## 5. Request flows
 
@@ -292,10 +316,10 @@ sequenceDiagram
     A->>DB: Load consent / prior grant
     alt Consent required
         A-->>B: Consent page
-        B->>A: POST /consent (allow scopes)
+        B->>A: POST /oauth2/authorize/consent (allow scopes)
         A->>DB: Persist consent
     end
-    A->>DB: Store code hash, PKCE challenge, nonce, redirect URI
+    A->>DB: Store code hash, PKCE challenge, nonce, redirect URI, auth_time, session ID
     A-->>B: 302 to exact registered redirect_uri?code=...&state=...
     B->>App: GET /callback?code=...&state=...
     App->>App: Verify state cookie
@@ -320,6 +344,12 @@ Key properties:
   The user must have an active membership in that organization. **Decision pending:**
   whether applications may later be shared across organizations, which would require an
   explicit organization-selection step before consent.
+- The current authorization endpoint milestone does not include login or reauthentication
+  UI. Unauthenticated browser requests receive a local `401`; `prompt=none` returns
+  `login_required`. PKCE `S256` is required for every client, and `nonce` is required for
+  OpenID requests.
+- First-party applications marked by a system administrator are auto-consented and audited
+  with `consent=automatic`; `prompt=consent` still shows the consent screen.
 
 ### 5.2 Token validation by an application resource server
 
@@ -521,8 +551,9 @@ community-supported.
   logged. The issuer URL is validated at startup and must be HTTPS outside local
   development.
 - **Migrations:** one logical migration series with dialect-specific SQL where necessary.
-  CI runs migrations on SQLite, Postgres, and D1 before tests. Migrations are forward-only;
-  destructive changes require an expand/contract sequence.
+  CI runs the SQLite and Postgres migration contract before tests; D1 migration coverage
+  lands with the D1 adapter. Migrations are forward-only; destructive changes require an
+  expand/contract sequence.
 - **Backups:** SQLite snapshots or WAL-aware backup; Postgres managed backups; D1 export
   or Time Travel where available. Signing keys and secrets are backed up separately and
   encrypted.
@@ -553,19 +584,15 @@ be resolved in ADRs before implementation depends on them.
    always present. V1 derives the tenant from the client's application, which belongs to
    one organization. Whether applications may later be shared across organizations is a
    separate product decision that would change authorization-time tenant selection.
-4. **Consent policy.** Auto-consent for first-party applications owned by the same
-   organization versus a consent screen for every client. The default proposal is
-   auto-consent only for clients marked first-party by a system administrator, with an
-   audit event.
-5. **Signing algorithm and key custody.** ES256 as default; EdDSA support; native KMS
+4. **Signing algorithm and key custody.** ES256 as default; EdDSA support; native KMS
    integration; Workers key rotation mechanics.
-6. **BFF distribution.** Documentation and sample only, or a maintained library.
-7. **System-admin authentication strength.** Separate session audience, WebAuthn, or
+5. **BFF distribution.** Documentation and sample only, or a maintained library.
+6. **System-admin authentication strength.** Separate session audience, WebAuthn, or
    step-up.
-8. **Upstream OIDC federation.** In scope for v1 or deferred.
-9. **Audit tamper evidence.** Hash chain versus append-only table with export.
-10. **Access-token format for Workers-lite.** JWT with local validation versus opaque
-    tokens with introspection, given D1 read-replication behavior.
+7. **Upstream OIDC federation.** In scope for v1 or deferred.
+8. **Audit tamper evidence.** Hash chain versus append-only table with export.
+9. **Access-token format for Workers-lite.** JWT with local validation versus opaque
+   tokens with introspection, given D1 read-replication behavior.
 
 Cross-references: [domain model](domain-model.md), [runtime targets](runtime-targets.md),
 [UI stack](ui-stack.md), [standards](standards.md).

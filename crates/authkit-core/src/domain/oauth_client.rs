@@ -139,6 +139,16 @@ impl OAuthClient {
             ));
         }
 
+        if spec
+            .allowed_grant_types
+            .contains(&GrantType::AuthorizationCode)
+            && !spec.require_pkce
+        {
+            return Err(DomainError::invalid(
+                "every authorization-code client must require PKCE",
+            ));
+        }
+
         match spec.client_type {
             ClientType::Public => {
                 if spec.token_endpoint_auth_method != TokenEndpointAuthMethod::None {
@@ -150,9 +160,6 @@ impl OAuthClient {
                     return Err(DomainError::invalid(
                         "a public client must not have a client secret",
                     ));
-                }
-                if !spec.require_pkce {
-                    return Err(DomainError::invalid("a public client must require PKCE"));
                 }
             }
             ClientType::Confidential => {
@@ -187,6 +194,57 @@ impl OAuthClient {
             updated_at: now,
             version: 0,
         })
+    }
+
+    /// Reconstructs an OAuth client from persisted state.
+    ///
+    /// Storage adapters use this; normal callers register clients through
+    /// [`OAuthClient::new`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn restore(
+        id: Id<OAuthClientEntity>,
+        application_id: Id<ApplicationEntity>,
+        client_id: ClientId,
+        name: DisplayName,
+        client_type: ClientType,
+        token_endpoint_auth_method: TokenEndpointAuthMethod,
+        secret_hash: Option<SecretHash>,
+        require_pkce: bool,
+        redirect_uris: Vec<RedirectUri>,
+        post_logout_redirect_uris: Vec<RedirectUri>,
+        allowed_scopes: ScopeSet,
+        allowed_grant_types: Vec<GrantType>,
+        status: ClientStatus,
+        created_at: Timestamp,
+        updated_at: Timestamp,
+        version: u64,
+    ) -> Result<Self, DomainError> {
+        if updated_at < created_at {
+            return Err(DomainError::invalid(
+                "OAuth client updated_at must not precede created_at",
+            ));
+        }
+        let mut client = Self::new(
+            id,
+            OAuthClientSpec {
+                application_id,
+                client_id,
+                name,
+                client_type,
+                token_endpoint_auth_method,
+                secret_hash,
+                require_pkce,
+                redirect_uris,
+                post_logout_redirect_uris,
+                allowed_scopes,
+                allowed_grant_types,
+            },
+            created_at,
+        )?;
+        client.status = status;
+        client.updated_at = updated_at;
+        client.version = version;
+        Ok(client)
     }
 
     /// Returns the internal row identifier.
@@ -445,6 +503,13 @@ mod tests {
 
         spec.require_pkce = true;
         spec.secret_hash = Some(SecretHash::parse("sha256:0123456789abcdef").expect("valid"));
+        assert!(client(spec).is_err());
+    }
+
+    #[test]
+    fn every_client_requires_pkce() {
+        let mut spec = spec();
+        spec.require_pkce = false;
         assert!(client(spec).is_err());
     }
 

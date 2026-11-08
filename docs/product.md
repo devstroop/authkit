@@ -185,6 +185,10 @@ deployment an ordinary team can understand.
 ## Naming and licensing
 
 AuthKit is a working name. WorkOS AuthKit is an existing product, so naming and trademark
-review must complete before packages, domains, or a public launch use the name. The license
-is not selected yet; no license is granted until a `LICENSE` file is added. Both are
-tracked as open governance items in [GOVERNANCE.md](../GOVERNANCE.md#access-continuity-and-open-items).
+review must complete before packages, domains, or a public launch use the name.
+
+The project is dual-licensed under MIT OR Apache-2.0, at the user's option. The repository
+contains the license texts in `LICENSE-MIT` and `LICENSE-APACHE`, attribution in `NOTICE`,
+and the decision record in [ADR-0010](adr/0010-dual-mit-apache-2-0-license.md). The naming
+review remains an open governance item in
+[GOVERNANCE.md](../GOVERNANCE.md#access-continuity-and-open-items).

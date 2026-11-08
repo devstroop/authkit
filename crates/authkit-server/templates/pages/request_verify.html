@@ -1,0 +1,14 @@
+{% extends "layouts/auth.html" %}
+{% import "macros/ui.html" as ui %}
+{% block auth_content %}
+<div class="auth-card" style="max-width:32rem;">
+  <h1>{{ crate::i18n::t("title_verify_email") }}</h1>
+  <p class="subtitle">{{ crate::i18n::t("subtitle_request_verify") }}</p>
+  <div class="card">
+    <form method="post" action="/account/verify-email-request">
+      {{ ui::button(crate::i18n::t("send_verification_email")) }}
+    </form>
+  </div>
+  <p class="links"><a href="/account">{{ crate::i18n::t("back_to_account") }}</a></p>
+</div>
+{% endblock %}

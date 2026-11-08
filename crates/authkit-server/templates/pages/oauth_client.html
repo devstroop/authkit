@@ -1,0 +1,47 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block app_content %}
+<div class="auth-card" style="max-width:48rem;">
+  <h1>{{ name }}</h1>
+  <p class="subtitle">{{ crate::i18n::t("subtitle_oauth_client") }}</p>
+
+  <div class="card">
+    <p style="font-size:0.85rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;font-weight:600;margin-bottom:var(--space-2);">{{ crate::i18n::t("client_id") }}</p>
+    <p style="font-family:monospace;font-size:0.95rem;word-break:break-all;margin-bottom:var(--space-4);">{{ client_id }}</p>
+
+    <h2 style="font-family:var(--font-display);font-size:1.25rem;font-weight:400;margin:var(--space-4) 0 var(--space-2);">{{ crate::i18n::t("redirect_uris") }}</h2>
+    <ul style="list-style:none;padding:0;margin:0 0 var(--space-4);">
+    {% for uri in redirect_uris %}
+    <li style="display:flex;align-items:center;justify-content:space-between;padding:var(--space-2) var(--space-3);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:var(--space-2);background:var(--surface);">
+      <span style="font-family:monospace;font-size:0.85rem;word-break:break-all;">{{ uri }}</span>
+      <form method="post" action="/organizations/{{ org_id }}/oauth-clients/{{ client_id_internal }}/redirect-uris/remove" style="display:inline;margin:0;">
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        <input type="hidden" name="uri" value="{{ uri }}">
+        <button type="submit" class="btn btn-secondary" style="width:auto;padding:0.3rem 0.75rem;font-size:0.85rem;">{{ crate::i18n::t("remove") }}</button>
+      </form>
+    </li>
+    {% endfor %}
+    {% if redirect_uris.is_empty() %}
+    <li style="color:var(--muted);padding:var(--space-3);text-align:center;">{{ crate::i18n::t("no_redirect_uris") }}</li>
+    {% endif %}
+    </ul>
+    <form method="post" action="/organizations/{{ org_id }}/oauth-clients/{{ client_id_internal }}/redirect-uris">
+      <input type="hidden" name="_csrf" value="{{ csrf }}">
+      {{ ui::text_input("uri", crate::i18n::t("redirect_uri"), "text", "") }}
+      {{ ui::button(crate::i18n::t("add_uri")) }}
+    </form>
+  </div>
+
+  <div class="card">
+    <h2 style="font-family:var(--font-display);font-size:1.25rem;font-weight:400;margin:0 0 var(--space-2);">{{ crate::i18n::t("scopes") }}</h2>
+    <p style="font-size:0.9rem;color:var(--muted);margin-bottom:var(--space-3);">{{ scopes }}</p>
+    <form method="post" action="/organizations/{{ org_id }}/oauth-clients/{{ client_id_internal }}/scopes">
+      <input type="hidden" name="_csrf" value="{{ csrf }}">
+      {{ ui::text_input("scopes", crate::i18n::t("scopes"), "text", "", true, "", "", scopes) }}
+      {{ ui::button(crate::i18n::t("replace_scopes")) }}
+    </form>
+  </div>
+
+  <p class="links"><a href="/organizations/{{ org_id }}/oauth-clients">{{ crate::i18n::t("back_to_clients") }}</a></p>
+</div>
+{% endblock %}

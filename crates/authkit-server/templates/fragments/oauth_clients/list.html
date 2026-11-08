@@ -1,0 +1,40 @@
+{% import "macros/ui.html" as ui %}
+<ul id="oauth-clients" aria-live="polite" style="list-style:none;padding:0;margin:0 0 var(--space-5);">
+{% for client in clients %}
+<li style="display:flex;align-items:center;justify-content:space-between;padding:var(--space-3) var(--space-4);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:var(--space-2);background:var(--surface);">
+  <div>
+    <div style="font-weight:500;">{{ client.name }}</div>
+    <div style="font-size:0.8rem;color:var(--muted);font-family:monospace;">{{ client.client_id }} · {{ client.status }}</div>
+  </div>
+  <a href="/organizations/{{ org_id }}/oauth-clients/{{ client.id }}" style="font-weight:500;font-size:0.9rem;">{{ crate::i18n::t("manage") }} →</a>
+</li>
+{% endfor %}
+{% if clients.is_empty() %}
+<li style="color:var(--muted);padding:var(--space-4);text-align:center;">{{ crate::i18n::t("no_oauth_clients") }}</li>
+{% endif %}
+</ul>
+{% if can_manage %}
+<h2 style="font-family:var(--font-display);font-size:1.5rem;font-weight:400;margin:var(--space-5) 0 var(--space-3);">{{ crate::i18n::t("create_oauth_client") }}</h2>
+<form method="post" action="/organizations/{{ org_id }}/oauth-clients" hx-post="/organizations/{{ org_id }}/oauth-clients" hx-target="#oauth-clients" hx-swap="outerHTML">
+  <input type="hidden" name="_csrf" value="{{ csrf }}">
+  <label class="field">
+    <span>{{ crate::i18n::t("application") }}</span>
+    <select name="application_id" class="input" required aria-required="true">
+      {% for app in apps %}
+      <option value="{{ app.id }}">{{ app.name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  {{ ui::text_input("name", crate::i18n::t("name"), "text", "") }}
+  <label class="field">
+    <span>{{ crate::i18n::t("client_type") }}</span>
+    <select name="client_type" class="input" required aria-required="true">
+      <option value="public">{{ crate::i18n::t("public") }}</option>
+      <option value="confidential">{{ crate::i18n::t("confidential") }}</option>
+    </select>
+  </label>
+  {{ ui::text_input("redirect_uri", crate::i18n::t("redirect_uri"), "text", "") }}
+  {{ ui::text_input("scopes", crate::i18n::t("scopes"), "text", "") }}
+  {{ ui::button(crate::i18n::t("create")) }}
+</form>
+{% endif %}

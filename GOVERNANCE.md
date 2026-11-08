@@ -14,7 +14,7 @@ The current maintainer list is provisional:
 | --- | --- | --- |
 | [@akashshah-dev](https://github.com/akashshah-dev) | Bootstrap maintainer for all areas; release and security contact | Placeholder until the initial team is confirmed |
 
-The bootstrap maintainer is also the placeholder code owner listed in `CODEOWNERS`. Before public launch, the project must name either a second maintainer or an independent advisor so that no single person is the only reviewer for security-sensitive work and the only handler for conduct reports. Contact addresses in [SECURITY.md](SECURITY.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) are placeholders until confirmed.
+The bootstrap maintainer is also the code owner listed in `CODEOWNERS`. Before public launch, the project must name either a second maintainer or an independent advisor so that no single person is the only reviewer for security-sensitive work and the only handler for conduct reports. GitHub private vulnerability reporting is enabled; the security and conduct addresses are published for fallback use and their delivery is rechecked before each release promotion.
 
 Maintainer responsibilities include:
 
@@ -136,13 +136,14 @@ Access is granted on the principle of least privilege. Maintainers must use stro
 
 The following items are open and must be resolved before public launch:
 
-- select and add the project license;
 - complete naming and trademark review, including the relationship to WorkOS AuthKit, before publishing packages or promoting the name;
-- confirm `security@akashshah-dev.com` and `conduct@akashshah-dev.com`, and enable GitHub private vulnerability reporting;
+- verify monitored delivery for `security@devstroop.com` and `conduct@devstroop.com`; GitHub private vulnerability reporting is already enabled and verified;
 - name a second maintainer or independent advisor for conduct and security review;
 - publish a support and release policy;
 - enable and verify branch protection, required checks, and repository access controls;
-- define the security release and advisory procedure end to end.
+- rehearse the security release and advisory procedure end to end, including a test acknowledgement.
+
+The license decision is resolved: the project is dual-licensed under MIT OR Apache-2.0, as recorded in [ADR-0010](docs/adr/0010-dual-mit-apache-2-0-license.md).
 
 ## Amendments
 

@@ -79,6 +79,66 @@ impl Invitation {
         })
     }
 
+    /// Reconstructs an invitation from persisted state.
+    ///
+    /// Storage adapters use this; normal callers create invitations through
+    /// [`Invitation::new`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn restore(
+        id: Id<InvitationEntity>,
+        organization_id: Id<OrganizationEntity>,
+        email: Email,
+        token_hash: SecretHash,
+        role_ids: Vec<Id<RoleEntity>>,
+        invited_by: Id<UserEntity>,
+        status: InvitationStatus,
+        expires_at: Timestamp,
+        accepted_at: Option<Timestamp>,
+        created_at: Timestamp,
+        updated_at: Timestamp,
+        version: u64,
+    ) -> Result<Self, DomainError> {
+        if updated_at < created_at {
+            return Err(DomainError::invalid(
+                "invitation updated_at must not precede created_at",
+            ));
+        }
+        let mut invitation = Self::new(
+            id,
+            organization_id,
+            email,
+            token_hash,
+            role_ids,
+            invited_by,
+            created_at,
+            expires_at,
+        )?;
+        match status {
+            InvitationStatus::Accepted => {
+                let accepted_at = accepted_at.ok_or_else(|| {
+                    DomainError::invalid("an accepted invitation must have an accepted_at time")
+                })?;
+                if accepted_at < created_at || !accepted_at.is_before(expires_at) {
+                    return Err(DomainError::invalid(
+                        "invitation accepted_at is outside the invitation lifetime",
+                    ));
+                }
+                invitation.accepted_at = Some(accepted_at);
+            }
+            InvitationStatus::Pending | InvitationStatus::Revoked => {
+                if accepted_at.is_some() {
+                    return Err(DomainError::invalid(
+                        "an unaccepted invitation must not have an accepted_at time",
+                    ));
+                }
+            }
+        }
+        invitation.status = status;
+        invitation.updated_at = updated_at;
+        invitation.version = version;
+        Ok(invitation)
+    }
+
     /// Returns the invitation identifier.
     pub const fn id(&self) -> &Id<InvitationEntity> {
         &self.id

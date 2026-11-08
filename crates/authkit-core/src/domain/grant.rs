@@ -1,7 +1,7 @@
 use crate::domain::DomainError;
 use crate::domain::id::{
     ApplicationEntity, AuthorizationCodeEntity, ConsentEntity, Id, OAuthClientEntity,
-    OrganizationEntity, RefreshFamilyEntity, RefreshTokenEntity, UserEntity,
+    OrganizationEntity, RefreshFamilyEntity, RefreshTokenEntity, SessionEntity, UserEntity,
 };
 use crate::domain::pkce::{Nonce, PkceChallenge};
 use crate::domain::redirect_uri::RedirectUri;
@@ -22,6 +22,8 @@ pub struct AuthorizationCode {
     scopes: ScopeSet,
     pkce_challenge: PkceChallenge,
     nonce: Option<Nonce>,
+    auth_time: Timestamp,
+    session_id: Option<Id<SessionEntity>>,
     created_at: Timestamp,
     expires_at: Timestamp,
     consumed_at: Option<Timestamp>,
@@ -42,12 +44,19 @@ impl AuthorizationCode {
         scopes: ScopeSet,
         pkce_challenge: PkceChallenge,
         nonce: Option<Nonce>,
+        auth_time: Timestamp,
+        session_id: Option<Id<SessionEntity>>,
         now: Timestamp,
         expires_at: Timestamp,
     ) -> Result<Self, DomainError> {
         if !now.is_before(expires_at) {
             return Err(DomainError::invalid(
                 "authorization code expiry must be after creation",
+            ));
+        }
+        if auth_time > now {
+            return Err(DomainError::invalid(
+                "authorization code auth_time must not be after creation",
             ));
         }
 
@@ -62,11 +71,64 @@ impl AuthorizationCode {
             scopes,
             pkce_challenge,
             nonce,
+            auth_time,
+            session_id,
             created_at: now,
             expires_at,
             consumed_at: None,
             version: 0,
         })
+    }
+
+    /// Reconstructs an authorization code from persisted state.
+    ///
+    /// Storage adapters use this; normal callers create codes through
+    /// [`AuthorizationCode::new`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn restore(
+        id: Id<AuthorizationCodeEntity>,
+        organization_id: Id<OrganizationEntity>,
+        application_id: Id<ApplicationEntity>,
+        client_id: Id<OAuthClientEntity>,
+        user_id: Id<UserEntity>,
+        code_hash: SecretHash,
+        redirect_uri: RedirectUri,
+        scopes: ScopeSet,
+        pkce_challenge: PkceChallenge,
+        nonce: Option<Nonce>,
+        auth_time: Timestamp,
+        session_id: Option<Id<SessionEntity>>,
+        created_at: Timestamp,
+        expires_at: Timestamp,
+        consumed_at: Option<Timestamp>,
+        version: u64,
+    ) -> Result<Self, DomainError> {
+        let mut code = Self::new(
+            id,
+            organization_id,
+            application_id,
+            client_id,
+            user_id,
+            code_hash,
+            redirect_uri,
+            scopes,
+            pkce_challenge,
+            nonce,
+            auth_time,
+            session_id,
+            created_at,
+            expires_at,
+        )?;
+        if let Some(consumed_at) = consumed_at {
+            if consumed_at < created_at || !consumed_at.is_before(expires_at) {
+                return Err(DomainError::invalid(
+                    "authorization code consumption is outside the code lifetime",
+                ));
+            }
+            code.consumed_at = Some(consumed_at);
+        }
+        code.version = version;
+        Ok(code)
     }
 
     /// Returns the code identifier.
@@ -117,6 +179,16 @@ impl AuthorizationCode {
     /// Returns the OIDC nonce, if supplied.
     pub const fn nonce(&self) -> Option<&Nonce> {
         self.nonce.as_ref()
+    }
+
+    /// Returns the authentication time bound to the code.
+    pub const fn auth_time(&self) -> Timestamp {
+        self.auth_time
+    }
+
+    /// Returns the browser session that authorized the code, when known.
+    pub const fn session_id(&self) -> Option<&Id<SessionEntity>> {
+        self.session_id.as_ref()
     }
 
     /// Returns the creation time.
@@ -197,6 +269,48 @@ impl Consent {
         }
     }
 
+    /// Reconstructs a consent from persisted state.
+    ///
+    /// Storage adapters use this; normal callers create consent through
+    /// [`Consent::new`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn restore(
+        id: Id<ConsentEntity>,
+        organization_id: Id<OrganizationEntity>,
+        user_id: Id<UserEntity>,
+        client_id: Id<OAuthClientEntity>,
+        scopes: ScopeSet,
+        created_at: Timestamp,
+        updated_at: Timestamp,
+        revoked_at: Option<Timestamp>,
+        version: u64,
+    ) -> Result<Self, DomainError> {
+        if updated_at < created_at {
+            return Err(DomainError::invalid(
+                "consent updated_at must not precede created_at",
+            ));
+        }
+        if let Some(revoked_at) = revoked_at
+            && (revoked_at < created_at || revoked_at > updated_at)
+        {
+            return Err(DomainError::invalid(
+                "consent revoked_at is outside the consent lifetime",
+            ));
+        }
+
+        Ok(Self {
+            id,
+            organization_id,
+            user_id,
+            client_id,
+            scopes,
+            created_at,
+            updated_at,
+            revoked_at,
+            version,
+        })
+    }
+
     /// Returns the consent identifier.
     pub const fn id(&self) -> &Id<ConsentEntity> {
         &self.id
@@ -262,6 +376,14 @@ impl Consent {
         self.version = self.version.saturating_add(1);
     }
 
+    /// Grants an updated scope set, reactivating a previously revoked consent.
+    pub fn grant(&mut self, scopes: ScopeSet, now: Timestamp) {
+        self.scopes = scopes;
+        self.revoked_at = None;
+        self.updated_at = now;
+        self.version = self.version.saturating_add(1);
+    }
+
     /// Revokes the consent. Repeated calls are idempotent.
     pub fn revoke(&mut self, now: Timestamp) {
         if self.revoked_at.is_none() {
@@ -279,6 +401,9 @@ pub struct RefreshFamily {
     organization_id: Id<OrganizationEntity>,
     client_id: Id<OAuthClientEntity>,
     user_id: Id<UserEntity>,
+    scopes: ScopeSet,
+    session_id: Option<Id<SessionEntity>>,
+    auth_time: Timestamp,
     created_at: Timestamp,
     absolute_expires_at: Timestamp,
     revoked_at: Option<Timestamp>,
@@ -293,6 +418,9 @@ impl RefreshFamily {
         organization_id: Id<OrganizationEntity>,
         client_id: Id<OAuthClientEntity>,
         user_id: Id<UserEntity>,
+        scopes: ScopeSet,
+        session_id: Option<Id<SessionEntity>>,
+        auth_time: Timestamp,
         now: Timestamp,
         absolute_expires_at: Timestamp,
     ) -> Result<Self, DomainError> {
@@ -301,17 +429,71 @@ impl RefreshFamily {
                 "refresh family expiry must be after creation",
             ));
         }
+        if scopes.is_empty() {
+            return Err(DomainError::invalid(
+                "a refresh family must grant at least one scope",
+            ));
+        }
+        if auth_time > now {
+            return Err(DomainError::invalid(
+                "refresh family auth_time must not be after creation",
+            ));
+        }
 
         Ok(Self {
             id,
             organization_id,
             client_id,
             user_id,
+            scopes,
+            session_id,
+            auth_time,
             created_at: now,
             absolute_expires_at,
             revoked_at: None,
             version: 0,
         })
+    }
+
+    /// Reconstructs a refresh family from persisted state.
+    ///
+    /// Storage adapters use this; normal callers create families through
+    /// [`RefreshFamily::new`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn restore(
+        id: Id<RefreshFamilyEntity>,
+        organization_id: Id<OrganizationEntity>,
+        client_id: Id<OAuthClientEntity>,
+        user_id: Id<UserEntity>,
+        scopes: ScopeSet,
+        session_id: Option<Id<SessionEntity>>,
+        auth_time: Timestamp,
+        created_at: Timestamp,
+        absolute_expires_at: Timestamp,
+        revoked_at: Option<Timestamp>,
+        version: u64,
+    ) -> Result<Self, DomainError> {
+        let mut family = Self::new(
+            id,
+            organization_id,
+            client_id,
+            user_id,
+            scopes,
+            session_id,
+            auth_time,
+            created_at,
+            absolute_expires_at,
+        )?;
+        if let Some(revoked_at) = revoked_at {
+            if revoked_at < created_at {
+                return Err(DomainError::invalid(
+                    "refresh family revoked_at must not precede creation",
+                ));
+            }
+            family.revoked_at = Some(revoked_at);
+        }
+        family.version = version;
+        Ok(family)
     }
 
     /// Returns the family identifier.
@@ -332,6 +514,21 @@ impl RefreshFamily {
     /// Returns the user.
     pub const fn user_id(&self) -> &Id<UserEntity> {
         &self.user_id
+    }
+
+    /// Returns the scopes granted to the family.
+    pub const fn scopes(&self) -> &ScopeSet {
+        &self.scopes
+    }
+
+    /// Returns the browser session that established the family, if any.
+    pub const fn session_id(&self) -> Option<&Id<SessionEntity>> {
+        self.session_id.as_ref()
+    }
+
+    /// Returns the original authentication time.
+    pub const fn auth_time(&self) -> Timestamp {
+        self.auth_time
     }
 
     /// Returns the creation time.
@@ -365,6 +562,31 @@ impl RefreshFamily {
             self.revoked_at = Some(now);
             self.version = self.version.saturating_add(1);
         }
+    }
+
+    /// Narrows the family scopes to a subset of its current grant.
+    ///
+    /// Refresh requests may reduce scope but never add to the original grant.
+    pub fn narrow_scopes(&mut self, scopes: ScopeSet) -> Result<(), DomainError> {
+        if scopes.is_empty() {
+            return Err(DomainError::invalid(
+                "a refresh family must grant at least one scope",
+            ));
+        }
+        if !scopes
+            .as_slice()
+            .iter()
+            .all(|scope| self.scopes.contains(scope))
+        {
+            return Err(DomainError::invalid(
+                "refresh scope must be a subset of the original grant",
+            ));
+        }
+        if scopes.as_slice() != self.scopes.as_slice() {
+            self.scopes = scopes;
+            self.version = self.version.saturating_add(1);
+        }
+        Ok(())
     }
 }
 
@@ -404,6 +626,33 @@ impl RefreshToken {
             consumed_at: None,
             version: 0,
         })
+    }
+
+    /// Reconstructs a refresh token from persisted state.
+    ///
+    /// Storage adapters use this; normal callers create tokens through
+    /// [`RefreshToken::new`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn restore(
+        id: Id<RefreshTokenEntity>,
+        family_id: Id<RefreshFamilyEntity>,
+        token_hash: SecretHash,
+        created_at: Timestamp,
+        expires_at: Timestamp,
+        consumed_at: Option<Timestamp>,
+        version: u64,
+    ) -> Result<Self, DomainError> {
+        let mut token = Self::new(id, family_id, token_hash, created_at, expires_at)?;
+        if let Some(consumed_at) = consumed_at {
+            if consumed_at < created_at || !consumed_at.is_before(expires_at) {
+                return Err(DomainError::invalid(
+                    "refresh token consumption is outside the token lifetime",
+                ));
+            }
+            token.consumed_at = Some(consumed_at);
+        }
+        token.version = version;
+        Ok(token)
     }
 
     /// Returns the token identifier.
@@ -502,11 +751,11 @@ mod tests {
             secret(),
             RedirectUri::parse("https://app.example.com/callback").expect("valid uri"),
             scopes(),
-            PkceChallenge::parse(
-                "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_",
-            )
-            .expect("valid challenge"),
+            PkceChallenge::parse("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ")
+                .expect("valid challenge"),
             Some(Nonce::parse("nonce").expect("valid nonce")),
+            Timestamp::from_millis(900),
+            None,
             Timestamp::from_millis(1_000),
             Timestamp::from_millis(2_000),
         )
@@ -544,12 +793,43 @@ mod tests {
     }
 
     #[test]
+    fn consent_grant_reactivates_and_replaces_scopes() {
+        let mut consent = Consent::new(
+            Id::<ConsentEntity>::from_suffix("2233445566778899").expect("valid id"),
+            organization_id(),
+            user_id(),
+            client_id(),
+            ScopeSet::new([Scope::parse("openid").expect("valid")]),
+            Timestamp::from_millis(1_000),
+        );
+        consent.revoke(Timestamp::from_millis(2_000));
+        assert!(!consent.is_active());
+        consent.grant(
+            ScopeSet::new([
+                Scope::parse("openid").expect("valid"),
+                Scope::parse("profile").expect("valid"),
+            ]),
+            Timestamp::from_millis(3_000),
+        );
+        assert!(consent.is_active());
+        assert_eq!(consent.revoked_at(), None);
+        assert_eq!(consent.updated_at(), Timestamp::from_millis(3_000));
+        assert!(consent.covers(&ScopeSet::new([
+            Scope::parse("openid").expect("valid"),
+            Scope::parse("profile").expect("valid"),
+        ])));
+    }
+
+    #[test]
     fn refresh_families_revoke_idempotently() {
         let mut family = RefreshFamily::new(
             Id::<RefreshFamilyEntity>::from_suffix("33445566778899aa").expect("valid id"),
             organization_id(),
             client_id(),
             user_id(),
+            scopes(),
+            None,
+            Timestamp::from_millis(1_000),
             Timestamp::from_millis(1_000),
             Timestamp::from_millis(10_000),
         )

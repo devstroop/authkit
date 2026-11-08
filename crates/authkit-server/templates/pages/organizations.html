@@ -1,0 +1,40 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block app_content %}
+<div class="auth-card" style="max-width:48rem;">
+  <h1>{{ crate::i18n::t("title_organizations") }}</h1>
+  <p class="subtitle">{{ crate::i18n::t("subtitle_organizations") }}</p>
+  <ul id="organizations" aria-live="polite" style="list-style:none;padding:0;margin:0 0 var(--space-5);">
+  {% for org in organizations %}
+  <li style="display:flex;align-items:center;justify-content:space-between;padding:var(--space-3) var(--space-4);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:var(--space-2);background:var(--surface);">
+    <div>
+      <div style="font-weight:600;">{{ org.name }}</div>
+      <div style="font-size:0.85rem;color:var(--muted);">{{ org.slug }}</div>
+    </div>
+    <a href="/organizations/{{ org.id }}/members" style="font-weight:500;font-size:0.9rem;">{{ crate::i18n::t("manage") }} →</a>
+  </li>
+  {% endfor %}
+  {% if organizations.is_empty() %}
+  <li style="color:var(--muted);padding:var(--space-4);text-align:center;">{{ crate::i18n::t("no_organizations_yet") }}</li>
+  {% endif %}
+  </ul>
+  <div style="margin:var(--space-5) 0 var(--space-3);">
+    <button type="button" class="btn btn-primary" style="width:auto;" onclick="document.getElementById('create-org-dialog').showModal()">{{ crate::i18n::t("create_organization") }}</button>
+  </div>
+  <dialog id="create-org-dialog" class="modal">
+    <div class="modal-header">
+      <h2>{{ crate::i18n::t("create_organization") }}</h2>
+      <button type="button" class="modal-close" onclick="document.getElementById('create-org-dialog').close()" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <form method="post" action="/organizations" hx-post="/organizations" hx-target="#organizations" hx-swap="beforeend">
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        {{ ui::text_input("slug", crate::i18n::t("slug"), "text", "") }}
+        {{ ui::text_input("name", crate::i18n::t("name"), "text", "") }}
+        {{ ui::button(crate::i18n::t("create")) }}
+        <span class="htmx-indicator spinner" aria-hidden="true"></span>
+      </form>
+    </div>
+  </dialog>
+</div>
+{% endblock %}

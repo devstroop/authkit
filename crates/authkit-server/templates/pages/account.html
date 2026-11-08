@@ -1,0 +1,40 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block app_content %}
+<div class="auth-card" style="max-width:48rem;">
+  <h1>{{ crate::i18n::t("title_account") }}</h1>
+  <p class="subtitle">{{ crate::i18n::t("subtitle_account") }}</p>
+  <p class="links"><a href="/passkeys">{{ crate::i18n::t("passkeys") }}</a> · <a href="/account/mfa">{{ crate::i18n::t("mfa") }}</a> · <a href="/account/applications">{{ crate::i18n::t("connected_apps") }}</a> · <a href="/account/profile">{{ crate::i18n::t("profile") }}</a></p>
+
+  <div class="card">
+    <h2>{{ crate::i18n::t("active_sessions") }}</h2>
+    <ul id="sessions" aria-live="polite" style="list-style:none;padding:0;margin:0;">
+    {% for session in sessions %}
+    <li style="display:flex;align-items:center;justify-content:space-between;padding:var(--space-3) 0;border-bottom:1px solid var(--border);">
+      <div>
+        <div style="font-weight:500;font-size:0.9rem;">{{ session.id }}</div>
+        <div style="font-size:0.8rem;color:var(--muted);">{{ session.status }}</div>
+      </div>
+      <form method="post" action="/account/sessions/{{ session.id }}/revoke" style="display:inline" hx-post="/account/sessions/{{ session.id }}/revoke" hx-target="#sessions" hx-swap="outerHTML">
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        <button type="submit" class="btn btn-secondary" style="width:auto;padding:0.3rem 0.75rem;font-size:0.85rem;">{{ crate::i18n::t("revoke") }}</button>
+      </form>
+    </li>
+    {% endfor %}
+    {% if sessions.is_empty() %}
+    <li style="color:var(--muted);padding:var(--space-3) 0;">{{ crate::i18n::t("no_active_sessions") }}</li>
+    {% endif %}
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>{{ crate::i18n::t("change_password") }}</h2>
+    <form method="post" action="/account/password">
+      <input type="hidden" name="_csrf" value="{{ csrf }}">
+      {{ ui::text_input("current_password", crate::i18n::t("current_password"), "password", "current-password") }}
+      {{ ui::text_input("new_password", crate::i18n::t("new_password"), "password", "new-password", true, "12") }}
+      {{ ui::button(crate::i18n::t("update_password")) }}
+    </form>
+  </div>
+</div>
+{% endblock %}

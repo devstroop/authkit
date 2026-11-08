@@ -7,14 +7,15 @@ depends on it closes.
 
 The "v1 default" column is the proposal used by the current documentation. It is safe to
 implement against unless an ADR supersedes it. Items marked **RFC** need public discussion
-because they change a public contract or are expensive to reverse.
+because they change a public contract or are expensive to reverse. Resolved entries remain
+in the register for traceability; the linked ADR is authoritative.
 
 ## Product and governance
 
 | ID | Decision | Options | v1 default | Needed by |
 | --- | --- | --- | --- | --- |
 | P1 | Project name and trademark | Keep AuthKit; rename | Keep as working name; no public launch until review | M0 |
-| P2 | License | Apache-2.0; MIT; dual; other | **RFC.** Dual Apache-2.0/MIT is the common Rust default | M0 |
+| P2 | License | Apache-2.0; MIT; dual; other | **Resolved:** dual MIT/Apache-2.0 by [ADR-0010](adr/0010-dual-mit-apache-2-0-license.md) | M0 |
 | P3 | MFA in v1 | Passkeys, TOTP, both, later | **RFC.** Ship passkeys first if either is in v1 | M4 |
 | P4 | Upstream OIDC federation | In v1; after v1; never | After v1. It is identity brokering, not core | M4 |
 | P5 | Consent policy | Always ask; auto-consent first-party | Auto-consent only for system-marked first-party clients, audited | M2 |

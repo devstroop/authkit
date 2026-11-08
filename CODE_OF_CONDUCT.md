@@ -40,7 +40,7 @@ Instances of abusive, harassing, or otherwise unacceptable behavior may be repor
 
 `conduct@devstroop.com`
 
-This address is a **placeholder and must be confirmed before public launch**. If the report concerns the only current maintainer, or if contacting that person would create a conflict of interest, use the independent escalation contact that will be published before public launch. See [GOVERNANCE.md](GOVERNANCE.md#maintainers) for the current maintainer structure.
+Delivery to this address is verified before each public launch and release promotion. If the report concerns the only current maintainer, or if contacting that person would create a conflict of interest, use the independent escalation contact that will be published before public launch. See [GOVERNANCE.md](GOVERNANCE.md#maintainers) for the current maintainer structure and [the open-items list](GOVERNANCE.md#access-continuity-and-open-items) for the remaining resilience work.
 
 All complaints will be reviewed and investigated promptly and fairly. Maintainers will respect the privacy and security of the reporter and anyone else involved. Reports will be shared only with people who need to know in order to resolve the matter. A maintainer named in a report must recuse themselves from handling it.
 

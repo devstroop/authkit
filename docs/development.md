@@ -103,26 +103,41 @@ Only force-push your own branch, and use `--force-with-lease`. Never force-push 
 
 ## Build and test expectations
 
-The workspace is scaffolded with four crates and a pinned toolchain. The native server is a
-CLI scaffold; the HTTP server and persistence adapters are not implemented yet. The local
-and CI checks are:
+The workspace is scaffolded with four crates and a pinned toolchain. The native server
+provides an Axum HTTP skeleton with typed configuration, health and readiness endpoints,
+request IDs, structured tracing, and RFC 6749 error mapping. The SQLx persistence adapters
+and migrations are implemented. The local and CI checks are:
 
 ```sh
 cargo build --workspace
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo test --workspace
-cargo sqlx prepare --check --workspace
+cargo test --workspace --all-features
+cargo doc --workspace --no-deps --all-features
+python3 scripts/check-docs.py
 ```
 
 Notes:
 
 - Run formatting and lint checks before opening a pull request. Fix warnings rather than suppressing them unless the suppression is narrow and explained.
-- Run `cargo run -p authkit-server -- --help` to verify the binary boundary after changing manifests or CLI arguments.
+- Run `cargo run -p authkit-server -- --help` to verify the binary boundary after changing
+  manifests or CLI arguments. Start the server with
+  `cargo run -p authkit-server -- serve`. Discovery currently publishes only implemented
+  capabilities (`issuer`, `jwks_uri`, and ES256 signing); endpoint metadata is added as
+  those endpoints land.
 - Documentation changes also run through `python3 scripts/check-docs.py`.
 - Unit tests should live beside the code they exercise. Cross-crate integration tests belong in the workspace test area.
-- Storage tests should cover both SQLite and PostgreSQL where behavior can differ. Use a disposable database, and never point tests at a database containing data you care about.
-- Use `SQLX_OFFLINE=true` to validate against committed query metadata. Run `cargo sqlx prepare --workspace` when queries change, and commit the resulting `.sqlx` metadata if the project adopts offline builds.
+- Storage tests should cover both SQLite and PostgreSQL where behavior can differ. Set
+  `TEST_POSTGRES_URL` to a disposable PostgreSQL database to run the Postgres contract;
+  without it, the Postgres contract skips. Never point tests at a database containing data
+  you care about. CI starts a disposable Postgres service and sets this variable.
+- `SqlStore` owns a Tokio runtime. Create and drop it on a blocking thread, and call its
+  repository methods from a blocking thread (for example `spawn_blocking`) when the caller
+  is inside an async task.
+- The SQLx adapter uses runtime `Any` queries so one implementation serves SQLite and
+  Postgres. A single `.sqlx` offline cache cannot represent both dialects, so offline
+  metadata is intentionally not used. Migration application and the shared repository
+  contract suite are the guard against schema drift.
 - Add a new migration instead of editing one that may already have been applied. Test migrations against both supported databases and document any irreversible step.
 - Security-sensitive behavior needs negative tests: expired sessions, revoked tokens, invalid callbacks, cross-account access, CSRF rejection, and redaction of secrets in errors and logs.
 
@@ -162,27 +177,49 @@ Keep dependency direction one-way: adapters may depend on the core, but the core
 
 ## Environment and configuration
 
-Configuration is not implemented yet. The intended approach is to keep a committed example file, keep real environment files untracked, and fail closed when required security settings are absent.
-
-Planned configuration inputs:
+Configuration is loaded and validated by `authkit-server` before the listener binds. The
+committed `.env.example` contains safe local defaults; copy it to `.env` for local work. Real
+environment files are untracked.
 
 | Variable | Purpose |
 | --- | --- |
-| `AUTHKIT_ENV` | Runtime environment name, such as `development`, `test`, or `production` |
-| `AUTHKIT_BIND_ADDR` | Local listen address for the self-hosted server |
-| `AUTHKIT_BASE_URL` | Public base URL used for links, callbacks, and cookie decisions |
-| `DATABASE_URL` | SQLx connection string for SQLite or PostgreSQL |
-| `DATABASE_MAX_CONNECTIONS` | Optional connection pool limit |
-| `RUST_LOG` | Logging filter, with sensitive values redacted |
-| `SQLX_OFFLINE` | Use committed query metadata instead of a live database during builds |
+| `AUTHKIT_ENV` | `development`, `test`, or `production`. Defaults to `production`. |
+| `AUTHKIT_BIND_ADDR` | Listen address. Defaults to `127.0.0.1:3000`. |
+| `AUTHKIT_ISSUER` | Required canonical public origin. Must be an absolute origin with no path, query, fragment, or user information. HTTPS is required outside `development` and `test`. |
+| `AUTHKIT_DATABASE_URL` | Required SQLx URL using `sqlite:`, `postgres://`, or `postgresql://`. `DATABASE_URL` is accepted as a fallback. |
+| `AUTHKIT_DATABASE_MAX_CONNECTIONS` | Connection pool limit. Defaults to `5`; must be positive. In-memory SQLite always uses one connection. |
+| `AUTHKIT_SIGNING_KEY_FILE` | Encrypted ES256 keyring file. Defaults to `authkit-signing-keys.json` in development; production requires an absolute path. Created with one active key on first start. Must not be group- or world-readable. |
+| `AUTHKIT_SIGNING_KEY_KEK` | Required 32-byte base64url key-encryption key for private key material. Inject it from a secret manager outside local development. |
+| `AUTHKIT_SIGNING_KEY_RETIRED_PUBLISH_SECS` | Default overlap for a retired key whose entry omits `publish_until`; derived from `retired_at`. Defaults to `900`; must be between `1` and `86400`. |
+| `AUTHKIT_SESSION_PEPPER` | Required 32-byte base64url pepper for HMAC session verifiers and CSRF tokens. Use a value independent from the key-encryption key. |
+| `AUTHKIT_COOKIE_SECURE` | Optional boolean that forces `Secure` session cookies. Defaults to `true` in production and `false` in development/test; `false` is rejected in production. |
+| `AUTHKIT_SESSION_IDLE_SECS` | Account-session idle timeout. Defaults to `1800`; must be between `60` and `86400` and less than the absolute lifetime. |
+| `AUTHKIT_SESSION_ABSOLUTE_SECS` | Account-session absolute lifetime. Defaults to `43200`; must be between `300` and `2592000`. |
+| `AUTHKIT_ADMIN_SESSION_IDLE_SECS` | Administrator-session idle timeout. Defaults to `900`; must be between `60` and `86400`, less than the admin absolute lifetime, and no greater than the account idle timeout. |
+| `AUTHKIT_ADMIN_SESSION_ABSOLUTE_SECS` | Administrator-session absolute lifetime. Defaults to `28800`; must be between `300` and `2592000`, and no greater than the account absolute lifetime. |
+| `AUTHKIT_ACCESS_TOKEN_TTL_SECS` | Access-token lifetime. Defaults to `600`; must be between `60` and `3600`. |
+| `AUTHKIT_ID_TOKEN_TTL_SECS` | ID-token lifetime. Defaults to `600`; must be between `60` and `3600`. |
+| `AUTHKIT_REFRESH_TOKEN_TTL_SECS` | Refresh-token lifetime. Defaults to `2592000` (30 days); must be between `300` and `31536000`, and no greater than `AUTHKIT_REFRESH_FAMILY_TTL_SECS`. |
+| `AUTHKIT_REFRESH_FAMILY_TTL_SECS` | Refresh-family absolute lifetime. Defaults to `31536000` (365 days); must be between `3600` and `157680000`. |
+| `AUTHKIT_TOKEN_CLOCK_SKEW_SECS` | Clock skew allowed when validating JWTs. Defaults to `60`; must be between `0` and `300`. |
+| `AUTHKIT_LOG_FORMAT` | `json` or `pretty`. Defaults to `json` in production and `pretty` otherwise. |
+| `RUST_LOG` | Tracing filter. Defaults to `info`; never include credentials in log output. |
 
 Rules:
 
-- Copy `.env.example` to `.env` when it is added; never commit `.env` or local variants.
+- Copy `.env.example` to `.env` and generate local `AUTHKIT_SIGNING_KEY_KEK` and `AUTHKIT_SESSION_PEPPER` values; the keyring is created on the first `serve`. Never commit `.env`, `.env.*` local variants, or the keyring file.
 - Do not use production secrets for local development.
 - Do not put secrets in `AUTHKIT_*` example files, test fixtures, logs, or screenshots.
-- Treat cookie security, callback validation, and signing-key configuration as security-sensitive. Unsafe defaults must not silently apply in production.
-- Document any new variable here and in the example file in the same change.
+- Treat issuer validation, cookie security, callback validation, and signing-key
+  configuration as security-sensitive. Unsafe defaults must not silently apply in
+  production.
+- The server fails closed on missing or invalid configuration. It decrypts the signing
+  keyring before binding, connects to the database, and `/readyz` pings the database, but
+  migrations remain a separate one-shot job.
+- Back up the encrypted keyring with the key-encryption key; neither is usable alone.
+  Configuration `Debug` output redacts the database URL, key-encryption key, and session
+  pepper. Do not log raw configuration, key material, or request bodies.
+- Document any new variable here and in `.env.example` in the same change.
 
 Cloudflare Workers configuration will use the worker's bindings and secret storage rather than `.env` files. The worker must not require native-only configuration paths that cannot be represented at the edge.
 

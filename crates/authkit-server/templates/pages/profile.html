@@ -1,0 +1,15 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block app_content %}
+<div class="auth-card" style="max-width:48rem;">
+  <h1>{{ crate::i18n::t("title_profile") }}</h1>
+  <p class="subtitle">{{ crate::i18n::t("subtitle_profile") }}</p>
+  <div class="card">
+    <form method="post" action="/account/profile">
+      <input type="hidden" name="_csrf" value="{{ csrf }}">
+      {{ ui::text_input("display_name", crate::i18n::t("display_name"), "text", "name", true, "", "", display_name) }}
+      {{ ui::button(crate::i18n::t("save")) }}
+    </form>
+  </div>
+</div>
+{% endblock %}

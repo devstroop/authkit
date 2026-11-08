@@ -1,0 +1,18 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+<div class="admin-layout">
+  <nav class="admin-nav" aria-label="Admin navigation">
+    <a href="/admin">{{ crate::i18n::t("dashboard") }}</a>
+    <a href="/admin/audit">{{ crate::i18n::t("audit_log") }}</a>
+    <a href="/admin/users">{{ crate::i18n::t("users") }}</a>
+    <a href="/admin/mfa/enroll">{{ crate::i18n::t("mfa") }}</a>
+    <form method="post" action="/admin/logout">
+      <input type="hidden" name="_csrf" value="{{ csrf }}">
+      <button type="submit" class="btn btn-secondary">{{ crate::i18n::t("sign_out") }}</button>
+    </form>
+  </nav>
+  <section class="admin-content">
+    {% block admin_content %}{% endblock %}
+  </section>
+</div>
+{% endblock %}

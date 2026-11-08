@@ -1,0 +1,18 @@
+{% extends "layouts/app.html" %}
+{% block app_content %}
+<div class="auth-card" style="max-width:48rem;">
+  <h1>{{ crate::i18n::t("title_save_recovery_codes") }}</h1>
+  <p class="subtitle">{{ crate::i18n::t("subtitle_recovery_codes") }}</p>
+  <div class="card">
+    <ul style="list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(10rem,1fr));gap:var(--space-2);">
+    {% for code in codes %}
+    <li style="font-family:monospace;font-size:0.95rem;padding:var(--space-2) var(--space-3);background:var(--bg-2);border-radius:var(--radius-sm);text-align:center;">{{ code }}</li>
+    {% endfor %}
+    </ul>
+    {% if codes.is_empty() %}
+    <p style="color:var(--muted);text-align:center;">{{ crate::i18n::t("no_recovery_codes") }}</p>
+    {% endif %}
+  </div>
+  <p class="links"><a href="/account/mfa">{{ crate::i18n::t("back_to_mfa") }}</a></p>
+</div>
+{% endblock %}

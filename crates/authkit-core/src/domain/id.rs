@@ -39,6 +39,11 @@ entity!(
     "org"
 );
 entity!(
+    /// A verified or pending email domain for an organization.
+    DomainEntity,
+    "dom"
+);
+entity!(
     /// A product surface owned by one organization.
     ApplicationEntity,
     "app"
@@ -117,6 +122,16 @@ entity!(
     /// A user's consent to an OAuth client and scope set.
     ConsentEntity,
     "cns"
+);
+entity!(
+    /// A one-time MFA recovery code.
+    RecoveryCodeEntity,
+    "rcv"
+);
+entity!(
+    /// A single-use, expiring token for email verification or password reset.
+    OneTimeTokenEntity,
+    "tok"
 );
 
 /// A typed, prefix-validated entity identifier.

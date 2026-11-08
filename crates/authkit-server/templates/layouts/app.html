@@ -1,0 +1,17 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+<div class="app-layout">
+  <aside class="app-sidebar" aria-label="Application navigation">
+    <nav>
+      <a href="/account">{{ crate::i18n::t("account") }}</a>
+      <a href="/account/profile">{{ crate::i18n::t("profile") }}</a>
+      <a href="/account/mfa">{{ crate::i18n::t("mfa") }}</a>
+      <a href="/passkeys">{{ crate::i18n::t("passkeys") }}</a>
+      <a href="/organizations">{{ crate::i18n::t("organizations") }}</a>
+    </nav>
+  </aside>
+  <section class="app-content">
+    {% block app_content %}{% endblock %}
+  </section>
+</div>
+{% endblock %}

@@ -11,8 +11,39 @@ repository.workspace = true
 workspace = true
 
 [dependencies]
+aes-gcm.workspace = true
+argon2.workspace = true
 authkit-core.workspace = true
 authkit-store.workspace = true
+axum = { workspace = true, features = ["multipart"] }
+native-tls = "0.2"
+askama.workspace = true
+base64.workspace = true
+cookie.workspace = true
+hmac.workspace = true
+p256.workspace = true
+rand_core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+sha2.workspace = true
+sha1.workspace = true
+tokio = { workspace = true, features = ["net", "signal"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+url.workspace = true
+uuid.workspace = true
+zeroize.workspace = true
+webauthn-rs.workspace = true
+jsonwebtoken.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+tower = { version = "0.5", features = ["util"] }
+
+[lib]
+name = "authkit_server"
+path = "src/lib.rs"
 
 [[bin]]
 name = "authkit-server"

@@ -171,7 +171,7 @@ A client registration used by one application surface.
 | `token_endpoint_auth_method` | text | `client_secret_basic`, `client_secret_post`, or `none`. |
 | `secret_hash` | text nullable | Keyed hash of the current secret. Not an Argon2 password hash. |
 | `secret_rotated_at` | integer nullable | Epoch milliseconds. |
-| `require_pkce` | integer | `1` for public clients and BFFs recommended. |
+| `require_pkce` | integer | Must be `1` for every client that allows the authorization code grant; PKCE `S256` is mandatory for those clients. |
 | `status` | text | `active`, `disabled`. |
 | `created_at`, `updated_at` | integer | Epoch milliseconds. |
 | `version` | integer | Concurrency control. |
@@ -195,8 +195,8 @@ Rules:
 - A confidential client may have at most two active secrets during a rotation window.
   **Decision pending:** the exact overlap policy. The safe default is one current secret
   plus one previous secret with an explicit expiry, both stored hashed.
-- Public clients have no secret and must use PKCE. They are appropriate for native and CLI
-  clients, not for browser SPAs in the default architecture.
+- Public clients have no secret and are appropriate for native and CLI clients, not for
+  browser SPAs in the default architecture. All clients must use PKCE.
 - Redirect URI changes are security-sensitive and audited. Wildcards are not allowed.
 - Disabling a client rejects new authorization requests and token exchanges and revokes
   its refresh families. It does not retroactively revoke already issued JWTs; short access
@@ -341,16 +341,29 @@ deployment-level check and are audited as deployment events, not tenant permissi
 
 ### 3.7 Credential
 
-Separate rows per credential type.
+Separate rows per credential type, with a shared lifecycle and type-specific payload. The
+domain exposes distinct `Password`, `Passkey`, and `Totp` constructors; there is no generic
+"secret hash + kind" constructor.
 
 | Field | Type | Notes |
 | --- | --- | --- |
 | `id` | text | `cred_...`. |
 | `user_id` | text | FK. |
-| `type` | text | `password`, `passkey`, `totp`, `recovery_code` (v1 scope TBD). |
-| `secret_hash` | text nullable | Argon2id PHC string for passwords; credential-specific for others. |
-| `public_key` | text nullable | For passkeys, serialized credential public key. |
-| `sign_count` | integer nullable | For passkeys. |
+| `type` | text | `password`, `passkey`, or `totp`. |
+| `password_verifier` | text nullable | Password rows only. Argon2id PHC string. |
+| `webauthn_credential_id` | blob nullable | Passkey rows only. Raw credential ID. |
+| `webauthn_public_key` | blob nullable | Passkey rows only. CBOR-encoded COSE key. |
+| `webauthn_aaguid` | blob nullable | Passkey rows only. 16-byte authenticator AAGUID. |
+| `webauthn_sign_count` | integer nullable | Passkey rows only. Last accepted signature counter. |
+| `webauthn_transports` | text nullable | Passkey rows only. Persisted transport hints. |
+| `webauthn_discoverable` | boolean nullable | Passkey rows only. |
+| `webauthn_backup_eligible` | boolean nullable | Passkey rows only. |
+| `webauthn_backup_state` | boolean nullable | Passkey rows only. |
+| `totp_ciphertext` | blob nullable | TOTP rows only. AEAD ciphertext, never plaintext. |
+| `totp_key_id` | text nullable | TOTP rows only. Key-encryption-key version for rotation. |
+| `totp_nonce` | blob nullable | TOTP rows only. AEAD nonce. |
+| `totp_algorithm`, `totp_digits`, `totp_period` | text/integer | TOTP rows only. |
+| `totp_last_accepted_step` | integer nullable | TOTP rows only. Replay guard. |
 | `label` | text | User-visible label. |
 | `status` | text | `active`, `disabled`, `revoked`. |
 | `created_at`, `last_used_at` | integer | Epoch milliseconds. |
@@ -359,10 +372,24 @@ Separate rows per credential type.
 Rules:
 
 - Never store plaintext passwords or password-equivalent secrets.
-- Password hashes are Argon2id PHC strings with per-hash salts and calibrated parameters.
-  Parameter changes trigger rehash on successful login.
+- Password verifiers are Argon2id PHC strings with per-hash salts. The domain accepts only
+  Argon2id version 19, at least 19 MiB memory, two passes, one lane, a 16-64 byte salt, and
+  a 32-byte output. Parameter changes trigger rehash on successful login.
+- Passkey rows store the raw credential ID, the COSE public key, the AAGUID, transport
+  hints, discoverability, and backup flags. A non-zero signature counter must increase on
+  every authentication; a regression fails closed as a possible cloned authenticator. A
+  zero counter is accepted for authenticators that do not implement clone detection.
+- TOTP secrets are encrypted with an AEAD adapter before they reach storage. The
+  key-encryption key comes from the deployment secret store, and `totp_key_id` records the
+  key version so secrets can be re-encrypted during rotation. The core never sees plaintext
+  TOTP secrets.
+- The adapter computes the TOTP time step after verifying the code. `totp_last_accepted_step`
+  is monotonic: a step that is equal to or lower than the stored step is rejected as a
+  replay, and rotating the secret clears the step.
+- Disabling a credential is reversible; revocation is terminal. Revoked rows are retained
+  for audit and recovery investigation and are deleted only with the owning user.
 - Passkeys/WebAuthn and TOTP are not confirmed for v1. **Decision pending:** MFA scope.
-  If included, they use this table rather than adding columns to `user`.
+  If included, they use this model rather than adding columns to `user`.
 - One-time tokens (email verification, password reset, invitation acceptance, magic link if
   ever supported) live in `one_time_token`: hashed token, user or invitation reference,
   purpose, `expires_at`, `consumed_at`, `created_at`, and request metadata. They are
@@ -426,7 +453,8 @@ Rules:
 | `scope` | text | Space-delimited granted scopes. |
 | `pkce_challenge`, `pkce_method` | text | `S256` only; `plain` rejected outside tests. |
 | `nonce` | text nullable | OIDC nonce, echoed in the ID token. |
-| `auth_time` | integer | Authentication time. |
+| `auth_time` | integer | Authentication time bound to the code. |
+| `session_id` | text nullable | Browser session that authorized the code, for traceability. |
 | `expires_at` | integer | Short-lived. |
 | `consumed_at` | integer nullable | Set exactly once. |
 | `created_at` | integer | Epoch milliseconds. |
@@ -455,7 +483,7 @@ it must still be visible in the UI and auditable.
 
 | Entity | Key fields |
 | --- | --- |
-| `refresh_family` | `id` (`rf_...`), `client_id`, `user_id`, `org_id`, `scope`, `created_at`, `revoked_at`, `revocation_reason` |
+| `refresh_family` | `id` (`rf_...`), `client_id`, `user_id`, `org_id`, `scope`, `session_id` nullable, `auth_time`, `created_at`, `absolute_expires_at`, `revoked_at`, `version` |
 | `refresh_token` | `id` (`rt_...`), `family_id`, `token_hash` unique, `parent_id`, `expires_at`, `consumed_at`, `revoked_at`, `created_at` |
 
 Rules:
@@ -587,7 +615,7 @@ only when all target engines are verified by migration tests.
 | Logical type | Physical representation | Rationale |
 | --- | --- | --- |
 | ID | `TEXT` | Identical across engines; stable ordering with sortable IDs. |
-| Timestamp | `INTEGER` epoch milliseconds, UTC | No database clock dependency; ordering and comparisons are portable. |
+| Timestamp | SQLite `INTEGER`, Postgres `BIGINT` epoch milliseconds, UTC | No database clock dependency; ordering and comparisons are portable. Postgres uses `BIGINT` so SQLx `Any` can bind timestamps as `i64`. |
 | Boolean | `INTEGER` 0/1 with `CHECK (col IN (0,1))` | Same semantics in SQLite, D1, and Postgres; avoids dialect casting. |
 | Enum | `TEXT` with `CHECK (col IN (...))` | No native enum migrations; values are explicit. |
 | JSON | `TEXT` containing a JSON object | SQLite/D1 JSON1 support varies; Postgres `jsonb` is not portable. Validate in Rust. |
@@ -603,8 +631,9 @@ Additional rules:
   the port, but the logical schema and behavior must not depend on them.
 - Use `TEXT` for all IDs even in Postgres. The storage overhead is acceptable and enables
   the same fixtures across test targets.
-- Use `INTEGER` for Postgres timestamps instead of `TIMESTAMPTZ` to keep comparisons and
-  bindings identical. Reporting can cast at query time.
+- Use integer epoch milliseconds for Postgres timestamps instead of `TIMESTAMPTZ` to keep
+  comparisons and bindings identical. The Postgres migration uses `BIGINT` because SQLx
+  `Any` binds integers as `i64`; SQLite uses `INTEGER`. Reporting can cast at query time.
 - Case folding: store `email_normalized` and preserve `email_display` if the product needs
   original casing. Slugs are lowercase ASCII with hyphens; validate with a single shared
   rule.
@@ -620,8 +649,14 @@ Additional rules:
 - D1 migrations are applied through Wrangler or the D1 API; SQLite/Postgres migrations are
   applied by the AuthKit CLI. Migration metadata is stored in a dedicated table owned by
   the migration tool, not the domain.
-- CI must run the full migration set against SQLite, Postgres, and D1 (or a D1-compatible
-  local runner) before merging. Schema drift is a release blocker.
+- CI must run the full migration set against every supported engine before merging. The
+  native adapter currently covers SQLite and Postgres; D1 migration coverage lands with the
+  D1 adapter. Schema drift is a release blocker.
+- The SQLx adapter uses runtime `Any` queries so that one implementation serves SQLite and
+  Postgres. A single `.sqlx` offline cache cannot represent both dialects, so offline
+  metadata is intentionally not committed. Migration application and the shared SQLite and
+  Postgres repository contract suite are the CI guard; revisit this if the adapter stops
+  using `Any`.
 
 ### 5.5 Concurrency and atomicity
 
@@ -629,13 +664,18 @@ Additional rules:
   Zero rows affected means conflict; reload and either return a conflict or retry a
   non-security-sensitive operation.
 - One-time consumption uses `WHERE consumed_at IS NULL` and checks affected rows.
-- Multi-row commands are submitted as a batch. Each statement includes its guard. The
-  native adapter wraps the batch in a transaction; D1 executes a batch atomically per D1's
-  batch semantics. If any statement fails, the transaction/batch fails and the use case
-  reloads.
+- Multi-row commands are submitted as one `WriteBatch` through the `UnitOfWork` port. Each
+  `WriteCommand` includes its guard and tenant context. The batch is all-or-nothing: a
+  guard failure or storage error returns `Conflict`/`NotFound` and rolls back every earlier
+  command. The native adapter wraps the batch in one transaction; D1 translates the same
+  ordered commands into one `batch()` call. If any statement fails, the transaction/batch
+  fails and the use case reloads.
 - Never design a use case that requires reading a value written earlier in the same
   transaction. Precompute all values before the batch. This is the key portability rule
   for D1, which has no interactive transactions.
+- Audit events for a state change belong in the same batch as the change, using
+  `AppendAudit`. An asynchronous outbox may carry non-critical fan-out, but it must not
+  replace the guarded audit row required for a security-sensitive mutation.
 - For counters and last-owner checks, prefer a conditional update based on a subquery or a
   precomputed count with a version guard. If the adapter cannot express the invariant in
   one statement, use a dedicated lock row (for example, an organization row version bump)

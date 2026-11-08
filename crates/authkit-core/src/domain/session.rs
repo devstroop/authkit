@@ -81,6 +81,67 @@ impl Session {
         })
     }
 
+    /// Reconstructs a session from persisted state.
+    ///
+    /// Storage adapters use this; normal callers create sessions through
+    /// [`Session::new`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn restore(
+        id: Id<SessionEntity>,
+        user_id: Id<UserEntity>,
+        organization_id: Option<Id<OrganizationEntity>>,
+        audience: SessionAudience,
+        token_hash: SecretHash,
+        status: SessionStatus,
+        created_at: Timestamp,
+        last_seen_at: Timestamp,
+        idle_expires_at: Timestamp,
+        absolute_expires_at: Timestamp,
+        revoked_at: Option<Timestamp>,
+        rotated_from: Option<Id<SessionEntity>>,
+        version: u64,
+    ) -> Result<Self, DomainError> {
+        let mut session = Self::new(
+            id,
+            user_id,
+            organization_id,
+            audience,
+            token_hash,
+            created_at,
+            idle_expires_at,
+            absolute_expires_at,
+            rotated_from,
+        )?;
+        if last_seen_at < created_at || last_seen_at > absolute_expires_at {
+            return Err(DomainError::invalid(
+                "session last_seen_at is outside the session lifetime",
+            ));
+        }
+        match status {
+            SessionStatus::Revoked => {
+                let revoked_at = revoked_at.ok_or_else(|| {
+                    DomainError::invalid("a revoked session must have a revoked_at time")
+                })?;
+                if revoked_at < created_at {
+                    return Err(DomainError::invalid(
+                        "session revoked_at must not precede creation",
+                    ));
+                }
+                session.revoked_at = Some(revoked_at);
+            }
+            SessionStatus::Active if revoked_at.is_some() => {
+                return Err(DomainError::invalid(
+                    "an active session must not have a revoked_at time",
+                ));
+            }
+            SessionStatus::Active => {}
+        }
+        session.status = status;
+        session.last_seen_at = last_seen_at;
+        session.version = version;
+        Ok(session)
+    }
+
     /// Returns the session identifier.
     pub const fn id(&self) -> &Id<SessionEntity> {
         &self.id

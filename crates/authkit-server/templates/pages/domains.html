@@ -1,0 +1,67 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block app_content %}
+<div class="auth-card" style="max-width:48rem;">
+  <h1>{{ crate::i18n::t("title_domains") }}</h1>
+  <p class="subtitle">{{ crate::i18n::t("subtitle_domains") }}</p>
+
+  <ul id="domains" aria-live="polite" style="list-style:none;padding:0;margin:0 0 var(--space-5);">
+  {% for d in domains %}
+  <li style="padding:var(--space-3) var(--space-4);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:var(--space-2);background:var(--surface);">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);flex-wrap:wrap;">
+      <div>
+        <div style="font-weight:500;">{{ d.domain }}</div>
+        <div style="font-size:0.8rem;color:var(--muted);">
+          {% if d.verified %}<span style="color:var(--primary);font-weight:600;">{{ crate::i18n::t("verified") }}</span>{% else %}{{ crate::i18n::t("pending") }} · token: <code>{{ d.token }}</code>{% endif %}
+        </div>
+      </div>
+      {% if can_manage %}
+      <div style="display:flex;gap:var(--space-2);">
+        {% if d.verified %}
+        <form method="post" action="/organizations/{{ org_id }}/domains/{{ d.id }}/revoke" style="display:inline;margin:0;">
+          <input type="hidden" name="_csrf" value="{{ csrf }}">
+          <button type="submit" class="btn btn-secondary" style="width:auto;padding:0.3rem 0.75rem;font-size:0.85rem;">{{ crate::i18n::t("revoke") }}</button>
+        </form>
+        {% else %}
+        <form method="post" action="/organizations/{{ org_id }}/domains/{{ d.id }}/verify" style="display:inline;margin:0;display:flex;gap:var(--space-2);align-items:center;">
+          <input type="hidden" name="_csrf" value="{{ csrf }}">
+          <input name="token" placeholder="{{ crate::i18n::t("token") }}" class="input" style="width:auto;padding:0.3rem 0.6rem;font-size:0.85rem;">
+          <button type="submit" class="btn btn-secondary" style="width:auto;padding:0.3rem 0.75rem;font-size:0.85rem;">{{ crate::i18n::t("verify") }}</button>
+        </form>
+        <form method="post" action="/organizations/{{ org_id }}/domains/{{ d.id }}/remove" style="display:inline;margin:0;">
+          <input type="hidden" name="_csrf" value="{{ csrf }}">
+          <button type="submit" class="btn btn-secondary" style="width:auto;padding:0.3rem 0.75rem;font-size:0.85rem;">{{ crate::i18n::t("remove") }}</button>
+        </form>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </li>
+  {% endfor %}
+  {% if domains.is_empty() %}
+  <li style="color:var(--muted);padding:var(--space-4);text-align:center;">{{ crate::i18n::t("no_domains") }}</li>
+  {% endif %}
+  </ul>
+
+  {% if can_manage %}
+  <div style="margin:var(--space-5) 0 var(--space-3);">
+    <button type="button" class="btn btn-primary" style="width:auto;" onclick="document.getElementById('add-domain-dialog').showModal()">{{ crate::i18n::t("add_domain") }}</button>
+  </div>
+  <dialog id="add-domain-dialog" class="modal">
+    <div class="modal-header">
+      <h2>{{ crate::i18n::t("add_domain") }}</h2>
+      <button type="button" class="modal-close" onclick="document.getElementById('add-domain-dialog').close()" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <form method="post" action="/organizations/{{ org_id }}/domains">
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        {{ ui::text_input("domain", crate::i18n::t("domain"), "text", "") }}
+        {{ ui::button(crate::i18n::t("add")) }}
+      </form>
+    </div>
+  </dialog>
+  {% endif %}
+
+  <p class="links"><a href="/organizations/{{ org_id }}/members">{{ crate::i18n::t("members") }}</a></p>
+</div>
+{% endblock %}

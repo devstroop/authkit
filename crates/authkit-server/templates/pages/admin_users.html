@@ -1,0 +1,41 @@
+{% extends "layouts/admin.html" %}
+{% import "macros/ui.html" as ui %}
+{% block admin_content %}
+<h1>{{ crate::i18n::t("title_users") }}</h1>
+<div class="card">
+  {% if users.is_empty() %}
+  <p style="color:var(--muted);">{{ crate::i18n::t("no_users") }}</p>
+  {% else %}
+  <table>
+    <thead>
+      <tr>
+        <th>{{ crate::i18n::t("email") }}</th>
+        <th>{{ crate::i18n::t("status") }}</th>
+        <th>{{ crate::i18n::t("verified") }}</th>
+        <th>{{ crate::i18n::t("actions") }}</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for user in users %}
+    <tr>
+      <td>
+        <div style="font-weight:500;">{{ user.email }}</div>
+        <div style="font-size:0.8rem;color:var(--muted);font-family:monospace;">{{ user.id }}</div>
+      </td>
+      <td>{{ user.status }}</td>
+      <td>{% if user.verified %}<span style="color:var(--primary);font-weight:600;">✓</span>{% else %}<span style="color:var(--muted);">—</span>{% endif %}</td>
+      <td>
+        {% if can_manage %}
+        <form method="post" action="/admin/impersonate/{{ user.id }}" style="display:inline">
+          <input type="hidden" name="_csrf" value="{{ csrf }}">
+          <button type="submit" class="btn btn-secondary" style="width:auto;padding:0.3rem 0.75rem;font-size:0.85rem;">{{ crate::i18n::t("impersonate") }}</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endblock %}

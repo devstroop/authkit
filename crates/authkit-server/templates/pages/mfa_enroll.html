@@ -1,0 +1,18 @@
+{% extends "layouts/auth.html" %}
+{% import "macros/ui.html" as ui %}
+{% block auth_content %}
+<div class="auth-card" style="max-width:48rem;">
+  <h1>{{ crate::i18n::t("title_mfa_enroll") }}</h1>
+  <p class="subtitle">{{ crate::i18n::t("subtitle_mfa_enroll") }}</p>
+  <div class="card">
+    <p style="margin-bottom:var(--space-2);font-size:0.85rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;font-weight:600;">{{ crate::i18n::t("secret") }}</p>
+    <p style="font-family:monospace;font-size:1.1rem;padding:var(--space-3);background:var(--bg-2);border-radius:var(--radius-sm);word-break:break-all;margin-bottom:var(--space-4);">{{ secret }}</p>
+    <form method="post" action="/account/mfa/verify">
+      <input type="hidden" name="_csrf" value="{{ csrf }}">
+      {{ ui::text_input("code", crate::i18n::t("verification_code"), "text", "one-time-code") }}
+      {{ ui::button(crate::i18n::t("verify")) }}
+    </form>
+  </div>
+  <p class="links"><a href="/account/mfa">{{ crate::i18n::t("back") }}</a></p>
+</div>
+{% endblock %}

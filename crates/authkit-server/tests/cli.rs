@@ -16,18 +16,81 @@ fn version_flag_prints_the_package_version() {
 }
 
 #[test]
-fn help_flag_describes_the_scaffold() {
+fn help_flag_lists_the_serve_command() {
     let output = binary().arg("--help").output().expect("run binary");
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("utf-8 output");
     assert!(stdout.contains("Usage: authkit-server"));
-    assert!(stdout.contains("not implemented yet"));
+    assert!(stdout.contains("serve"));
 }
 
 #[test]
 fn unknown_arguments_fail_with_usage() {
-    let output = binary().arg("serve").output().expect("run binary");
+    let output = binary().arg("unknown").output().expect("run binary");
     assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8(output.stderr).expect("utf-8 output");
-    assert!(stderr.contains("unknown argument: serve"));
+    assert!(stderr.contains("unknown argument: unknown"));
+}
+
+#[test]
+fn serve_fails_closed_without_an_issuer() {
+    let output = binary()
+        .arg("serve")
+        .env_remove("AUTHKIT_ISSUER")
+        .env_remove("DATABASE_URL")
+        .env("AUTHKIT_ENV", "production")
+        .env("AUTHKIT_DATABASE_URL", "sqlite::memory:")
+        .output()
+        .expect("run binary");
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).expect("utf-8 output");
+    assert!(stderr.contains("AUTHKIT_ISSUER"));
+}
+
+#[test]
+fn serve_fails_closed_without_a_signing_key_kek() {
+    let output = binary()
+        .arg("serve")
+        .env("AUTHKIT_ENV", "development")
+        .env("AUTHKIT_ISSUER", "http://localhost:3000")
+        .env("AUTHKIT_DATABASE_URL", "sqlite::memory:")
+        .env_remove("AUTHKIT_SIGNING_KEY_KEK")
+        .output()
+        .expect("run binary");
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).expect("utf-8 output");
+    assert!(stderr.contains("AUTHKIT_SIGNING_KEY_KEK"));
+}
+
+#[test]
+fn serve_fails_closed_without_a_session_pepper() {
+    let output = binary()
+        .arg("serve")
+        .env("AUTHKIT_ENV", "development")
+        .env("AUTHKIT_ISSUER", "http://localhost:3000")
+        .env("AUTHKIT_DATABASE_URL", "sqlite::memory:")
+        .env(
+            "AUTHKIT_SIGNING_KEY_KEK",
+            "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+        )
+        .env_remove("AUTHKIT_SESSION_PEPPER")
+        .output()
+        .expect("run binary");
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).expect("utf-8 output");
+    assert!(stderr.contains("AUTHKIT_SESSION_PEPPER"));
+}
+
+#[test]
+fn serve_rejects_http_issuers_in_production() {
+    let output = binary()
+        .arg("serve")
+        .env("AUTHKIT_ENV", "production")
+        .env("AUTHKIT_ISSUER", "http://auth.example.com")
+        .env("AUTHKIT_DATABASE_URL", "sqlite::memory:")
+        .output()
+        .expect("run binary");
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).expect("utf-8 output");
+    assert!(stderr.contains("HTTPS"));
 }

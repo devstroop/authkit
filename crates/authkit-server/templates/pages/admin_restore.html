@@ -1,0 +1,33 @@
+{% extends "layouts/admin.html" %}
+{% import "macros/ui.html" as ui %}
+{% block admin_content %}
+<h1>{{ crate::i18n::t("title_restore") }}</h1>
+{% if !message.is_empty() %}
+<p class="alert" role="status">{{ message }}</p>
+{% endif %}
+{% if !error.is_empty() %}
+<p class="alert" role="alert">{{ error }}</p>
+{% endif %}
+<div class="card">
+  <p style="color:var(--muted);margin-bottom:var(--space-3);">
+    Upload a SQLite backup. The current database is preserved as a pre-restore copy. Restart AuthKit after restore.
+  </p>
+  <form method="post" action="/admin/restore" enctype="multipart/form-data">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <label class="field">
+      <span>Backup file</span>
+      <input class="input" type="file" name="backup" accept=".db,.sqlite,.sqlite3" required>
+    </label>
+    <label class="field">
+      <span>Confirmation</span>
+      <input class="input" type="text" name="confirm" placeholder="Type RESTORE" required>
+    </label>
+    <label class="field">
+      <span>TOTP code</span>
+      <input class="input" type="text" name="code" placeholder="TOTP code" required>
+    </label>
+    {{ ui::button("Restore") }}
+  </form>
+</div>
+<p style="margin-top:var(--space-3);"><a href="/admin">Back to dashboard</a></p>
+{% endblock %}

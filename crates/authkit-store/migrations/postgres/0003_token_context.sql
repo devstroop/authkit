@@ -1,0 +1,3 @@
+ALTER TABLE refresh_family ADD COLUMN scope TEXT NOT NULL DEFAULT 'openid';
+ALTER TABLE refresh_family ADD COLUMN session_id TEXT REFERENCES session (id) ON DELETE SET NULL;
+ALTER TABLE refresh_family ADD COLUMN auth_time BIGINT NOT NULL DEFAULT 0;

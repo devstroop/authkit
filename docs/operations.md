@@ -135,22 +135,33 @@ weaker hashing, revocation, or rate limiting.
 
 ## 2. Configuration and secrets
 
-Configuration names below are working names; final names are `Decision pending`.
-Treat this as a checklist of values the deployment must define, not a frozen
-schema.
+Configuration names below are the implemented native names where available; secret and
+provider settings that are not implemented yet remain working names. Treat this as a
+checklist of values the deployment must define, not a frozen schema.
 
 | Setting | Purpose | Default / requirement |
 | --- | --- | --- |
-| `AUTHKIT_ISSUER` | Canonical public origin | `https://auth.<apex>`; must match discovery and tokens |
-| `AUTHKIT_LISTEN_ADDR` | Native bind address | Loopback or private interface behind proxy |
+| `AUTHKIT_ISSUER` | Canonical public origin | `https://auth.<apex>`; must match discovery and tokens; HTTPS required in production |
+| `AUTHKIT_BIND_ADDR` | Native bind address | Loopback or private interface behind proxy |
 | `AUTHKIT_DATABASE_URL` / D1 binding | Data store | Private; least-privilege credentials |
-| `AUTHKIT_SIGNING_KEY` / key reference | Token signing | KMS/secret manager; never inline in config files |
-| `AUTHKIT_SIGNING_KID` | Key identifier | Stable, unique per key |
-| `AUTHKIT_SESSION_PEPPER` | Session digest protection | Secret manager; key-ring version |
+| `AUTHKIT_DATABASE_MAX_CONNECTIONS` | Native connection pool limit | Positive integer; size for the database, not CPU count alone |
+| `AUTHKIT_SIGNING_KEY_FILE` | Encrypted native keyring | Absolute path in production; `0600`; separate encrypted backup |
+| `AUTHKIT_SIGNING_KEY_KEK` | Keyring key-encryption key | 32-byte base64url secret from a secret manager; never inline in config files |
+| `AUTHKIT_SIGNING_KEY_RETIRED_PUBLISH_SECS` | Default retired public-key overlap | `1`-`86400`; default `900`; used only when `publish_until` is omitted |
+| `AUTHKIT_SESSION_PEPPER` | Session digest and CSRF protection | Required 32-byte base64url secret from a secret manager; key-ring version |
+| `AUTHKIT_SESSION_IDLE_SECS` | Account-session idle timeout | `1800` default; `60`-`86400`; less than the absolute lifetime |
+| `AUTHKIT_SESSION_ABSOLUTE_SECS` | Account-session absolute lifetime | `43200` default; `300`-`2592000` |
+| `AUTHKIT_ADMIN_SESSION_IDLE_SECS` | Administrator-session idle timeout | `900` default; `60`-`86400`; less than the admin absolute lifetime and account idle timeout |
+| `AUTHKIT_ADMIN_SESSION_ABSOLUTE_SECS` | Administrator-session absolute lifetime | `28800` default; `300`-`2592000`; no greater than the account absolute lifetime |
+| `AUTHKIT_ACCESS_TOKEN_TTL_SECS` | Access-token lifetime | `600` default; `60`-`3600` |
+| `AUTHKIT_ID_TOKEN_TTL_SECS` | ID-token lifetime | `600` default; `60`-`3600` |
+| `AUTHKIT_REFRESH_TOKEN_TTL_SECS` | Refresh-token lifetime | `2592000` default; `300`-`31536000`; no greater than the family lifetime |
+| `AUTHKIT_REFRESH_FAMILY_TTL_SECS` | Refresh-family absolute lifetime | `31536000` default; `3600`-`157680000` |
+| `AUTHKIT_TOKEN_CLOCK_SKEW_SECS` | JWT validation leeway | `60` default; `0`-`300` |
 | `AUTHKIT_EMAIL_TOKEN_PEPPER` | Reset/verification digest protection | Secret manager; versioned |
 | `AUTHKIT_ENCRYPTION_KEK` | Envelope encryption of stored secrets | KMS/secret manager |
 | `AUTHKIT_TRUSTED_PROXIES` | Which peers may set forwarded IP headers | Explicit CIDRs; empty by default |
-| `AUTHKIT_COOKIE_SECURE` | Force `Secure` cookies | True in production; explicit dev override only |
+| `AUTHKIT_COOKIE_SECURE` | Force `Secure` cookies | Defaults true in production and false in development/test; false is rejected in production |
 | `AUTHKIT_ADMIN_BOOTSTRAP_TOKEN` | First system admin | One-time, consumed; empty after bootstrap |
 | `AUTHKIT_SMTP_URL` / email provider | Verification/reset delivery | Secret manager; TLS required |
 | `AUTHKIT_RATE_LIMIT_BACKEND` | Shared limiter | Edge, database, or Durable Object; never per-process only |
@@ -158,7 +169,7 @@ schema.
 | `AUTHKIT_DEFAULT_ORG_POLICY` | Membership and MFA defaults | Least privilege |
 | `AUTHKIT_AUDIT_EXPORT_TARGET` | Offsite audit copy | Encrypted object storage/SIEM |
 | `AUTHKIT_MIGRATION_MODE` | Legacy/dual-run/cutover flags | Off by default; explicit enablement |
-| `AUTHKIT_LOG_FORMAT` / level | Structured logging | JSON, redacted; no secrets |
+| `AUTHKIT_LOG_FORMAT` / `RUST_LOG` | Structured logging and filter | JSON in production, redacted; no secrets |
 | Worker bindings | D1, KV (public config only), queues, secrets | Least privilege per environment |
 
 Rules:
@@ -174,8 +185,9 @@ Rules:
 - Separate secrets and keys per environment. Never copy production keys to
   staging or CI.
 - Validate configuration at startup: issuer is HTTPS (except explicit local
-  development), signing key is loadable, key id matches, cookie settings are
-  safe, database is reachable, schema version is supported. Fail closed.
+  development), the signing keyring decrypts with exactly one active ES256 key,
+  cookie settings are safe, database is reachable, schema version is supported.
+  Fail closed.
 - Redact configuration dumps. Never print a secret to a log, even at debug
   level. Do not include request headers or token bodies in error reports.
 - If a secret may have leaked, rotate it first and investigate second. See
@@ -189,9 +201,10 @@ A safe first boot follows this order:
    separate host. Confirm host-only cookie behavior.
 2. Provision the database and a least-privilege application role. Enable
    encryption at rest and automated backups.
-3. Create the secret store entries: signing key, session pepper, email-token
-   pepper, encryption KEK, email provider credentials, and the one-time admin
-   bootstrap token.
+3. Create the secret store entries: signing keyring KEK, session pepper,
+   email-token pepper, email provider credentials, and the one-time admin
+   bootstrap token. On first start the server creates the encrypted signing
+   keyring with one active ES256 key; back it up with the KEK.
 4. Run the schema migration as a one-shot job. Verify the schema version and
    backup before and after.
 5. Start AuthKit with traffic disabled or the edge returning a maintenance
@@ -349,6 +362,14 @@ and a reviewed forward fix. Record the outcome in the audit/operations log.
 Exact rotation intervals are `Decision pending` and should be risk-based.
 
 ### Signing-key rotation
+
+The native keyring supports `next`, `active`, `retired`, and `compromised`
+entries. Automated generation and switching is tracked in #35; until then, a
+rotation is a reviewed keyring update with the server stopped. A retired entry
+must include `retired_at` or an explicit `publish_until`. If the deadline is
+omitted, startup derives it once from `retired_at` plus
+`AUTHKIT_SIGNING_KEY_RETIRED_PUBLISH_SECS`; the deadline does not reset on
+restart.
 
 1. Generate a new key in the KMS/keystore with a new `kid`. Do not overwrite the
    old key.
@@ -526,7 +547,7 @@ Service-level objectives for availability, login latency, and token issuance are
 | Endpoint | Purpose | Behavior |
 | --- | --- | --- |
 | `/healthz` (liveness) | Process is running | `200` if the process can serve; no database dependency; no secrets |
-| `/readyz` (readiness) | Safe to receive auth traffic | Checks database connectivity, schema version, signing key loaded, required secret bindings, and migration state; `503` if not ready |
+| `/readyz` (readiness) | Safe to receive auth traffic | Checks database connectivity; `503` if not ready. The signing keyring is decrypted before the listener binds. Schema-version and required-binding checks land with those features. |
 | Admin diagnostics | Deeper operator view | Admin-only, redacted, rate-limited; never returns key material or tokens |
 
 Rules:

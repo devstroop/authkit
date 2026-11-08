@@ -1,0 +1,25 @@
+{% extends "layouts/auth.html" %}
+{% import "macros/ui.html" as ui %}
+{% block auth_content %}
+<div class="auth-shell">
+  <aside class="auth-brand">
+    <div class="brand-mark">AuthKit</div>
+    <div>
+      <h2 class="brand-headline">{{ crate::i18n::t("brand_headline_admin")  | safe }}</h2>
+      <p class="brand-sub">{{ crate::i18n::t("brand_sub_admin") }}</p>
+    </div>
+    <div class="brand-foot">{{ crate::i18n::t("brand_foot") }}</div>
+  </aside>
+  <section class="auth-panel">
+    <div class="auth-card">
+      <h1>{{ crate::i18n::t("title_admin_sign_in") }}</h1>
+      <p class="subtitle">{{ crate::i18n::t("subtitle_admin_login") }}</p>
+      <form method="post" action="/admin/login">
+        {{ ui::text_input("email", crate::i18n::t("email"), "email", "email") }}
+        {{ ui::text_input("password", "Password", "password", "current-password") }}
+        {{ ui::button(crate::i18n::t("sign_in")) }}
+      </form>
+    </div>
+  </section>
+</div>
+{% endblock %}

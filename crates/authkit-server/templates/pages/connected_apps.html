@@ -1,0 +1,26 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block app_content %}
+<div class="auth-card" style="max-width:48rem;">
+  <h1>{{ crate::i18n::t("title_connected_apps") }}</h1>
+  <p class="subtitle">{{ crate::i18n::t("subtitle_connected_apps") }}</p>
+  <ul id="connected-apps" aria-live="polite" style="list-style:none;padding:0;margin:0 0 var(--space-5);">
+  {% for app in apps %}
+  <li style="display:flex;align-items:center;justify-content:space-between;padding:var(--space-3) var(--space-4);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:var(--space-2);background:var(--surface);">
+    <div>
+      <div style="font-weight:500;">{{ app.client_name }}</div>
+      <div style="font-size:0.8rem;color:var(--muted);">{{ crate::i18n::t("scopes") }}: {{ app.scopes }}</div>
+    </div>
+    <form method="post" action="/account/consents/{{ app.consent_id }}/revoke" style="display:inline" hx-post="/account/consents/{{ app.consent_id }}/revoke" hx-target="#connected-apps" hx-swap="outerHTML">
+      <input type="hidden" name="_csrf" value="{{ csrf }}">
+      <button type="submit" class="btn btn-secondary" style="width:auto;padding:0.3rem 0.75rem;font-size:0.85rem;">{{ crate::i18n::t("revoke") }}</button>
+    </form>
+  </li>
+  {% endfor %}
+  {% if apps.is_empty() %}
+  <li style="color:var(--muted);padding:var(--space-4);text-align:center;">{{ crate::i18n::t("no_connected_apps") }}</li>
+  {% endif %}
+  </ul>
+  <p class="links"><a href="/account">{{ crate::i18n::t("back_to_account") }}</a></p>
+</div>
+{% endblock %}

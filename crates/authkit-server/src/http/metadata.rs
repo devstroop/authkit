@@ -1,0 +1,140 @@
+//! OIDC/OAuth discovery and JWKS documents.
+
+use axum::extract::State;
+use axum::http::{HeaderMap, StatusCode, header};
+use axum::response::{IntoResponse, Response};
+use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
+
+use crate::http::routes::AppState;
+use crate::signing::unix_now;
+
+const METADATA_MAX_AGE: u32 = 300;
+
+pub(crate) async fn openid_configuration(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Response {
+    discovery_response(&state, &headers)
+}
+
+pub(crate) async fn oauth_authorization_server(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Response {
+    discovery_response(&state, &headers)
+}
+
+pub(crate) async fn jwks(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    let document = json!({
+        "keys": state.keys.published_keys(unix_now()),
+    });
+    cacheable_json(&document, &headers, METADATA_MAX_AGE)
+}
+
+fn discovery_response(state: &AppState, headers: &HeaderMap) -> Response {
+    let issuer = state.issuer.as_str();
+    let mut document = json!({
+        "issuer": issuer,
+        "jwks_uri": format!("{issuer}/oauth2/jwks"),
+        "id_token_signing_alg_values_supported": ["ES256"],
+        "subject_types_supported": ["public"],
+        "claims_parameter_supported": false,
+        "request_parameter_supported": false,
+        "request_uri_parameter_supported": false,
+        "require_request_uri_registration": false,
+    });
+    if state.authorization.is_some()
+        && let Some(object) = document.as_object_mut()
+    {
+        object.insert(
+            "authorization_endpoint".to_owned(),
+            json!(format!("{issuer}/oauth2/authorize")),
+        );
+        object.insert("response_types_supported".to_owned(), json!(["code"]));
+        object.insert("response_modes_supported".to_owned(), json!(["query"]));
+        object.insert(
+            "grant_types_supported".to_owned(),
+            if state.tokens.is_some() {
+                json!(["authorization_code", "refresh_token", "client_credentials"])
+            } else {
+                json!(["authorization_code"])
+            },
+        );
+        object.insert(
+            "code_challenge_methods_supported".to_owned(),
+            json!(["S256"]),
+        );
+    }
+    if state.tokens.is_some()
+        && let Some(object) = document.as_object_mut()
+    {
+        object.insert(
+            "token_endpoint".to_owned(),
+            json!(format!("{issuer}/oauth2/token")),
+        );
+        object.insert(
+            "userinfo_endpoint".to_owned(),
+            json!(format!("{issuer}/oauth2/userinfo")),
+        );
+        object.insert(
+            "revocation_endpoint".to_owned(),
+            json!(format!("{issuer}/oauth2/revoke")),
+        );
+        object.insert(
+            "end_session_endpoint".to_owned(),
+            json!(format!("{issuer}/oauth2/logout")),
+        );
+        object.insert(
+            "token_endpoint_auth_methods_supported".to_owned(),
+            json!(["client_secret_basic", "client_secret_post", "none"]),
+        );
+        object.insert(
+            "revocation_endpoint_auth_methods_supported".to_owned(),
+            json!(["client_secret_basic", "client_secret_post", "none"]),
+        );
+        object.insert(
+            "scopes_supported".to_owned(),
+            json!(["openid", "profile", "email", "offline_access"]),
+        );
+        object.insert(
+            "claims_supported".to_owned(),
+            json!(["sub", "name", "email", "email_verified", "auth_time"]),
+        );
+    }
+    cacheable_json(&document, headers, METADATA_MAX_AGE)
+}
+
+fn cacheable_json(value: &Value, headers: &HeaderMap, max_age: u32) -> Response {
+    let body = serde_json::to_vec(value).unwrap_or_default();
+    let mut hasher = Sha256::new();
+    hasher.update(&body);
+    let etag = format!("\"{}\"", URL_SAFE_NO_PAD.encode(hasher.finalize()));
+
+    if headers
+        .get(header::IF_NONE_MATCH)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| {
+            value
+                .split(',')
+                .map(str::trim)
+                .any(|candidate| candidate == etag)
+        })
+    {
+        return (StatusCode::NOT_MODIFIED, [(header::ETAG, etag)]).into_response();
+    }
+
+    let cache_control = format!("public, max-age={max_age}");
+    (
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, "application/json"),
+            (header::CACHE_CONTROL, cache_control.as_str()),
+            (header::ETAG, etag.as_str()),
+        ],
+        body,
+    )
+        .into_response()
+}

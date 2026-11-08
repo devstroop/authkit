@@ -1,0 +1,23 @@
+{% extends "layouts/public.html" %}
+{% import "macros/ui.html" as ui %}
+{% block public_content %}
+<section class="hero">
+  <div class="hero-inner">
+    <h1 class="hero-title">{{ crate::i18n::t("hero_title") | safe }}</h1>
+    <p class="hero-sub">{{ crate::i18n::t("hero_sub") }}</p>
+    <div class="hero-cta">
+      <a class="btn" href="/login" style="width:auto;padding:0.8rem 1.5rem;text-decoration:none;">{{ crate::i18n::t("sign_in") }}</a>
+      <a class="btn btn-secondary" href="/register" style="width:auto;padding:0.8rem 1.5rem;text-decoration:none;">{{ crate::i18n::t("create_account") }}</a>
+      <a class="btn btn-secondary" href="{{ docs_url }}" style="width:auto;padding:0.8rem 1.5rem;text-decoration:none;" target="_blank" rel="noopener">{{ crate::i18n::t("view_docs") }}</a>
+    </div>
+  </div>
+</section>
+<section class="features">
+  <div class="features-inner">
+    <div class="feature"><h3>{{ crate::i18n::t("feature_sso") }}</h3><p>{{ crate::i18n::t("feature_sso_desc") }}</p></div>
+    <div class="feature"><h3>{{ crate::i18n::t("feature_orgs") }}</h3><p>{{ crate::i18n::t("feature_orgs_desc") }}</p></div>
+    <div class="feature"><h3>{{ crate::i18n::t("feature_mfa") }}</h3><p>{{ crate::i18n::t("feature_mfa_desc") }}</p></div>
+    <div class="feature"><h3>{{ crate::i18n::t("feature_audit") }}</h3><p>{{ crate::i18n::t("feature_audit_desc") }}</p></div>
+  </div>
+</section>
+{% endblock %}

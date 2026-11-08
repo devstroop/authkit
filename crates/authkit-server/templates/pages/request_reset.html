@@ -1,0 +1,28 @@
+{% extends "layouts/auth.html" %}
+{% import "macros/ui.html" as ui %}
+{% block auth_content %}
+<div class="auth-shell">
+  <aside class="auth-brand">
+    <div class="brand-mark">AuthKit</div>
+    <div>
+      <h2 class="brand-headline">{{ crate::i18n::t("brand_headline_reset")  | safe }}</h2>
+      <p class="brand-sub">{{ crate::i18n::t("brand_sub_reset") }}</p>
+    </div>
+    <div class="brand-foot">{{ crate::i18n::t("brand_foot") }}</div>
+  </aside>
+  <section class="auth-panel">
+    <div class="auth-card">
+      <h1>{{ crate::i18n::t("title_password_reset") }}</h1>
+      <p class="subtitle">{{ crate::i18n::t("subtitle_request_reset") }}</p>
+      <form method="post" action="/password-reset">
+        {% if !csrf.is_empty() %}
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        {% endif %}
+        {{ ui::text_input("email", crate::i18n::t("email"), "email", "email") }}
+        {{ ui::button(crate::i18n::t("send_reset_link")) }}
+      </form>
+      <p class="links"><a href="/login">{{ crate::i18n::t("back_to_sign_in") }}</a></p>
+    </div>
+  </section>
+</div>
+{% endblock %}

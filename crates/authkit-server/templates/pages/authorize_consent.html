@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>{{ crate::i18n::t("title_authorize") }} {{ client }}</title>
+<link rel="stylesheet" href="/oauth2/authorize.css" referrerpolicy="no-referrer">
+</head>
+<body>
+<main class="card">
+<div class="brand">AuthKit</div>
+<p class="eyebrow">{{ crate::i18n::t("consent_title") }}</p>
+<h1>{{ client }}</h1>
+<p><strong>{{ application }}</strong> {{ crate::i18n::t("consent_wants_access") }}</p>
+<p class="muted">{{ crate::i18n::t("consent_requested_access") }}</p>
+<ul class="scopes">{{ scopes | safe }}</ul>
+<form method="post" action="/oauth2/authorize/consent">
+<input type="hidden" name="_csrf" value="{{ csrf }}">
+<input type="hidden" name="client_id" value="{{ client_id }}">
+<input type="hidden" name="redirect_uri" value="{{ redirect_uri }}">
+<input type="hidden" name="response_type" value="code">
+<input type="hidden" name="scope" value="{{ scope }}">
+<input type="hidden" name="code_challenge" value="{{ challenge }}">
+<input type="hidden" name="code_challenge_method" value="S256">
+{{ max_age | safe }}
+{{ state | safe }}
+{{ nonce | safe }}
+<div class="actions">
+<button type="submit" name="decision" value="deny" class="secondary">{{ crate::i18n::t("consent_deny") }}</button>
+<button type="submit" name="decision" value="allow">{{ crate::i18n::t("consent_allow_access") }}</button>
+</div>
+</form>
+<p class="fine">{{ crate::i18n::t("consent_admin_revoke") }}</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{% extends "layouts/auth.html" %}
+{% import "macros/ui.html" as ui %}
+{% block auth_content %}
+<div class="auth-card" style="max-width:32rem;">
+  <h1>{{ crate::i18n::t("title_verify_email") }}</h1>
+  <p class="subtitle">{{ crate::i18n::t("subtitle_verify_email") }}</p>
+  <div class="card">
+    <form method="post" action="/verify-email/confirm">
+      <input type="hidden" name="token" value="{{ token }}">
+      {{ ui::button(crate::i18n::t("verify_email")) }}
+    </form>
+  </div>
+  <p class="links"><a href="/login">{{ crate::i18n::t("back_to_sign_in") }}</a></p>
+</div>
+{% endblock %}

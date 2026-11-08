@@ -1,0 +1,19 @@
+{% extends "layouts/auth.html" %}
+{% import "macros/ui.html" as ui %}
+{% block auth_content %}
+<div class="auth-card" style="max-width:32rem;">
+  <h1>{{ crate::i18n::t(title) }}</h1>
+  {% if !error.is_empty() %}
+  <p class="alert" role="alert">{{ crate::i18n::t(error) }}</p>
+  {% endif %}
+  <div class="card">
+    <form method="post" action="{{ action }}">
+      {{ extra | safe }}
+      {{ ui::text_input("email", crate::i18n::t("email"), "email", "email") }}
+      {{ ui::text_input("password", crate::i18n::t("password"), "password", "current-password") }}
+      {{ ui::button(crate::i18n::t(button)) }}
+    </form>
+  </div>
+  <p class="links"><a href="{{ other_href }}">{{ crate::i18n::t(other_text) }}</a></p>
+</div>
+{% endblock %}

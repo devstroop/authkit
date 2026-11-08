@@ -1,0 +1,29 @@
+{% extends "layouts/auth.html" %}
+{% import "macros/ui.html" as ui %}
+{% block auth_content %}
+<div class="auth-shell">
+  <aside class="auth-brand">
+    <div class="brand-mark">AuthKit</div>
+    <div>
+      <h2 class="brand-headline">{{ crate::i18n::t("brand_headline_enter_code")  | safe }}</h2>
+      <p class="brand-sub">{{ crate::i18n::t("brand_sub_enter_code") }}</p>
+    </div>
+    <div class="brand-foot">{{ crate::i18n::t("brand_foot") }}</div>
+  </aside>
+  <section class="auth-panel">
+    <div class="auth-card">
+      <h1>{{ crate::i18n::t("title_enter_code") }}</h1>
+      <p class="subtitle">{{ crate::i18n::t("subtitle_magic_verify") }}</p>
+      <form method="post" action="/magic-auth/verify">
+        {% if !csrf.is_empty() %}
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        {% endif %}
+        <input type="hidden" name="email" value="{{ email }}">
+        {{ ui::text_input("code", crate::i18n::t("code"), "text", "one-time-code") }}
+        {{ ui::button(crate::i18n::t("verify")) }}
+      </form>
+      <p class="links"><a href="/magic-auth">{{ crate::i18n::t("request_new_code") }}</a></p>
+    </div>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,74 @@
+{% extends "layouts/auth.html" %}
+{% import "macros/ui.html" as ui %}
+{% block auth_content %}
+<div class="auth-shell">
+  <aside class="auth-brand" style="background-color:#15130f;color:#f5f2eb;">
+    <div class="brand-mark">AuthKit</div>
+    <div>
+      <h2 class="brand-headline">{{ crate::i18n::t("brand_headline")  | safe }}</h2>
+      <p class="brand-sub">{{ crate::i18n::t("brand_sub") }}</p>
+    </div>
+    <div class="brand-foot">{{ crate::i18n::t("brand_foot") }}</div>
+  </aside>
+  <section class="auth-panel">
+    <div class="auth-card">
+      <h1>{{ crate::i18n::t("sign_in") }}</h1>
+      <p class="subtitle">{{ crate::i18n::t("subtitle_sign_in") }}</p>
+      {% if !error.is_empty() %}
+      <p class="alert" role="alert">{{ error }}</p>
+      {% endif %}
+      <form method="post" action="/login">
+        {% if !csrf.is_empty() %}
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        {% endif %}
+        {% if !next.is_empty() %}
+        <input type="hidden" name="next" value="{{ next }}">
+        {% endif %}
+        {{ ui::text_input("email", crate::i18n::t("email"), "email", "email") }}
+        {{ ui::text_input("password", crate::i18n::t("password"), "password", "current-password") }}
+        <div style="text-align:right;margin-top:calc(var(--space-1) * -1);margin-bottom:var(--space-2);">
+          <a href="/password-reset" style="font-size:0.85rem;">{{ crate::i18n::t("forgot_password") }}</a>
+        </div>
+        {{ ui::button(crate::i18n::t("sign_in")) }}
+      </form>
+      <div style="margin:var(--space-4) 0;display:flex;flex-direction:column;gap:var(--space-2);">
+        <a class="btn btn-secondary" href="/magic-auth" style="text-align:center;text-decoration:none;">{{ crate::i18n::t("magic_auth") }}</a>
+        <button type="button" id="pk-login" class="btn btn-secondary">{{ crate::i18n::t("sign_in_passkey") }}</button>
+        <p id="pk-login-status" style="margin-top:var(--space-2);font-size:0.85rem;color:var(--muted);"></p>
+      </div>
+      <p class="links" style="justify-content:center;margin-top:var(--space-2);">
+        <span style="color:var(--muted);">{{ crate::i18n::t("dont_have_account") }}</span>
+        <a href="/register">{{ crate::i18n::t("create_account") }}</a>
+      </p>
+
+      <script>
+      window.__AUTHKIT_CSRF = "{{ csrf }}";
+      (function() {
+        function b64urlToBuffer(b64url) { var s=b64url.replace(/-/g,'+').replace(/_/g,'/'); while(s.length%4) s+='='; var bin=atob(s); var buf=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++) buf[i]=bin.charCodeAt(i); return buf.buffer; }
+        function bufferToB64url(buf){ var bytes=new Uint8Array(buf); var s=''; for(var i=0;i<bytes.length;i++) s+=String.fromCharCode(bytes[i]); return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
+        var btn=document.getElementById('pk-login'); var st=document.getElementById('pk-login-status');
+        if(!btn) return;
+        btn.addEventListener('click', async function(){
+          var email=prompt('{{ crate::i18n::t("prompt_passkey_email") }}');
+          if(!email) return;
+          btn.disabled=true; st.textContent='{{ crate::i18n::t("status_starting") }}';
+          try {
+            var r=await fetch('/passkeys/authenticate/begin',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':window.__AUTHKIT_CSRF},body:JSON.stringify({email:email})});
+            var data=await r.json();
+            if(!r.ok){ st.textContent='Error: '+JSON.stringify(data); btn.disabled=false; return; }
+            var opts=data.options; var pk=opts.publicKey?opts.publicKey:opts;
+            pk.challenge=b64urlToBuffer(pk.challenge);
+            if(pk.allowCredentials) pk.allowCredentials=pk.allowCredentials.map(function(c){return {type:c.type,id:b64urlToBuffer(c.id),transports:c.transports};});
+            var cred=await navigator.credentials.get({publicKey:pk});
+            var resp=cred.response;
+            var payload={token:data.token,credential:{id:cred.id,rawId:bufferToB64url(cred.rawId),type:cred.type,response:{clientDataJSON:bufferToB64url(resp.clientDataJSON),authenticatorData:bufferToB64url(resp.authenticatorData),signature:bufferToB64url(resp.signature),userHandle:resp.userHandle?bufferToB64url(resp.userHandle):null}}};
+            var r2=await fetch('/passkeys/authenticate/finish',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':window.__AUTHKIT_CSRF},body:JSON.stringify(payload)});
+            if(r2.ok){ window.location='/'; } else { var d2=await r2.json(); st.textContent='Failed: '+JSON.stringify(d2); btn.disabled=false; }
+          } catch(e){ st.textContent='Error: '+(e&&e.message?e.message:e); btn.disabled=false; }
+        });
+      })();
+      </script>
+    </div>
+  </section>
+</div>
+{% endblock %}

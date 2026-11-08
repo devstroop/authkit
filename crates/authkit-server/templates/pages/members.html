@@ -1,0 +1,44 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block app_content %}
+<div class="auth-card" style="max-width:48rem;">
+  <h1>{{ crate::i18n::t("title_members") }}</h1>
+  <p class="subtitle">{{ crate::i18n::t("subtitle_members") }}</p>
+  <ul id="members" aria-live="polite" style="list-style:none;padding:0;margin:0 0 var(--space-5);">
+  {% for member in members %}
+  <li style="display:flex;align-items:center;justify-content:space-between;padding:var(--space-3) var(--space-4);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:var(--space-2);background:var(--surface);">
+    <div>
+      <div style="font-weight:500;">{{ member.email }}</div>
+      <div style="font-size:0.8rem;color:var(--muted);">{{ member.status }} · {{ member.id }}</div>
+    </div>
+  </li>
+  {% endfor %}
+  {% if members.is_empty() %}
+  <li style="color:var(--muted);padding:var(--space-4);text-align:center;">{{ crate::i18n::t("no_members") }}</li>
+  {% endif %}
+  </ul>
+  {% if can_manage %}
+  <div style="margin:var(--space-5) 0 var(--space-3);">
+    <button type="button" class="btn btn-primary" style="width:auto;" onclick="document.getElementById('add-member-dialog').showModal()">{{ crate::i18n::t("add_member") }}</button>
+  </div>
+  <dialog id="add-member-dialog" class="modal">
+    <div class="modal-header">
+      <h2>{{ crate::i18n::t("add_member") }}</h2>
+      <button type="button" class="modal-close" onclick="document.getElementById('add-member-dialog').close()" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <form method="post" action="/organizations/{{ org_id }}/members" hx-post="/organizations/{{ org_id }}/members" hx-target="#members" hx-swap="beforeend">
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        {{ ui::text_input("email", crate::i18n::t("user_email"), "email", "email") }}
+        {{ ui::button(crate::i18n::t("add")) }}
+      </form>
+    </div>
+  </dialog>
+  {% endif %}
+  <p class="links">
+    <a href="/organizations/{{ org_id }}/invitations">{{ crate::i18n::t("invitations") }}</a>
+    <a href="/organizations/{{ org_id }}/roles">{{ crate::i18n::t("roles") }}</a>
+    <a href="/organizations/{{ org_id }}/domains">{{ crate::i18n::t("domains") }}</a>
+  </p>
+</div>
+{% endblock %}

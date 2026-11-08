@@ -1,0 +1,16 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block app_content %}
+<div class="auth-card" style="max-width:48rem;">
+  <h1>{{ crate::i18n::t("title_recovery_codes") }}</h1>
+  <p class="subtitle">{{ crate::i18n::t("subtitle_generate_recovery") }}</p>
+  <div class="card">
+    <p style="color:var(--muted);margin-bottom:var(--space-4);">{{ crate::i18n::t("generate_recovery_hint") }}</p>
+    <form method="post" action="/account/mfa/recovery-codes/generate">
+      <input type="hidden" name="_csrf" value="{{ csrf }}">
+      {{ ui::button(crate::i18n::t("generate_new_recovery_codes")) }}
+    </form>
+  </div>
+  <p class="links"><a href="/account/mfa">{{ crate::i18n::t("back_to_mfa") }}</a></p>
+</div>
+{% endblock %}

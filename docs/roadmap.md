@@ -197,7 +197,8 @@ A 1.0 tag requires all of the following:
 - M0 through M5 complete; M6 and M7 may remain preview/optional.
 - OIDC conformance evidence and the security review published.
 - A supported upgrade path from the previous minor release.
-- A chosen license, completed naming review, and published support policy.
+- The dual MIT/Apache-2.0 license recorded in [ADR-0010](adr/0010-dual-mit-apache-2-0-license.md), a completed naming review, and a published support policy.
+- GitHub private vulnerability reporting verified, the published security contact reachable, and a test acknowledgement completed through the advisory flow.
 - No open critical or high security findings.
 - A second maintainer or independent security/conduct reviewer named.
 - The operational acceptance checklist completed on both SQLite and Postgres.
