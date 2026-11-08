@@ -5,7 +5,7 @@
   <aside class="auth-brand">
     <div class="brand-mark">AuthKit</div>
     <div>
-      <h2 class="brand-headline">{{ crate::i18n::t("brand_headline_magic") }}</h2>
+      <h2 class="brand-headline">{{ crate::i18n::t("brand_headline_magic")  | safe }}</h2>
       <p class="brand-sub">{{ crate::i18n::t("brand_sub_magic") }}</p>
     </div>
     <div class="brand-foot">{{ crate::i18n::t("brand_foot") }}</div>

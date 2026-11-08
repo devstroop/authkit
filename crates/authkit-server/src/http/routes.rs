@@ -15,6 +15,7 @@ use serde_json::json;
 use crate::authorization::AuthorizationService;
 use crate::config::Issuer;
 use crate::http::account;
+use crate::http::home;
 use crate::http::admin;
 use crate::http::login;
 use crate::http::magic_auth;
@@ -236,6 +237,8 @@ fn base_router(
 ) -> Router {
     metrics::install(metrics::global());
     let mut router = Router::new()
+        .route("/", get(home::home_page))
+        .route("/favicon.ico", get(favicon))
         .route("/healthz", get(health))
         .route("/static/htmx.min.js", get(static_htmx))
         .route("/metrics", get(metrics::handler))
@@ -464,6 +467,10 @@ async fn static_htmx() -> Response {
         include_str!("../../static/htmx.min.js"),
     )
         .into_response()
+}
+
+async fn favicon() -> Response {
+    (StatusCode::NO_CONTENT, [(header::CACHE_CONTROL, "public, max-age=86400")]).into_response()
 }
 
 async fn health() -> Response {

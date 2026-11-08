@@ -144,6 +144,7 @@
     }
     .auth-brand > * { position: relative; z-index: 1; }
     .brand-mark {
+      text-decoration: none;
       font-family: var(--font-display);
       font-size: 1.375rem;
       font-weight: 500;
@@ -208,10 +209,10 @@
     .auth-card .subtitle {
       color: var(--muted);
       font-size: 0.95rem;
-      margin: 0 0 var(--space-6);
+      margin: 0 0 var(--space-3);
       line-height: 1.5;
     }
-    .field { display: block; margin: var(--space-4) 0; }
+    .field { display: block; margin: var(--space-3) 0; }
     .field > span {
       display: block;
       font-size: 0.8rem;
@@ -264,6 +265,7 @@
     }
     .btn:active { transform: translateY(0); }
     .btn-secondary {
+      width: auto;
       background: transparent;
       color: var(--fg);
       border: 1px solid var(--border);
@@ -291,7 +293,7 @@
     }
     .field-error { color: var(--danger); font-size: 0.85rem; margin-top: var(--space-1); }
     .links {
-      margin-top: var(--space-6);
+      margin-top: var(--space-3);
       font-size: 0.9rem;
       color: var(--muted);
       display: flex;
@@ -382,6 +384,28 @@
     }
 
     table.table { display: block; overflow-x: auto; max-width: 100%; white-space: nowrap; }
+    .empty-state { color: var(--muted); padding: var(--space-6); text-align: center; list-style: none; }
+    .auth-lang-switcher { position: fixed; top: 0.75rem; right: 0.75rem; z-index: 100; font-size: 0.75rem; display: flex; gap: 0.35rem; align-items: center; }
+    .auth-lang-switcher a { color: var(--muted); text-decoration: none; padding: 0.15rem 0.35rem; border-radius: 0.25rem; }
+    .auth-lang-switcher a:hover { color: var(--fg); background: var(--bg-2); }
+    /* HTMX loading indicator */
+    .htmx-indicator { display: none; }
+    .htmx-request .htmx-indicator { display: inline-block; }
+    .spinner { width: 1rem; height: 1rem; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.6s linear infinite; display: inline-block; vertical-align: middle; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    /* Public layout */
+    .public-layout { max-width: 76rem; margin: 0 auto; }
+    .hero { padding: var(--space-10) var(--space-4); text-align: center; }
+    .hero-inner { max-width: 48rem; margin: 0 auto; }
+    .hero-title { font-family: var(--font-display); font-size: clamp(2.5rem, 6vw, 4.5rem); font-weight: 350; line-height: 1.05; letter-spacing: -0.03em; margin: 0 0 var(--space-4); }
+    .hero-title em { font-style: italic; color: var(--accent); font-weight: 400; }
+    .hero-sub { color: var(--muted); font-size: 1.15rem; max-width: 36rem; margin: 0 auto var(--space-6); line-height: 1.6; }
+    .hero-cta { display: flex; gap: var(--space-3); justify-content: center; flex-wrap: wrap; }
+    .features { padding: var(--space-8) var(--space-4); border-top: 1px solid var(--border); }
+    .features-inner { max-width: 76rem; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: var(--space-5); }
+    .feature { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-5); box-shadow: var(--shadow-sm); }
+    .feature h3 { font-family: var(--font-display); font-size: 1.25rem; font-weight: 400; margin: 0 0 var(--space-2); }
+    .feature p { color: var(--muted); font-size: 0.9rem; line-height: 1.6; margin: 0; }
     /* App layout */
     .app-layout { display: grid; grid-template-columns: 14rem 1fr; gap: var(--space-6); max-width: 76rem; margin: 0 auto; padding: 0 var(--space-4); }
     .app-sidebar { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-3); height: fit-content; position: sticky; top: var(--space-4); box-shadow: var(--shadow-sm); }
@@ -442,6 +466,7 @@
 </head>
 <body>
   <a class="skip-link" href="#main">{{ crate::i18n::t("skip_to_content") }}</a>
+  {% block site_header %}
   <header class="site-header">
     <div class="site-header-inner">
       <a class="brand-mark" href="/">AuthKit</a>
@@ -452,6 +477,7 @@
       </div>
     </div>
   </header>
+  {% endblock %}
   <main id="main" aria-live="polite">
     {% block content %}{% endblock %}
   </main>

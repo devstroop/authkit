@@ -5,7 +5,7 @@
   <aside class="auth-brand">
     <div class="brand-mark">AuthKit</div>
     <div>
-      <h2 class="brand-headline">{{ crate::i18n::t("brand_headline_register") }}</h2>
+      <h2 class="brand-headline">{{ crate::i18n::t("brand_headline_register")  | safe }}</h2>
       <p class="brand-sub">{{ crate::i18n::t("brand_sub_register") }}</p>
     </div>
     <div class="brand-foot">{{ crate::i18n::t("brand_foot") }}</div>
@@ -25,7 +25,8 @@
         {{ ui::text_input("password", crate::i18n::t("password"), "password", "new-password") }}
         {{ ui::button(crate::i18n::t("register")) }}
       </form>
-      <p class="links">
+      <p class="links" style="justify-content:center;">
+        <span style="color:var(--muted);">{{ crate::i18n::t("already_have_account") }}</span>
         <a href="/login">{{ crate::i18n::t("sign_in") }}</a>
       </p>
     </div>

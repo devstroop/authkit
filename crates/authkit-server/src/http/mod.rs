@@ -1,6 +1,7 @@
 //! HTTP adapter for the native server.
 
 pub mod account;
+pub mod home;
 pub mod admin;
 pub mod authorize;
 pub mod login;
