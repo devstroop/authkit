@@ -1,23 +1,36 @@
 {% extends "layouts/base.html" %}
 {% import "macros/ui.html" as ui %}
 {% block content %}
-<div class="auth-card">
-  <h1>Select organization</h1>
-  <form method="post" action="/select-organization">
-    <input type="hidden" name="token" value="{{ token }}">
-    {% if !csrf.is_empty() %}
-    <input type="hidden" name="_csrf" value="{{ csrf }}">
-    {% endif %}
-    <fieldset style="border:0;padding:0;margin:var(--space-3) 0;">
-      <legend style="font-weight:600;margin-bottom:var(--space-2);">Choose an organization</legend>
-      {% for org in orgs %}
-      <label style="display:block;margin:var(--space-1) 0;">
-        <input type="radio" name="org_id" value="{{ org.id }}" required style="margin-right:var(--space-2);"> {{ org.name }}
-      </label>
-      {% endfor %}
-    </fieldset>
-    {{ ui::button("Continue") }}
-  </form>
-  <p class="links"><a href="/login">Back to sign in</a></p>
+<div class="auth-shell">
+  <aside class="auth-brand">
+    <div class="brand-mark">AuthKit</div>
+    <div>
+      <h2 class="brand-headline">Choose your <em>organization.</em></h2>
+      <p class="brand-sub">You belong to multiple organizations. Pick one to continue.</p>
+    </div>
+    <div class="brand-foot">© 2026 AuthKit · MIT / Apache-2.0</div>
+  </aside>
+  <section class="auth-panel">
+    <div class="auth-card">
+      <h1>Select organization</h1>
+      <p class="subtitle">Which workspace would you like to enter?</p>
+      <form method="post" action="/select-organization">
+        <input type="hidden" name="token" value="{{ token }}">
+        {% if !csrf.is_empty() %}
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        {% endif %}
+        <fieldset style="border:0;padding:0;margin:var(--space-3) 0;">
+          {% for org in orgs %}
+          <label style="display:flex;align-items:center;gap:var(--space-2);padding:var(--space-2) var(--space-3);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:var(--space-2);cursor:pointer;">
+            <input type="radio" name="org_id" value="{{ org.id }}" required>
+            <span style="font-weight:500;">{{ org.name }}</span>
+          </label>
+          {% endfor %}
+        </fieldset>
+        {{ ui::button("Continue") }}
+      </form>
+      <p class="links"><a href="/login">Back to sign in</a></p>
+    </div>
+  </section>
 </div>
 {% endblock %}

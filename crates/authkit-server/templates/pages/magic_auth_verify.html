@@ -1,16 +1,29 @@
 {% extends "layouts/base.html" %}
 {% import "macros/ui.html" as ui %}
 {% block content %}
-<div class="auth-card">
-  <h1>Enter your code</h1>
-  <form method="post" action="/magic-auth/verify">
-    {% if !csrf.is_empty() %}
-    <input type="hidden" name="_csrf" value="{{ csrf }}">
-    {% endif %}
-    <input type="hidden" name="email" value="{{ email }}">
-    {{ ui::text_input("code", "Code", "text", "one-time-code") }}
-    {{ ui::button("Verify") }}
-  </form>
-  <p class="links"><a href="/magic-auth">Request a new code</a></p>
+<div class="auth-shell">
+  <aside class="auth-brand">
+    <div class="brand-mark">AuthKit</div>
+    <div>
+      <h2 class="brand-headline">Enter your <em>code.</em></h2>
+      <p class="brand-sub">Check your email for the 6-digit sign-in code.</p>
+    </div>
+    <div class="brand-foot">© 2026 AuthKit · MIT / Apache-2.0</div>
+  </aside>
+  <section class="auth-panel">
+    <div class="auth-card">
+      <h1>Enter your code</h1>
+      <p class="subtitle">Type the code we sent to your email.</p>
+      <form method="post" action="/magic-auth/verify">
+        {% if !csrf.is_empty() %}
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        {% endif %}
+        <input type="hidden" name="email" value="{{ email }}">
+        {{ ui::text_input("code", "Code", "text", "one-time-code") }}
+        {{ ui::button("Verify") }}
+      </form>
+      <p class="links"><a href="/magic-auth">Request a new code</a></p>
+    </div>
+  </section>
 </div>
 {% endblock %}

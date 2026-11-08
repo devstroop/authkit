@@ -1,21 +1,34 @@
 {% extends "layouts/base.html" %}
 {% import "macros/ui.html" as ui %}
 {% block content %}
-<div class="auth-card">
-  <h1>{{ crate::i18n::t("register") }}</h1>
-  <form method="post" action="/register">
-    {% if !csrf.is_empty() %}
-    <input type="hidden" name="_csrf" value="{{ csrf }}">
-    {% endif %}
-    {% if !next.is_empty() %}
-    <input type="hidden" name="next" value="{{ next }}">
-    {% endif %}
-    {{ ui::text_input("email", crate::i18n::t("email"), "email", "email") }}
-    {{ ui::text_input("password", crate::i18n::t("password"), "password", "new-password") }}
-    {{ ui::button(crate::i18n::t("register")) }}
-  </form>
-  <p class="links">
-    <a href="/login">{{ crate::i18n::t("sign_in") }}</a>
-  </p>
+<div class="auth-shell">
+  <aside class="auth-brand">
+    <div class="brand-mark">AuthKit</div>
+    <div>
+      <h2 class="brand-headline">Create your <em>account.</em></h2>
+      <p class="brand-sub">Join thousands of teams building on AuthKit's identity platform.</p>
+    </div>
+    <div class="brand-foot">© 2026 AuthKit · MIT / Apache-2.0</div>
+  </aside>
+  <section class="auth-panel">
+    <div class="auth-card">
+      <h1>{{ crate::i18n::t("register") }}</h1>
+      <p class="subtitle">Get started in under a minute.</p>
+      <form method="post" action="/register">
+        {% if !csrf.is_empty() %}
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        {% endif %}
+        {% if !next.is_empty() %}
+        <input type="hidden" name="next" value="{{ next }}">
+        {% endif %}
+        {{ ui::text_input("email", crate::i18n::t("email"), "email", "email") }}
+        {{ ui::text_input("password", crate::i18n::t("password"), "password", "new-password") }}
+        {{ ui::button(crate::i18n::t("register")) }}
+      </form>
+      <p class="links">
+        <a href="/login">{{ crate::i18n::t("sign_in") }}</a>
+      </p>
+    </div>
+  </section>
 </div>
 {% endblock %}

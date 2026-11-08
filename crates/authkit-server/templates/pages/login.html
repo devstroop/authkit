@@ -1,26 +1,38 @@
 {% extends "layouts/base.html" %}
 {% import "macros/ui.html" as ui %}
 {% block content %}
-<div class="auth-card">
-  <h1>{{ crate::i18n::t("sign_in") }}</h1>
-  {% if !error.is_empty() %}
-  <p class="alert" role="alert">{{ error }}</p>
-  {% endif %}
-  <form method="post" action="/login">
-    {% if !csrf.is_empty() %}
-    <input type="hidden" name="_csrf" value="{{ csrf }}">
-    {% endif %}
-    {% if !next.is_empty() %}
-    <input type="hidden" name="next" value="{{ next }}">
-    {% endif %}
-    {{ ui::text_input("email", crate::i18n::t("email"), "email", "email") }}
-    {{ ui::text_input("password", crate::i18n::t("password"), "password", "current-password") }}
-    {{ ui::button(crate::i18n::t("sign_in")) }}
-  </form>
-  <p class="links">
-    <a href="/register">{{ crate::i18n::t("register") }}</a>
-    &nbsp;·&nbsp;
-    <a href="/magic-auth">Sign in with email code</a>
-  </p>
+<div class="auth-shell">
+  <aside class="auth-brand">
+    <div class="brand-mark">AuthKit</div>
+    <div>
+      <h2 class="brand-headline">Identity infrastructure for the <em>modern web.</em></h2>
+      <p class="brand-sub">Secure sign-in, organizations, and access control — built for developers who care about their users.</p>
+    </div>
+    <div class="brand-foot">© 2026 AuthKit · MIT / Apache-2.0</div>
+  </aside>
+  <section class="auth-panel">
+    <div class="auth-card">
+      <h1>{{ crate::i18n::t("sign_in") }}</h1>
+      <p class="subtitle">Welcome back. Enter your credentials to continue.</p>
+      {% if !error.is_empty() %}
+      <p class="alert" role="alert">{{ error }}</p>
+      {% endif %}
+      <form method="post" action="/login">
+        {% if !csrf.is_empty() %}
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        {% endif %}
+        {% if !next.is_empty() %}
+        <input type="hidden" name="next" value="{{ next }}">
+        {% endif %}
+        {{ ui::text_input("email", crate::i18n::t("email"), "email", "email") }}
+        {{ ui::text_input("password", crate::i18n::t("password"), "password", "current-password") }}
+        {{ ui::button(crate::i18n::t("sign_in")) }}
+      </form>
+      <p class="links">
+        <a href="/register">{{ crate::i18n::t("register") }}</a>
+        <a href="/magic-auth">Sign in with email code</a>
+      </p>
+    </div>
+  </section>
 </div>
 {% endblock %}

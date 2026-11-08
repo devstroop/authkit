@@ -1,15 +1,28 @@
 {% extends "layouts/base.html" %}
 {% import "macros/ui.html" as ui %}
 {% block content %}
-<div class="auth-card">
-  <h1>Sign in with email code</h1>
-  <form method="post" action="/magic-auth">
-    {% if !csrf.is_empty() %}
-    <input type="hidden" name="_csrf" value="{{ csrf }}">
-    {% endif %}
-    {{ ui::text_input("email", "Email", "email", "email") }}
-    {{ ui::button("Send code") }}
-  </form>
-  <p class="links"><a href="/login">Sign in with password</a></p>
+<div class="auth-shell">
+  <aside class="auth-brand">
+    <div class="brand-mark">AuthKit</div>
+    <div>
+      <h2 class="brand-headline">Passwordless <em>sign-in.</em></h2>
+      <p class="brand-sub">We'll email you a one-time code. No password required.</p>
+    </div>
+    <div class="brand-foot">© 2026 AuthKit · MIT / Apache-2.0</div>
+  </aside>
+  <section class="auth-panel">
+    <div class="auth-card">
+      <h1>Sign in with email code</h1>
+      <p class="subtitle">Enter your email and we'll send a code.</p>
+      <form method="post" action="/magic-auth">
+        {% if !csrf.is_empty() %}
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        {% endif %}
+        {{ ui::text_input("email", "Email", "email", "email") }}
+        {{ ui::button("Send code") }}
+      </form>
+      <p class="links"><a href="/login">Sign in with password</a></p>
+    </div>
+  </section>
 </div>
 {% endblock %}
