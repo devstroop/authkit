@@ -9,6 +9,7 @@ pub mod magic_auth;
 pub mod mfa;
 pub mod org_selection;
 pub mod organization;
+pub mod passkeys;
 pub mod rate_limit;
 pub mod reset;
 pub mod revoke;

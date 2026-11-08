@@ -21,6 +21,7 @@ use crate::http::magic_auth;
 use crate::http::mfa;
 use crate::http::org_selection;
 use crate::http::organization;
+use crate::http::passkeys;
 use crate::http::request_id;
 use crate::http::reset;
 use crate::http::security_headers::{SecurityHeaders, security_headers};
@@ -76,9 +77,11 @@ pub(crate) struct AppState {
     pub(crate) authorization: Option<Arc<AuthorizationService>>,
     pub(crate) tokens: Option<Arc<TokenService>>,
     pub(crate) email: Arc<dyn EmailSender + Send + Sync>,
+    pub(crate) webauthn: Option<Arc<webauthn_rs::Webauthn>>,
 }
 
 impl AppState {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         readiness: Arc<dyn ReadinessProbe>,
         keys: Arc<KeyRing>,
@@ -87,6 +90,7 @@ impl AppState {
         authorization: Option<Arc<AuthorizationService>>,
         tokens: Option<Arc<TokenService>>,
         email: Arc<dyn EmailSender + Send + Sync>,
+        webauthn: Option<Arc<webauthn_rs::Webauthn>>,
     ) -> Self {
         Self {
             readiness,
@@ -96,6 +100,7 @@ impl AppState {
             authorization,
             tokens,
             email,
+            webauthn,
         }
     }
 }
@@ -340,6 +345,9 @@ fn base_router(
             "/organizations/{org_id}/domains/{domain_id}/revoke",
             post(organization::remove_domain),
         )
+        .route("/passkeys", get(passkeys::list_page))
+        .route("/passkeys/register/begin", post(passkeys::register_begin))
+        .route("/passkeys/register/finish", post(passkeys::register_finish))
         .route(
             "/invitations/accept",
             get(organization::accept_invitation_page).post(organization::accept_invitation),
@@ -387,6 +395,13 @@ fn base_router(
                 get(crate::http::logout::logout_get).post(crate::http::logout::logout_post),
             );
     }
+    // Build WebAuthn RP from issuer.
+    let webauthn = (|| {
+        let origin = url::Url::parse(issuer.as_str()).ok()?;
+        let rp_id = origin.host_str()?.to_owned();
+        let builder = webauthn_rs::WebauthnBuilder::new(&rp_id, &origin).ok()?;
+        Some(Arc::new(builder.build().ok()?))
+    })();
     let router = router.layer(axum::middleware::from_fn(metrics::middleware));
     router.fallback(not_found).with_state(AppState::new(
         readiness,
@@ -396,6 +411,7 @@ fn base_router(
         authorization,
         tokens,
         email,
+        webauthn,
     ))
 }
 

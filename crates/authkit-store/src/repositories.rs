@@ -1739,3 +1739,76 @@ impl RecoveryCodeRepository for SqlStore {
         })
     }
 }
+
+
+impl SqlStore {
+    pub fn insert_passkey(&self, id: &str, user_id: &str, credential_id: &str, passkey_json: &str, created_at: i64) -> Result<(), DomainError> {
+        let sql = self.sql(
+            "INSERT INTO passkey (id, user_id, credential_id, passkey_json, created_at) VALUES (?, ?, ?, ?, ?)",
+        );
+        self.block_on(async {
+            sqlx::query(&sql)
+                .bind(id)
+                .bind(user_id)
+                .bind(credential_id)
+                .bind(passkey_json)
+                .bind(created_at)
+                .execute(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            Ok(())
+        })
+    }
+
+    pub fn list_passkeys(&self, user_id: &str) -> Result<Vec<(String, String)>, DomainError> {
+        let sql = self.sql(
+            "SELECT id, credential_id FROM passkey WHERE user_id = ? ORDER BY created_at, id",
+        );
+        self.block_on(async {
+            let rows = sqlx::query(&sql)
+                .bind(user_id)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            let mut out = Vec::new();
+            for row in rows {
+                use sqlx::Row;
+                let id: String = row.get("id");
+                let cred: String = row.get("credential_id");
+                out.push((id, cred));
+            }
+            Ok(out)
+        })
+    }
+
+    pub fn delete_passkey(&self, id: &str, user_id: &str) -> Result<(), DomainError> {
+        let sql = self.sql("DELETE FROM passkey WHERE id = ? AND user_id = ?");
+        self.block_on(async {
+            sqlx::query(&sql)
+                .bind(id)
+                .bind(user_id)
+                .execute(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            Ok(())
+        })
+    }
+
+    pub fn find_passkey_json(&self, credential_id: &str) -> Result<Option<String>, DomainError> {
+        let sql = self.sql("SELECT passkey_json FROM passkey WHERE credential_id = ?");
+        self.block_on(async {
+            let row = sqlx::query(&sql)
+                .bind(credential_id)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            match row {
+                Some(r) => {
+                    use sqlx::Row;
+                    Ok(Some(r.get("passkey_json")))
+                }
+                None => Ok(None),
+            }
+        })
+    }
+}

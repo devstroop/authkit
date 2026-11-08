@@ -31,7 +31,9 @@ tokio = { workspace = true, features = ["net", "signal"] }
 tracing.workspace = true
 tracing-subscriber.workspace = true
 url.workspace = true
+uuid.workspace = true
 zeroize.workspace = true
+webauthn-rs.workspace = true
 jsonwebtoken.workspace = true
 
 [dev-dependencies]
