@@ -1,5 +1,5 @@
-{% extends "layouts/base.html" %}
-{% block content %}
+{% extends "layouts/auth.html" %}
+{% block auth_content %}
 <div class="auth-card" style="max-width:32rem;text-align:center;">
   <h1>{{ crate::i18n::t("title_signed_out") }}</h1>
   <p class="subtitle">{{ crate::i18n::t("subtitle_signed_out") }}</p>

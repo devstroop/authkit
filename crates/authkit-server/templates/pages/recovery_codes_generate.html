@@ -1,6 +1,6 @@
-{% extends "layouts/base.html" %}
+{% extends "layouts/app.html" %}
 {% import "macros/ui.html" as ui %}
-{% block content %}
+{% block app_content %}
 <div class="auth-card" style="max-width:48rem;">
   <h1>{{ crate::i18n::t("title_recovery_codes") }}</h1>
   <p class="subtitle">{{ crate::i18n::t("subtitle_generate_recovery") }}</p>

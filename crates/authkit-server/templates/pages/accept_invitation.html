@@ -1,6 +1,6 @@
-{% extends "layouts/base.html" %}
+{% extends "layouts/auth.html" %}
 {% import "macros/ui.html" as ui %}
-{% block content %}
+{% block auth_content %}
 <div class="auth-card" style="max-width:32rem;">
   <h1>{{ crate::i18n::t("title_accept_invitation") }}</h1>
   <p class="subtitle">{{ crate::i18n::t("subtitle_accept_invitation") }}</p>
