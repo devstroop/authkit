@@ -3,10 +3,10 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+use axum::Json;
 use axum::extract::{Extension, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use axum::Json;
 use serde::Deserialize;
 use serde_json::json;
 use uuid::Uuid;
@@ -14,12 +14,15 @@ use webauthn_rs::prelude::*;
 
 use crate::http::routes::AppState;
 use crate::http::session::SessionContext;
-use authkit_core::domain::id::UserEntity;
 use authkit_core::domain::Id;
+use authkit_core::domain::id::UserEntity;
 
 #[derive(Clone)]
 enum Pending {
-    Registration { user_id: Id<UserEntity>, state: PasskeyRegistration },
+    Registration {
+        user_id: Id<UserEntity>,
+        state: PasskeyRegistration,
+    },
 }
 
 static PENDING: std::sync::LazyLock<Arc<Mutex<HashMap<String, Pending>>>> =
@@ -134,7 +137,10 @@ pub(crate) async fn register_finish(
         Ok(v) => v,
         Err(_) => return bad_request("serialize failed"),
     };
-    let cred_id = base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, passkey.cred_id().as_slice());
+    let cred_id = base64::Engine::encode(
+        &base64::engine::general_purpose::URL_SAFE_NO_PAD,
+        passkey.cred_id().as_slice(),
+    );
     let id = format!("pk_{}", Uuid::new_v4().simple());
     let now = sessions.clock().now().as_millis() as i64;
     let _ = tokio::task::spawn_blocking({
@@ -178,7 +184,11 @@ pub(crate) async fn list_page(
     .unwrap_or_default();
     let body = format!(
         "<h1>Passkeys</h1><ul>{}</ul><button id=pk-register>Register passkey</button><script>document.getElementById('pk-register').onclick=async()=>{{const r=await fetch('/passkeys/register/begin',{{method:'POST',credentials:'same-origin'}});const d=await r.json();console.log(d);alert('begin: '+JSON.stringify(d));}};</script>",
-        passkeys.iter().map(|(id, cred)| format!("<li>{} {}</li>", id, cred)).collect::<Vec<_>>().join("")
+        passkeys
+            .iter()
+            .map(|(id, cred)| format!("<li>{} {}</li>", id, cred))
+            .collect::<Vec<_>>()
+            .join("")
     );
     (
         StatusCode::OK,

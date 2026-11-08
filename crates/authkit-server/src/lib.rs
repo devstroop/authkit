@@ -9,6 +9,7 @@ pub mod authorization;
 pub mod config;
 pub mod email;
 pub mod http;
+pub mod i18n;
 pub mod metrics;
 pub mod password;
 pub mod session;

@@ -1740,9 +1740,15 @@ impl RecoveryCodeRepository for SqlStore {
     }
 }
 
-
 impl SqlStore {
-    pub fn insert_passkey(&self, id: &str, user_id: &str, credential_id: &str, passkey_json: &str, created_at: i64) -> Result<(), DomainError> {
+    pub fn insert_passkey(
+        &self,
+        id: &str,
+        user_id: &str,
+        credential_id: &str,
+        passkey_json: &str,
+        created_at: i64,
+    ) -> Result<(), DomainError> {
         let sql = self.sql(
             "INSERT INTO passkey (id, user_id, credential_id, passkey_json, created_at) VALUES (?, ?, ?, ?, ?)",
         );
@@ -1761,9 +1767,8 @@ impl SqlStore {
     }
 
     pub fn list_passkeys(&self, user_id: &str) -> Result<Vec<(String, String)>, DomainError> {
-        let sql = self.sql(
-            "SELECT id, credential_id FROM passkey WHERE user_id = ? ORDER BY created_at, id",
-        );
+        let sql = self
+            .sql("SELECT id, credential_id FROM passkey WHERE user_id = ? ORDER BY created_at, id");
         self.block_on(async {
             let rows = sqlx::query(&sql)
                 .bind(user_id)
