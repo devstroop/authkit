@@ -1,6 +1,6 @@
-{% extends "layouts/base.html" %}
+{% extends "layouts/admin.html" %}
 {% import "macros/ui.html" as ui %}
-{% block content %}
+{% block admin_content %}
 <h1>Enroll MFA</h1>
 <p>Secret: <code>{{ secret }}</code></p>
 <form method="post" action="/admin/mfa/verify">
