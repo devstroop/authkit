@@ -5,6 +5,23 @@
 {% macro text_input(name, label, input_type, autocomplete="", required=true, minlength="", error="", value="") %}
 <label class="field">
   <span>{{ label }}</span>
+  {% if input_type == "password" %}
+  <div class="password-wrap">
+    <input
+      type="password"
+      id="{{ name }}"
+      name="{{ name }}"
+      class="input"
+      {% if required %}required aria-required="true"{% endif %}
+      {% if !autocomplete.is_empty() %}autocomplete="{{ autocomplete }}"{% endif %}
+      {% if !minlength.is_empty() %}minlength="{{ minlength }}"{% endif %}
+      {% if !error.is_empty() %}aria-invalid="true" aria-describedby="{{ name }}-error"{% endif %}
+      {% if !value.is_empty() %}value="{{ value }}"{% endif %}>
+    <button type="button" class="password-toggle" aria-label="Show password" onclick="togglePassword('{{ name }}', this)">
+      <svg class="icon-eye" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+    </button>
+  </div>
+  {% else %}
   <input
     type="{{ input_type }}"
     name="{{ name }}"
@@ -14,6 +31,7 @@
     {% if !minlength.is_empty() %}minlength="{{ minlength }}"{% endif %}
     {% if !error.is_empty() %}aria-invalid="true" aria-describedby="{{ name }}-error"{% endif %}
     {% if !value.is_empty() %}value="{{ value }}"{% endif %}>
+  {% endif %}
   {% if !error.is_empty() %}
   <span id="{{ name }}-error" class="field-error" role="alert">{{ error }}</span>
   {% endif %}

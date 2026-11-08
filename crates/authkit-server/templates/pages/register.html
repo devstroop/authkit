@@ -22,7 +22,8 @@
         <input type="hidden" name="next" value="{{ next }}">
         {% endif %}
         {{ ui::text_input("email", crate::i18n::t("email"), "email", "email") }}
-        {{ ui::text_input("password", crate::i18n::t("password"), "password", "new-password") }}
+        {{ ui::text_input("password", crate::i18n::t("password"), "password", "new-password", true, "12") }}
+        {{ ui::text_input("confirm_password", crate::i18n::t("confirm_password"), "password", "new-password", true, "12") }}
         {{ ui::button(crate::i18n::t("register")) }}
       </form>
       <p class="links" style="justify-content:center;">
