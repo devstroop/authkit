@@ -7,6 +7,7 @@ pub mod login;
 pub mod logout;
 pub mod magic_auth;
 pub mod mfa;
+pub mod org_selection;
 pub mod organization;
 pub mod rate_limit;
 pub mod reset;

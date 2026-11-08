@@ -2,7 +2,9 @@
 
 use askama::Template;
 use authkit_core::domain::{Email, OneTimeToken, OneTimeTokenPurpose, WriteOutcome};
-use authkit_core::ports::{IdGenerator, OneTimeTokenRepository, RateLimiter, UserRepository};
+use authkit_core::ports::{
+    IdGenerator, MembershipRepository, OneTimeTokenRepository, RateLimiter, UserRepository,
+};
 use axum::body::Bytes;
 use axum::extract::{Extension, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
@@ -350,6 +352,58 @@ pub(crate) async fn verify_submit(
             "Request a new code",
             "",
         );
+    }
+
+    // Organization selection for multi-org users.
+    let memberships = tokio::task::spawn_blocking({
+        let store = sessions.store().clone();
+        let uid = user.id().clone();
+        move || MembershipRepository::list_for_user(store.as_ref(), &uid)
+    })
+    .await
+    .ok()
+    .and_then(|r| r.ok())
+    .unwrap_or_default();
+    let active_orgs: Vec<_> = memberships.into_iter().filter(|m| m.is_active()).collect();
+    if active_orgs.len() > 1 {
+        use rand_core::{OsRng, RngCore};
+        let mut bytes = [0u8; 32];
+        OsRng.fill_bytes(&mut bytes);
+        let token_str: String = bytes.iter().map(|b| format!("{:02x}", b)).collect();
+        let pepper = sessions.pepper().to_vec();
+        let hash = {
+            use sha2::{Digest, Sha256};
+            let mut hasher = Sha256::new();
+            hasher.update(&pepper);
+            hasher.update(token_str.as_bytes());
+            format!("{:x}", hasher.finalize())
+        };
+        let secret_hash = match authkit_core::domain::SecretHash::parse(hash) {
+            Ok(v) => v,
+            Err(_) => return unavailable(),
+        };
+        let now = sessions.clock().now();
+        let expires = authkit_core::domain::time::Timestamp::from_millis(
+            now.as_millis().saturating_add(5 * 60 * 1000),
+        );
+        let ott = authkit_core::domain::OneTimeToken::new(
+            crate::session::SecureIdGenerator
+                .generate::<authkit_core::domain::id::OneTimeTokenEntity>()
+                .expect("id"),
+            user.id().clone(),
+            authkit_core::domain::OneTimeTokenPurpose::OrgSelection,
+            secret_hash,
+            now,
+            expires,
+        )
+        .expect("token");
+        let store_clone = sessions.store().clone();
+        let _ = tokio::task::spawn_blocking(move || {
+            authkit_core::ports::OneTimeTokenRepository::insert(store_clone.as_ref(), &ott)
+        })
+        .await;
+        let location = format!("/select-organization?token={}", token_str);
+        return redirect(&location);
     }
 
     let now = sessions.clock().now();

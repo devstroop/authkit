@@ -1,0 +1,19 @@
+{% extends "layouts/base.html" %}
+{% import "macros/ui.html" as ui %}
+{% block content %}
+<h1>Select organization</h1>
+<form method="post" action="/select-organization">
+  <input type="hidden" name="token" value="{{ token }}">
+  {% if !csrf.is_empty() %}
+  <input type="hidden" name="_csrf" value="{{ csrf }}">
+  {% endif %}
+  <fieldset>
+    <legend>Choose an organization</legend>
+    {% for org in orgs %}
+    <label><input type="radio" name="org_id" value="{{ org.id }}" required> {{ org.name }}</label><br>
+    {% endfor %}
+  </fieldset>
+  {{ ui::button("Continue") }}
+</form>
+<p><a href="/login">Back to sign in</a></p>
+{% endblock %}

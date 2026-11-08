@@ -19,6 +19,7 @@ use crate::http::admin;
 use crate::http::login;
 use crate::http::magic_auth;
 use crate::http::mfa;
+use crate::http::org_selection;
 use crate::http::organization;
 use crate::http::request_id;
 use crate::http::reset;
@@ -207,6 +208,10 @@ fn base_router(
         .route("/metrics", get(metrics::handler))
         .route("/readyz", get(ready))
         .route("/login", get(login::login_page).post(login::login_submit))
+        .route(
+            "/select-organization",
+            get(org_selection::page).post(org_selection::submit),
+        )
         .route(
             "/magic-auth",
             get(magic_auth::request_page).post(magic_auth::request_submit),
