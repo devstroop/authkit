@@ -61,6 +61,9 @@ pub trait UserRepository {
 
     /// Updates an existing user using optimistic concurrency.
     fn update(&self, user: &User, expected_version: u64) -> Result<WriteOutcome, DomainError>;
+
+    /// Lists all users (deployment-wide).
+    fn list(&self) -> Result<Vec<User>, DomainError>;
 }
 
 /// Read and write access to tenant-owned organizations.

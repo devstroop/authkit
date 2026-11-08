@@ -156,6 +156,22 @@ struct AuditView {
     actor: String,
 }
 
+#[derive(Clone)]
+struct UserView {
+    email: String,
+    id: String,
+    status: String,
+    verified: bool,
+}
+
+#[derive(askama::Template)]
+#[template(path = "pages/admin_users.html")]
+struct AdminUsersTemplate<'a> {
+    title: &'a str,
+    csrf: &'a str,
+    users: Vec<UserView>,
+}
+
 pub(crate) async fn dashboard(
     State(state): State<AppState>,
     session: Option<Extension<SessionContext>>,
@@ -320,6 +336,44 @@ pub(crate) async fn audit_page(
         title: "Audit log",
         csrf: &csrf,
         events: event_views,
+    };
+    let body = template.render().unwrap_or_default();
+    html_ok(&body)
+}
+
+pub(crate) async fn users_page(
+    State(state): State<AppState>,
+    session: Option<Extension<SessionContext>>,
+) -> Response {
+    let Some(Extension(session)) = session else {
+        return redirect("/admin/login");
+    };
+    let Some(sessions) = state.sessions.as_ref() else {
+        return unavailable();
+    };
+    let store = sessions.store().clone();
+    let csrf = sessions.csrf_token(session.session());
+    let users = tokio::task::spawn_blocking({
+        let store = store.clone();
+        move || UserRepository::list(store.as_ref())
+    })
+    .await
+    .ok()
+    .and_then(|r| r.ok())
+    .unwrap_or_default();
+    let user_views: Vec<UserView> = users
+        .into_iter()
+        .map(|u| UserView {
+            email: u.email().as_str().to_owned(),
+            id: u.id().as_str().to_owned(),
+            status: format!("{:?}", u.status()),
+            verified: u.email_verified_at().is_some(),
+        })
+        .collect();
+    let template = AdminUsersTemplate {
+        title: "Users",
+        csrf: &csrf,
+        users: user_views,
     };
     let body = template.render().unwrap_or_default();
     html_ok(&body)

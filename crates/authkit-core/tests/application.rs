@@ -138,6 +138,10 @@ impl UserRepository for MemoryStore {
             expected_version,
         }))
     }
+
+    fn list(&self) -> Result<Vec<User>, DomainError> {
+        Ok(self.data.borrow().users.clone())
+    }
 }
 
 impl OrganizationRepository for MemoryStore {

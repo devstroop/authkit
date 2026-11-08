@@ -255,6 +255,7 @@ fn base_router(
             get(admin::login_page).post(admin::login_submit),
         )
         .route("/admin", get(admin::dashboard))
+        .route("/admin/users", get(admin::users_page))
         .route("/admin/audit", get(admin::audit_page))
         .route("/admin/logout", post(admin::logout))
         .route("/admin/administrators", post(admin::grant_admin))

@@ -135,6 +135,19 @@ impl UserRepository for SqlStore {
             expected_version,
         }))
     }
+
+    fn list(&self) -> Result<Vec<User>, DomainError> {
+        let sql = self.sql(
+            "SELECT id, email, email_verified_at, display_name, status, created_at, updated_at, version FROM user_account ORDER BY created_at, id",
+        );
+        self.block_on(async {
+            let rows = sqlx::query(&sql)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            rows.iter().map(map_user).collect()
+        })
+    }
 }
 
 impl OrganizationRepository for SqlStore {
