@@ -1,4 +1,5 @@
 use authkit_core::domain::{AuditAction, AuditTarget, DisplayName, Email, Permission, Scope, Slug};
+use authkit_core::domain::id::{Id, UserEntity};
 use proptest::prelude::*;
 
 proptest! {
@@ -33,11 +34,6 @@ proptest! {
     }
 
     #[test]
-    fn audit_target_parse_does_not_panic(value in any::<String>()) {
-        let _ = AuditTarget::parse(&value);
-    }
-
-    #[test]
     fn valid_emails_round_trip(value in "[a-z]{1,8}@[a-z]{1,8}\\.[a-z]{2,4}") {
         let email = Email::parse(&value).expect("valid email");
         let expected = value.to_lowercase();
@@ -48,6 +44,20 @@ proptest! {
     fn valid_slugs_round_trip(value in "[a-z][a-z0-9-]{0,12}") {
         if let Ok(slug) = Slug::parse(&value) {
             prop_assert_eq!(slug.as_str(), value.as_str());
+        }
+    }
+}
+
+proptest! {
+    #[test]
+    fn id_parse_does_not_panic(value in any::<String>()) {
+        let _ = Id::<UserEntity>::parse(&value);
+    }
+
+    #[test]
+    fn permission_round_trips_ascii(value in "[a-z][a-z0-9._-]{0,16}") {
+        if let Ok(permission) = Permission::parse(&value) {
+            prop_assert_eq!(permission.as_str(), value.as_str());
         }
     }
 }
