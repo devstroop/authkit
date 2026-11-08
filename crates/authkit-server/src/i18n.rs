@@ -42,7 +42,10 @@ pub fn set_locale(locale: Locale) {
 }
 
 pub fn current_locale() -> Locale {
-    match CURRENT.try_get() { Ok(l) => l, Err(_) => Locale::En }
+    match CURRENT.try_get() {
+        Ok(l) => l,
+        Err(_) => Locale::En,
+    }
 }
 
 pub fn detect_locale(headers: &HeaderMap) -> Locale {

@@ -292,7 +292,7 @@ pub(crate) async fn submit(
     let redirect_to = params
         .get("next")
         .cloned()
-        .unwrap_or_else(|| "/".to_owned());
+        .unwrap_or_else(|| "/account".to_owned());
     let mut response = redirect(&redirect_to);
     if let Ok(value) = axum::http::HeaderValue::from_str(&cookie) {
         response.headers_mut().append(header::SET_COOKIE, value);

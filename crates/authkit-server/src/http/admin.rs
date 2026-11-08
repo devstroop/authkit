@@ -3,7 +3,9 @@
 use askama::Template;
 use authkit_core::domain::WriteOutcome;
 use authkit_core::domain::id::{CredentialEntity, SystemAdministratorEntity, UserEntity};
-use authkit_core::domain::{Credential, CredentialKind, DisplayName, Email, Id, SystemAdministrator};
+use authkit_core::domain::{
+    Credential, CredentialKind, DisplayName, Email, Id, SystemAdministrator,
+};
 use authkit_core::ports::{
     CredentialRepository, IdGenerator, SystemAdministratorRepository, UserRepository,
 };
@@ -481,7 +483,6 @@ pub(crate) async fn audit_page(
     html_ok(&body)
 }
 
-
 pub(crate) async fn users_page(
     State(state): State<AppState>,
     session: Option<Extension<SessionContext>>,
@@ -873,7 +874,6 @@ struct SetupTemplate<'a> {
     error: &'a str,
 }
 
-
 #[derive(askama::Template)]
 #[template(path = "pages/admin_restore.html")]
 struct AdminRestoreTemplate<'a> {
@@ -973,7 +973,6 @@ pub(crate) async fn impersonate_exit(State(state): State<AppState>) -> Response 
     response
 }
 
-
 fn urlencoding_decode(value: &str) -> String {
     url::form_urlencoded::parse(format!("x={value}").as_bytes())
         .next()
@@ -988,7 +987,6 @@ fn csv_field(value: &str) -> String {
         value.to_owned()
     }
 }
-
 
 pub(crate) async fn setup_page(
     State(state): State<AppState>,
@@ -1025,7 +1023,11 @@ pub(crate) async fn setup_submit(
     let store = sessions.store().clone();
     let count = tokio::task::spawn_blocking({
         let store = store.clone();
-        move || SystemAdministratorRepository::list(store.as_ref()).map(|v| v.len()).unwrap_or(0)
+        move || {
+            SystemAdministratorRepository::list(store.as_ref())
+                .map(|v| v.len())
+                .unwrap_or(0)
+        }
     })
     .await
     .unwrap_or(0);
@@ -1075,7 +1077,12 @@ pub(crate) async fn setup_submit(
             move || UserRepository::insert(store.as_ref(), &new_user)
         })
         .await;
-        if !outcome.ok().and_then(|r| r.ok()).map(|o| o.is_applied()).unwrap_or(false) {
+        if !outcome
+            .ok()
+            .and_then(|r| r.ok())
+            .map(|o| o.is_applied())
+            .unwrap_or(false)
+        {
             return unavailable();
         }
         new_user
@@ -1098,7 +1105,12 @@ pub(crate) async fn setup_submit(
         move || CredentialRepository::insert(store.as_ref(), &credential)
     })
     .await;
-    if !cred_outcome.ok().and_then(|r| r.ok()).map(|o| o.is_applied()).unwrap_or(false) {
+    if !cred_outcome
+        .ok()
+        .and_then(|r| r.ok())
+        .map(|o| o.is_applied())
+        .unwrap_or(false)
+    {
         return unavailable();
     }
     let admin = SystemAdministrator::new(
@@ -1115,13 +1127,16 @@ pub(crate) async fn setup_submit(
         move || SystemAdministratorRepository::insert(store.as_ref(), &admin)
     })
     .await;
-    if !admin_outcome.ok().and_then(|r| r.ok()).map(|o| o.is_applied()).unwrap_or(false) {
+    if !admin_outcome
+        .ok()
+        .and_then(|r| r.ok())
+        .map(|o| o.is_applied())
+        .unwrap_or(false)
+    {
         return unavailable();
     }
     redirect("/admin/login")
 }
-
-
 
 pub(crate) async fn backup_download(
     State(state): State<AppState>,
@@ -1147,10 +1162,8 @@ pub(crate) async fn backup_download(
         return forbidden();
     }
 
-    let tmp = std::env::temp_dir().join(format!(
-        "authkit-backup-{}.db",
-        crate::signing::unix_now()
-    ));
+    let tmp =
+        std::env::temp_dir().join(format!("authkit-backup-{}.db", crate::signing::unix_now()));
     let tmp_str = tmp.to_string_lossy().to_string();
     let backup_result = sqlx::query("VACUUM INTO ?")
         .bind(&tmp_str)
@@ -1179,7 +1192,6 @@ pub(crate) async fn backup_download(
     );
     response
 }
-
 
 pub(crate) async fn restore_page(
     State(state): State<AppState>,
@@ -1244,6 +1256,7 @@ pub(crate) async fn restore_submit(
     let mut file_bytes: Option<Vec<u8>> = None;
     let mut confirm = String::new();
     let mut code = String::new();
+    let mut csrf_supplied = String::new();
     while let Ok(Some(field)) = multipart.next_field().await {
         match field.name() {
             Some("backup") => {
@@ -1261,10 +1274,24 @@ pub(crate) async fn restore_submit(
                     code = text;
                 }
             }
+            Some("_csrf") => {
+                if let Ok(text) = field.text().await {
+                    csrf_supplied = text;
+                }
+            }
             _ => {}
         }
     }
 
+    if !sessions.csrf_matches(session.session(), &csrf_supplied) {
+        let template = AdminRestoreTemplate {
+            title: "title_restore",
+            csrf: &csrf,
+            message: "",
+            error: "Invalid CSRF token.",
+        };
+        return html_ok(&template.render().unwrap_or_default());
+    }
     if confirm.trim() != "RESTORE" {
         let template = AdminRestoreTemplate {
             title: "title_restore",
@@ -1294,7 +1321,8 @@ pub(crate) async fn restore_submit(
         return html_ok(&template.render().unwrap_or_default());
     };
 
-    let tmp = std::env::temp_dir().join(format!("authkit-restore-{}.db", crate::signing::unix_now()));
+    let tmp =
+        std::env::temp_dir().join(format!("authkit-restore-{}.db", crate::signing::unix_now()));
     if tokio::fs::write(&tmp, &bytes).await.is_err() {
         let template = AdminRestoreTemplate {
             title: "title_restore",
@@ -1306,23 +1334,37 @@ pub(crate) async fn restore_submit(
     }
 
     // Validate the uploaded SQLite database.
-    let tmp_url = format!("sqlite:{}", tmp.display());
-    let validation = tokio::task::spawn_blocking({
-        let tmp_url = tmp_url.clone();
-        move || -> Result<(), String> {
-            let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(|e| e.to_string())?;
-            runtime.block_on(async {
-                let store = authkit_store::SqlStore::connect(&tmp_url, 1).map_err(|e| e.to_string())?;
-                let row: (String,) = sqlx::query_as("PRAGMA integrity_check")
-                    .fetch_one(store.pool())
-                    .await
-                    .map_err(|e| e.to_string())?;
-                if row.0 != "ok" {
-                    return Err(format!("integrity check failed: {}", row.0));
-                }
-                Ok(())
-            })
+    let tmp_path = tmp.clone();
+    let validation = tokio::task::spawn_blocking(move || -> Result<(), String> {
+        let output = std::process::Command::new("sqlite3")
+            .arg(&tmp_path)
+            .arg("PRAGMA integrity_check;")
+            .output()
+            .map_err(|e| e.to_string())?;
+        if !output.status.success() {
+            return Err(String::from_utf8_lossy(&output.stderr).to_string());
         }
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if stdout.trim() != "ok" {
+            return Err(format!("integrity check failed: {}", stdout.trim()));
+        }
+        // Ensure it is a SQLite database with expected schema by checking tables.
+        let tables = std::process::Command::new("sqlite3")
+            .arg(&tmp_path)
+            .arg("SELECT count(*) FROM sqlite_master WHERE type='table';")
+            .output()
+            .map_err(|e| e.to_string())?;
+        if !tables.status.success() {
+            return Err(String::from_utf8_lossy(&tables.stderr).to_string());
+        }
+        let count: i64 = String::from_utf8_lossy(&tables.stdout)
+            .trim()
+            .parse()
+            .unwrap_or(0);
+        if count == 0 {
+            return Err("uploaded database has no tables".to_owned());
+        }
+        Ok(())
     })
     .await;
     if validation.is_err() || validation.unwrap().is_err() {
@@ -1367,10 +1409,8 @@ pub(crate) async fn restore_submit(
 
     // Preserve the current database before overwriting it.
     if db_path.exists() {
-        let backup = db_path.with_extension(format!(
-            "pre-restore-{}.db",
-            crate::signing::unix_now()
-        ));
+        let backup =
+            db_path.with_extension(format!("pre-restore-{}.db", crate::signing::unix_now()));
         let _ = std::fs::copy(&db_path, &backup);
     }
     if std::fs::copy(&tmp, &db_path).is_err() {
@@ -1393,7 +1433,6 @@ pub(crate) async fn restore_submit(
     };
     html_ok(&template.render().unwrap_or_default())
 }
-
 
 async fn admin_totp_step_up(
     sessions: &crate::session::SessionService,
@@ -1430,10 +1469,11 @@ async fn admin_totp_step_up(
         Ok(v) => v,
         Err(_) => return false,
     };
-    let step = match crate::totp::verify_code(&secret, code, totp.config(), totp.last_accepted_step()) {
-        Some(v) => v,
-        None => return false,
-    };
+    let step =
+        match crate::totp::verify_code(&secret, code, totp.config(), totp.last_accepted_step()) {
+            Some(v) => v,
+            None => return false,
+        };
     let original_version = cred.version();
     if cred.accept_totp_step(step, now).is_err() {
         return false;

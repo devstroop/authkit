@@ -352,7 +352,7 @@ pub(crate) async fn login_submit(
     let redirect_to = params
         .get("next")
         .cloned()
-        .unwrap_or_else(|| "/".to_owned());
+        .unwrap_or_else(|| "/account".to_owned());
     let redirect_to = safe_redirect(&redirect_to);
     let totp_cred = tokio::task::spawn_blocking({
         let store = store.clone();
@@ -601,7 +601,7 @@ pub(crate) async fn register_submit(
     let redirect_to = params
         .get("next")
         .cloned()
-        .unwrap_or_else(|| "/".to_owned());
+        .unwrap_or_else(|| "/account".to_owned());
     let redirect_to = safe_redirect(&redirect_to);
     let mut response = redirect(&redirect_to);
     if let Ok(value) = axum::http::HeaderValue::from_str(&cookie) {
@@ -654,7 +654,7 @@ pub(crate) fn safe_redirect(value: &str) -> String {
     {
         value.to_owned()
     } else {
-        "/".to_owned()
+        "/account".to_owned()
     }
 }
 

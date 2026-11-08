@@ -26,6 +26,7 @@ mod session;
 pub use error::{OAuthError, OAuthErrorCode};
 pub use routes::{
     ReadinessError, ReadinessProbe, SqlStoreReadiness, router, router_with_sessions,
-    router_with_sessions_and_tokens, router_with_sessions_and_tokens_and_email, with_session_security,
+    router_with_sessions_and_tokens, router_with_sessions_and_tokens_and_email,
+    with_session_security,
 };
 pub use session::SessionContext;

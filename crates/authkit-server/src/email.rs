@@ -116,11 +116,17 @@ fn smtp_send(sender: &SmtpEmailSender, to: &str, subject: &str, body: &str) -> R
     let connector = TlsConnector::new().map_err(|e| e.to_string())?;
 
     let tcp = TcpStream::connect((sender.host.as_str(), sender.port)).map_err(|e| e.to_string())?;
-    tcp.set_read_timeout(Some(timeout)).map_err(|e| e.to_string())?;
-    tcp.set_write_timeout(Some(timeout)).map_err(|e| e.to_string())?;
+    tcp.set_read_timeout(Some(timeout))
+        .map_err(|e| e.to_string())?;
+    tcp.set_write_timeout(Some(timeout))
+        .map_err(|e| e.to_string())?;
 
     let mut stream = if sender.tls == SmtpTlsMode::Implicit {
-        Stream::Tls(connector.connect(&sender.host, tcp).map_err(|e| e.to_string())?)
+        Stream::Tls(
+            connector
+                .connect(&sender.host, tcp)
+                .map_err(|e| e.to_string())?,
+        )
     } else {
         Stream::Plain(tcp)
     };
@@ -135,7 +141,11 @@ fn smtp_send(sender: &SmtpEmailSender, to: &str, subject: &str, body: &str) -> R
             Stream::Plain(tcp) => tcp,
             _ => return Err("unexpected stream state".to_owned()),
         };
-        stream = Stream::Tls(connector.connect(&sender.host, tcp).map_err(|e| e.to_string())?);
+        stream = Stream::Tls(
+            connector
+                .connect(&sender.host, tcp)
+                .map_err(|e| e.to_string())?,
+        );
         ehlo(&mut stream, &sender.host)?;
     }
 

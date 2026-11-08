@@ -197,8 +197,8 @@ pub(crate) async fn members_page(
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
     let csrf = sessions.csrf_token(session.session());
-    if !can_manage_members(&store, &user_id, &org_id)
-        && !can_read_members(&store, &user_id, &org_id)
+    if !can_manage_members(&store, &user_id, &org_id).await
+        && !can_read_members(&store, &user_id, &org_id).await
     {
         return forbidden();
     }
@@ -235,7 +235,7 @@ pub(crate) async fn members_page(
         });
     }
 
-    let can_manage = can_manage_members(&store, &user_id, &org_id);
+    let can_manage = can_manage_members(&store, &user_id, &org_id).await;
     if headers.get("HX-Request").is_some() {
         let fragment = MembersFragment {
             csrf: &csrf,
@@ -275,7 +275,7 @@ pub(crate) async fn add_member(
     };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
-    if !can_manage_members(&store, &user_id, &org_id) {
+    if !can_manage_members(&store, &user_id, &org_id).await {
         return forbidden();
     }
     let mut params = parse_form(&body);
@@ -370,7 +370,7 @@ pub(crate) async fn invitations_page(
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
     let csrf = sessions.csrf_token(session.session());
-    if !can_read_members(&store, &user_id, &org_id) {
+    if !can_read_members(&store, &user_id, &org_id).await {
         return forbidden();
     }
     let tenant = TenantContext::new(org_id.clone());
@@ -408,7 +408,7 @@ pub(crate) async fn invitations_page(
             name: r.name().as_str().to_owned(),
         })
         .collect();
-    let can_manage = can_manage_members(&store, &user_id, &org_id);
+    let can_manage = can_manage_members(&store, &user_id, &org_id).await;
     if headers.get("HX-Request").is_some() {
         let fragment = InvitationsFragment {
             csrf: &csrf,
@@ -450,7 +450,7 @@ pub(crate) async fn create_invitation(
     };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
-    if !can_manage_members(&store, &user_id, &org_id) {
+    if !can_manage_members(&store, &user_id, &org_id).await {
         return forbidden();
     }
     let mut params = parse_form(&body);
@@ -534,7 +534,7 @@ pub(crate) async fn revoke_invitation(
     };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
-    if !can_manage_members(&store, &user_id, &org_id) {
+    if !can_manage_members(&store, &user_id, &org_id).await {
         return forbidden();
     }
     let tenant = TenantContext::new(org_id.clone());
@@ -613,7 +613,7 @@ pub(crate) async fn roles_page(
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
     let csrf = sessions.csrf_token(session.session());
-    if !can_read_members(&store, &user_id, &org_id) {
+    if !can_read_members(&store, &user_id, &org_id).await {
         return forbidden();
     }
     let tenant = TenantContext::new(org_id.clone());
@@ -640,7 +640,7 @@ pub(crate) async fn roles_page(
                 .join(", "),
         })
         .collect();
-    let can_manage = can_manage_members(&store, &user_id, &org_id);
+    let can_manage = can_manage_members(&store, &user_id, &org_id).await;
     if headers.get("HX-Request").is_some() {
         let fragment = RolesFragment {
             csrf: &csrf,
@@ -680,7 +680,7 @@ pub(crate) async fn create_role(
     };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
-    if !can_manage_members(&store, &user_id, &org_id) {
+    if !can_manage_members(&store, &user_id, &org_id).await {
         return forbidden();
     }
     let mut params = parse_form(&body);
@@ -756,7 +756,7 @@ pub(crate) async fn bind_role(
     };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
-    if !can_manage_members(&store, &user_id, &org_id) {
+    if !can_manage_members(&store, &user_id, &org_id).await {
         return forbidden();
     }
     let mut params = parse_form(&body);
@@ -863,7 +863,7 @@ pub(crate) async fn applications_page(
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
     let csrf = sessions.csrf_token(session.session());
-    if !can_read_members(&store, &user_id, &org_id) {
+    if !can_read_members(&store, &user_id, &org_id).await {
         return forbidden();
     }
     let tenant = TenantContext::new(org_id.clone());
@@ -889,7 +889,7 @@ pub(crate) async fn applications_page(
             },
         })
         .collect();
-    let can_manage = can_manage_members(&store, &user_id, &org_id);
+    let can_manage = can_manage_members(&store, &user_id, &org_id).await;
     if headers.get("HX-Request").is_some() {
         let fragment = ApplicationsFragment {
             csrf: &csrf,
@@ -929,7 +929,7 @@ pub(crate) async fn create_application(
     };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
-    if !can_manage_members(&store, &user_id, &org_id) {
+    if !can_manage_members(&store, &user_id, &org_id).await {
         return forbidden();
     }
     let mut params = parse_form(&body);
@@ -1032,7 +1032,7 @@ pub(crate) async fn oauth_clients_page(
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
     let csrf = sessions.csrf_token(session.session());
-    if !can_read_members(&store, &user_id, &org_id) {
+    if !can_read_members(&store, &user_id, &org_id).await {
         return forbidden();
     }
     let tenant = TenantContext::new(org_id.clone());
@@ -1074,7 +1074,7 @@ pub(crate) async fn oauth_clients_page(
             name: a.name().as_str().to_owned(),
         })
         .collect();
-    let can_manage = can_manage_members(&store, &user_id, &org_id);
+    let can_manage = can_manage_members(&store, &user_id, &org_id).await;
     if headers.get("HX-Request").is_some() {
         let fragment = OAuthClientsFragment {
             csrf: &csrf,
@@ -1116,7 +1116,7 @@ pub(crate) async fn create_oauth_client(
     };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
-    if !can_manage_members(&store, &user_id, &org_id) {
+    if !can_manage_members(&store, &user_id, &org_id).await {
         return forbidden();
     }
     let mut params = parse_form(&body);
@@ -1265,7 +1265,7 @@ pub(crate) async fn oauth_client_detail(
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
     let csrf = sessions.csrf_token(session.session());
-    if !can_manage_members(&store, &user_id, &org_id) {
+    if !can_manage_members(&store, &user_id, &org_id).await {
         return forbidden();
     }
     let tenant = TenantContext::new(org_id.clone());
@@ -1329,7 +1329,7 @@ pub(crate) async fn add_redirect_uri(
     };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
-    if !can_manage_members(&store, &user_id, &org_id) {
+    if !can_manage_members(&store, &user_id, &org_id).await {
         return forbidden();
     }
     let mut params = parse_form(&body);
@@ -1394,7 +1394,7 @@ pub(crate) async fn remove_redirect_uri(
     };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
-    if !can_manage_members(&store, &user_id, &org_id) {
+    if !can_manage_members(&store, &user_id, &org_id).await {
         return forbidden();
     }
     let mut params = parse_form(&body);
@@ -1459,7 +1459,7 @@ pub(crate) async fn replace_scopes(
     };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
-    if !can_manage_members(&store, &user_id, &org_id) {
+    if !can_manage_members(&store, &user_id, &org_id).await {
         return forbidden();
     }
     let mut params = parse_form(&body);
@@ -1699,7 +1699,7 @@ pub(crate) async fn domains_page(
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
     let csrf = sessions.csrf_token(session.session());
-    if !can_read_members(&store, &user_id, &org_id) {
+    if !can_read_members(&store, &user_id, &org_id).await {
         return forbidden();
     }
     let domains = tokio::task::spawn_blocking({
@@ -1711,7 +1711,7 @@ pub(crate) async fn domains_page(
     .ok()
     .and_then(|r| r.ok())
     .unwrap_or_default();
-    let can_manage = can_manage_members(&store, &user_id, &org_id);
+    let can_manage = can_manage_members(&store, &user_id, &org_id).await;
     let domain_views: Vec<DomainView> = domains
         .into_iter()
         .map(|d| DomainView {
@@ -1752,7 +1752,7 @@ pub(crate) async fn add_domain(
     };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
-    if !can_manage_members(&store, &user_id, &org_id) {
+    if !can_manage_members(&store, &user_id, &org_id).await {
         return forbidden();
     }
     let params = parse_form(&body);
@@ -1804,7 +1804,7 @@ pub(crate) async fn verify_domain(
     };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
-    if !can_manage_members(&store, &user_id, &org_id) {
+    if !can_manage_members(&store, &user_id, &org_id).await {
         return forbidden();
     }
     let params = parse_form(&body);
@@ -1858,7 +1858,7 @@ pub(crate) async fn remove_domain(
     };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
-    if !can_manage_members(&store, &user_id, &org_id) {
+    if !can_manage_members(&store, &user_id, &org_id).await {
         return forbidden();
     }
     let _ = tokio::task::spawn_blocking({
@@ -1870,55 +1870,69 @@ pub(crate) async fn remove_domain(
     redirect(&format!("/organizations/{}/domains", org_id.as_str()))
 }
 
-fn can_read_members(
+async fn can_read_members(
     store: &std::sync::Arc<authkit_store::SqlStore>,
     user_id: &authkit_core::domain::Id<UserEntity>,
     org_id: &authkit_core::domain::Id<OrganizationEntity>,
 ) -> bool {
-    let tenant = TenantContext::new(org_id.clone());
-    let membership = MembershipRepository::find_by_user(store.as_ref(), &tenant, user_id)
-        .ok()
-        .flatten();
-    if !membership.map(|m| m.is_active()).unwrap_or(false) {
-        return false;
-    }
-    let bindings = RoleBindingRepository::list_for_user(store.as_ref(), &tenant, user_id)
-        .ok()
-        .unwrap_or_default();
-    for b in bindings {
-        if let Ok(Some(role)) = RoleRepository::find_by_id(store.as_ref(), &tenant, b.role_id())
-            && (role.grants(&Permission::parse("org.member.read").expect("perm"))
-                || role.grants(&Permission::parse("org.member.manage").expect("perm")))
-        {
-            return true;
+    let store = store.clone();
+    let user_id = user_id.clone();
+    let org_id = org_id.clone();
+    tokio::task::spawn_blocking(move || {
+        let tenant = TenantContext::new(org_id.clone());
+        let membership = MembershipRepository::find_by_user(store.as_ref(), &tenant, &user_id)
+            .ok()
+            .flatten();
+        if !membership.map(|m| m.is_active()).unwrap_or(false) {
+            return false;
         }
-    }
-    false
+        let bindings = RoleBindingRepository::list_for_user(store.as_ref(), &tenant, &user_id)
+            .ok()
+            .unwrap_or_default();
+        for b in bindings {
+            if let Ok(Some(role)) = RoleRepository::find_by_id(store.as_ref(), &tenant, b.role_id())
+                && (role.grants(&Permission::parse("org.member.read").expect("perm"))
+                    || role.grants(&Permission::parse("org.member.manage").expect("perm")))
+            {
+                return true;
+            }
+        }
+        false
+    })
+    .await
+    .unwrap_or(false)
 }
 
-fn can_manage_members(
+async fn can_manage_members(
     store: &std::sync::Arc<authkit_store::SqlStore>,
     user_id: &authkit_core::domain::Id<UserEntity>,
     org_id: &authkit_core::domain::Id<OrganizationEntity>,
 ) -> bool {
-    let tenant = TenantContext::new(org_id.clone());
-    let membership = MembershipRepository::find_by_user(store.as_ref(), &tenant, user_id)
-        .ok()
-        .flatten();
-    if !membership.map(|m| m.is_active()).unwrap_or(false) {
-        return false;
-    }
-    let bindings = RoleBindingRepository::list_for_user(store.as_ref(), &tenant, user_id)
-        .ok()
-        .unwrap_or_default();
-    for b in bindings {
-        if let Ok(Some(role)) = RoleRepository::find_by_id(store.as_ref(), &tenant, b.role_id())
-            && role.grants(&Permission::parse("org.member.manage").expect("perm"))
-        {
-            return true;
+    let store = store.clone();
+    let user_id = user_id.clone();
+    let org_id = org_id.clone();
+    tokio::task::spawn_blocking(move || {
+        let tenant = TenantContext::new(org_id.clone());
+        let membership = MembershipRepository::find_by_user(store.as_ref(), &tenant, &user_id)
+            .ok()
+            .flatten();
+        if !membership.map(|m| m.is_active()).unwrap_or(false) {
+            return false;
         }
-    }
-    false
+        let bindings = RoleBindingRepository::list_for_user(store.as_ref(), &tenant, &user_id)
+            .ok()
+            .unwrap_or_default();
+        for b in bindings {
+            if let Ok(Some(role)) = RoleRepository::find_by_id(store.as_ref(), &tenant, b.role_id())
+                && role.grants(&Permission::parse("org.member.manage").expect("perm"))
+            {
+                return true;
+            }
+        }
+        false
+    })
+    .await
+    .unwrap_or(false)
 }
 
 fn parse_form(body: &axum::body::Bytes) -> std::collections::HashMap<String, String> {

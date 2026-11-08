@@ -295,7 +295,10 @@ fn base_router(
         .route("/setup", get(admin::setup_page).post(admin::setup_submit))
         .route("/admin", get(admin::dashboard))
         .route("/admin/backup", get(admin::backup_download))
-        .route("/admin/restore", get(admin::restore_page).post(admin::restore_submit))
+        .route(
+            "/admin/restore",
+            get(admin::restore_page).post(admin::restore_submit),
+        )
         .route("/admin/users", get(admin::users_page))
         .route("/admin/impersonate/{id}", post(admin::impersonate))
         .route("/admin/impersonate/exit", post(admin::impersonate_exit))

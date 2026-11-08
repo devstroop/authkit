@@ -557,7 +557,9 @@ fn system_administrator_status(value: &str) -> Result<SystemAdministratorStatus,
     }
 }
 
-fn system_administrator_role(value: &str) -> Result<authkit_core::domain::SystemAdministratorRole, DomainError> {
+fn system_administrator_role(
+    value: &str,
+) -> Result<authkit_core::domain::SystemAdministratorRole, DomainError> {
     match value {
         "super_admin" => Ok(authkit_core::domain::SystemAdministratorRole::SuperAdmin),
         "auditor" => Ok(authkit_core::domain::SystemAdministratorRole::Auditor),

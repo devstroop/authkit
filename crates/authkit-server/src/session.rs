@@ -14,8 +14,8 @@ use authkit_core::domain::id::{
     AuditEventEntity, Id, OrganizationEntity, SessionEntity, UserEntity,
 };
 use authkit_core::domain::{
-    DomainError, ErrorCode, IdError, SecretHash, Session, SessionAudience, SessionStatus, Timestamp,
-    ValueError, WriteOutcome,
+    DomainError, ErrorCode, IdError, SecretHash, Session, SessionAudience, SessionStatus,
+    Timestamp, ValueError, WriteOutcome,
 };
 use authkit_core::ports::write::{WriteBatch, WriteCommand};
 use authkit_core::ports::{Clock, IdGenerator, SessionRepository, UnitOfWork};
@@ -434,8 +434,8 @@ impl SessionService {
             let store = store.clone();
             let user_id = user_id.clone();
             move || {
-                let sessions = SessionRepository::list_for_user(store.as_ref(), &user_id)
-                    .unwrap_or_default();
+                let sessions =
+                    SessionRepository::list_for_user(store.as_ref(), &user_id).unwrap_or_default();
                 for existing in sessions {
                     if existing.status() == SessionStatus::Active {
                         let mut revoked = existing;
@@ -455,9 +455,9 @@ impl SessionService {
             org,
             AuditActor::User(user_id),
             action,
-            session.rotated_from().map(|id| {
-                authkit_core::domain::AuditTarget::parse(id.as_str()).expect("target")
-            }),
+            session
+                .rotated_from()
+                .map(|id| authkit_core::domain::AuditTarget::parse(id.as_str()).expect("target")),
             now,
             vec![],
         )

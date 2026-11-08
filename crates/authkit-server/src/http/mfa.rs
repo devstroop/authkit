@@ -375,7 +375,9 @@ pub(crate) async fn login_verify(
     let mut params = parse_form(&body);
     let challenge = params.remove("challenge").unwrap_or_default();
     let code = params.remove("code").unwrap_or_default();
-    let next = params.remove("next").unwrap_or_else(|| "/".to_owned());
+    let next = params
+        .remove("next")
+        .unwrap_or_else(|| "/account".to_owned());
     let next = crate::http::login::safe_redirect(&next);
     let pepper = sessions.pepper().to_vec();
     let user_id = match crate::totp::verify_challenge(&challenge, &next, &pepper) {

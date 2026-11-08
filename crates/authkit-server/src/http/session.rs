@@ -114,8 +114,7 @@ pub(crate) async fn session_context(
             .await;
         }
 
-        let skip_csrf = request.uri().path() == "/admin/restore"
-            && is_multipart(request.headers());
+        let skip_csrf = request.uri().path() == "/admin/restore" && is_multipart(request.headers());
         if !skip_csrf {
             let (restored, supplied) = match extract_csrf(request).await {
                 Ok(parts) => parts,
@@ -348,18 +347,46 @@ async fn extract_csrf(request: Request) -> Result<(Request, Option<String>), Csr
         return Ok((request, Some(token)));
     }
 
-    if !is_form(request.headers()) {
+    if !is_form(request.headers()) && !is_multipart(request.headers()) {
         return Ok((request, None));
     }
 
+    let is_mp = is_multipart(request.headers());
     let (parts, body) = request.into_parts();
     let bytes = match to_bytes(body, MAX_FORM_BODY).await {
         Ok(bytes) => bytes,
         Err(_) => return Err(CsrfExtractionError::TooLarge),
     };
-    let token = form_csrf_token(&bytes);
+    let token = if is_mp {
+        multipart_csrf_token(&bytes)
+    } else {
+        form_csrf_token(&bytes)
+    };
     let request = Request::from_parts(parts, Body::from(bytes));
     Ok((request, token))
+}
+
+fn multipart_csrf_token(bytes: &[u8]) -> Option<String> {
+    let text = String::from_utf8_lossy(bytes);
+    // Find a form field named _csrf in multipart body.
+    for marker in ["name=\"_csrf\"", "name='_csrf'"] {
+        if let Some(pos) = text.find(marker) {
+            // value follows blank line after headers
+            let rest = &text[pos..];
+            if let Some(blank) = rest.find("\r\n\r\n") {
+                let value_start = blank + 4;
+                let value_end = rest[value_start..]
+                    .find("\r\n")
+                    .map(|i| value_start + i)
+                    .unwrap_or(rest.len());
+                let token = rest[value_start..value_end].trim();
+                if !token.is_empty() && token.len() <= 128 {
+                    return Some(token.to_owned());
+                }
+            }
+        }
+    }
+    None
 }
 
 fn is_multipart(headers: &HeaderMap) -> bool {
@@ -367,10 +394,11 @@ fn is_multipart(headers: &HeaderMap) -> bool {
         .get(header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
         .is_some_and(|value| {
-            value
-                .split(';')
-                .next()
-                .is_some_and(|media_type| media_type.trim().eq_ignore_ascii_case("multipart/form-data"))
+            value.split(';').next().is_some_and(|media_type| {
+                media_type
+                    .trim()
+                    .eq_ignore_ascii_case("multipart/form-data")
+            })
         })
 }
 
