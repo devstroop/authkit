@@ -1,22 +1,39 @@
 {% extends "layouts/base.html" %}
 {% import "macros/ui.html" as ui %}
 {% block content %}
-<h1>Sessions</h1>
-<ul id="sessions">
-{% for session in sessions %}
-<li>{{ session.id }} - {{ session.status }}
-  <form method="post" action="/account/sessions/{{ session.id }}/revoke" style="display:inline" hx-post="/account/sessions/{{ session.id }}/revoke" hx-target="#sessions" hx-swap="outerHTML">
-    <input type="hidden" name="_csrf" value="{{ csrf }}">
-    {{ ui::button("Revoke", "danger") }}
-  </form>
-</li>
-{% endfor %}
-</ul>
-<h1>Change password</h1>
-<form method="post" action="/account/password">
-  <input type="hidden" name="_csrf" value="{{ csrf }}">
-  {{ ui::text_input("current_password", "Current password", "password", "current-password") }}
-  {{ ui::text_input("new_password", "New password", "password", "new-password", true, "12") }}
-  {{ ui::button("Update password") }}
-</form>
+<div class="auth-card" style="max-width:48rem;">
+  <h1>Account settings</h1>
+  <p class="subtitle">Manage your sessions and security.</p>
+
+  <div class="card">
+    <h2>Active sessions</h2>
+    <ul id="sessions" aria-live="polite" style="list-style:none;padding:0;margin:0;">
+    {% for session in sessions %}
+    <li style="display:flex;align-items:center;justify-content:space-between;padding:var(--space-3) 0;border-bottom:1px solid var(--border);">
+      <div>
+        <div style="font-weight:500;font-size:0.9rem;">{{ session.id }}</div>
+        <div style="font-size:0.8rem;color:var(--muted);">{{ session.status }}</div>
+      </div>
+      <form method="post" action="/account/sessions/{{ session.id }}/revoke" style="display:inline" hx-post="/account/sessions/{{ session.id }}/revoke" hx-target="#sessions" hx-swap="outerHTML">
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        <button type="submit" class="btn btn-secondary" style="width:auto;padding:0.3rem 0.75rem;font-size:0.85rem;">Revoke</button>
+      </form>
+    </li>
+    {% endfor %}
+    {% if sessions.is_empty() %}
+    <li style="color:var(--muted);padding:var(--space-3) 0;">No active sessions.</li>
+    {% endif %}
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Change password</h2>
+    <form method="post" action="/account/password">
+      <input type="hidden" name="_csrf" value="{{ csrf }}">
+      {{ ui::text_input("current_password", "Current password", "password", "current-password") }}
+      {{ ui::text_input("new_password", "New password", "password", "new-password", true, "12") }}
+      {{ ui::button("Update password") }}
+    </form>
+  </div>
+</div>
 {% endblock %}

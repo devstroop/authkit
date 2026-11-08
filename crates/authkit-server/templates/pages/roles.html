@@ -1,21 +1,30 @@
 {% extends "layouts/base.html" %}
 {% import "macros/ui.html" as ui %}
 {% block content %}
-<h1>Roles</h1>
-<ul id="roles" aria-live="polite">
-{% for role in roles %}
-<li>{{ role.name }} ({{ role.slug }}) - {{ role.permissions }}</li>
-{% endfor %}
-</ul>
-{% if can_manage %}
-<h2>Create role</h2>
-<form method="post" action="/organizations/{{ org_id }}/roles" hx-post="/organizations/{{ org_id }}/roles" hx-target="#roles" hx-swap="outerHTML">
-  <input type="hidden" name="_csrf" value="{{ csrf }}">
-  {{ ui::text_input("slug", "Slug", "text", "") }}
-  {{ ui::text_input("name", "Name", "text", "") }}
-  {{ ui::text_input("permissions", "Permissions (space-separated)", "text", "") }}
-  {{ ui::button("Create") }}
-</form>
-{% endif %}
-<p><a href="/organizations/{{ org_id }}/members">Members</a></p>
+<div class="auth-card" style="max-width:48rem;">
+  <h1>Roles</h1>
+  <p class="subtitle">Permission sets for this organization.</p>
+  <ul id="roles" aria-live="polite" style="list-style:none;padding:0;margin:0 0 var(--space-5);">
+  {% for role in roles %}
+  <li style="padding:var(--space-3) var(--space-4);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:var(--space-2);background:var(--surface);">
+    <div style="font-weight:600;">{{ role.name }}</div>
+    <div style="font-size:0.8rem;color:var(--muted);">{{ role.slug }} · {{ role.permissions }}</div>
+  </li>
+  {% endfor %}
+  {% if roles.is_empty() %}
+  <li style="color:var(--muted);padding:var(--space-4);text-align:center;">No roles yet.</li>
+  {% endif %}
+  </ul>
+  {% if can_manage %}
+  <h2 style="font-family:var(--font-display);font-size:1.5rem;font-weight:400;margin:var(--space-5) 0 var(--space-3);">Create role</h2>
+  <form method="post" action="/organizations/{{ org_id }}/roles" hx-post="/organizations/{{ org_id }}/roles" hx-target="#roles" hx-swap="outerHTML">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    {{ ui::text_input("slug", "Slug", "text", "") }}
+    {{ ui::text_input("name", "Name", "text", "") }}
+    {{ ui::text_input("permissions", "Permissions (space-separated)", "text", "") }}
+    {{ ui::button("Create") }}
+  </form>
+  {% endif %}
+  <p class="links"><a href="/organizations/{{ org_id }}/members">Members</a></p>
+</div>
 {% endblock %}

@@ -1,19 +1,34 @@
 {% extends "layouts/base.html" %}
 {% import "macros/ui.html" as ui %}
 {% block content %}
-<h1>Members</h1>
-<ul id="members">
-{% for member in members %}
-<li>{{ member.email }} {{ member.status }} ({{ member.id }})</li>
-{% endfor %}
-</ul>
-{% if can_manage %}
-<h2>Add member</h2>
-<form method="post" action="/organizations/{{ org_id }}/members" hx-post="/organizations/{{ org_id }}/members" hx-target="#members" hx-swap="beforeend">
-  <input type="hidden" name="_csrf" value="{{ csrf }}">
-  {{ ui::text_input("email", "User email", "email", "email") }}
-  {{ ui::button("Add") }}
-</form>
-{% endif %}
-<p><a href="/organizations/{{ org_id }}/invitations">Invitations</a> | <a href="/organizations/{{ org_id }}/roles">Roles</a></p>
+<div class="auth-card" style="max-width:48rem;">
+  <h1>Members</h1>
+  <p class="subtitle">People with access to this organization.</p>
+  <ul id="members" aria-live="polite" style="list-style:none;padding:0;margin:0 0 var(--space-5);">
+  {% for member in members %}
+  <li style="display:flex;align-items:center;justify-content:space-between;padding:var(--space-3) var(--space-4);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:var(--space-2);background:var(--surface);">
+    <div>
+      <div style="font-weight:500;">{{ member.email }}</div>
+      <div style="font-size:0.8rem;color:var(--muted);">{{ member.status }} · {{ member.id }}</div>
+    </div>
+  </li>
+  {% endfor %}
+  {% if members.is_empty() %}
+  <li style="color:var(--muted);padding:var(--space-4);text-align:center;">No members yet.</li>
+  {% endif %}
+  </ul>
+  {% if can_manage %}
+  <h2 style="font-family:var(--font-display);font-size:1.5rem;font-weight:400;margin:var(--space-5) 0 var(--space-3);">Add member</h2>
+  <form method="post" action="/organizations/{{ org_id }}/members" hx-post="/organizations/{{ org_id }}/members" hx-target="#members" hx-swap="beforeend">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    {{ ui::text_input("email", "User email", "email", "email") }}
+    {{ ui::button("Add") }}
+  </form>
+  {% endif %}
+  <p class="links">
+    <a href="/organizations/{{ org_id }}/invitations">Invitations</a>
+    <a href="/organizations/{{ org_id }}/roles">Roles</a>
+    <a href="/organizations/{{ org_id }}/domains">Domains</a>
+  </p>
+</div>
 {% endblock %}
