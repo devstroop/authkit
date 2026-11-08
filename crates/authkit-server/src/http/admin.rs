@@ -113,6 +113,14 @@ pub(crate) async fn login_submit(
 }
 
 #[derive(Template)]
+#[template(path = "pages/admin_audit.html")]
+struct AdminAuditTemplate<'a> {
+    title: &'a str,
+    csrf: &'a str,
+    events: Vec<AuditView>,
+}
+
+#[derive(Template)]
 #[template(path = "pages/admin.html")]
 struct AdminTemplate<'a> {
     title: &'a str,
@@ -139,6 +147,13 @@ struct EventView {
     occurred_at: i64,
     action: String,
     org: String,
+}
+
+struct AuditView {
+    occurred_at: i64,
+    action: String,
+    org: String,
+    actor: String,
 }
 
 pub(crate) async fn dashboard(
@@ -263,6 +278,47 @@ pub(crate) async fn dashboard(
         csrf: &csrf,
         admins: admin_views,
         keys: key_views,
+        events: event_views,
+    };
+    let body = template.render().unwrap_or_default();
+    html_ok(&body)
+}
+
+pub(crate) async fn audit_page(
+    State(state): State<AppState>,
+    session: Option<Extension<SessionContext>>,
+) -> Response {
+    let Some(Extension(session)) = session else {
+        return redirect("/admin/login");
+    };
+    let Some(sessions) = state.sessions.as_ref() else {
+        return unavailable();
+    };
+    let store = sessions.store().clone();
+    let csrf = sessions.csrf_token(session.session());
+    let events = tokio::task::spawn_blocking({
+        let store = store.clone();
+        move || store.list_all_audit_events(100)
+    })
+    .await
+    .ok()
+    .and_then(|r| r.ok())
+    .unwrap_or_default();
+    let event_views: Vec<AuditView> = events
+        .into_iter()
+        .map(|e| AuditView {
+            occurred_at: e.occurred_at().as_millis() as i64,
+            action: e.action().as_str().to_owned(),
+            org: e
+                .organization_id()
+                .map(|o| o.as_str().to_owned())
+                .unwrap_or_else(|| "-".to_owned()),
+            actor: format!("{:?}", e.actor()),
+        })
+        .collect();
+    let template = AdminAuditTemplate {
+        title: "Audit log",
+        csrf: &csrf,
         events: event_views,
     };
     let body = template.render().unwrap_or_default();
