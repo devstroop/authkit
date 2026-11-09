@@ -77,6 +77,7 @@ pub async fn locale_middleware(
     next: axum::middleware::Next,
 ) -> axum::response::Response {
     let mut locale = detect_locale(request.headers());
+    let mut from_query: Option<Locale> = None;
     if let Some(cookie) = request.headers().get(axum::http::header::COOKIE)
         && let Ok(text) = cookie.to_str()
     {
@@ -96,10 +97,23 @@ pub async fn locale_middleware(
                 && let Some(l) = Locale::from_code(val)
             {
                 locale = l;
+                from_query = Some(l);
             }
         }
     }
-    scope(locale, next.run(request)).await
+    let mut response = scope(locale, next.run(request)).await;
+    if let Some(l) = from_query {
+        let cookie = format!(
+            "authkit_lang={}; Path=/; Max-Age=31536000; SameSite=Lax",
+            l.as_str()
+        );
+        if let Ok(value) = axum::http::HeaderValue::from_str(&cookie) {
+            response
+                .headers_mut()
+                .append(axum::http::header::SET_COOKIE, value);
+        }
+    }
+    response
 }
 
 fn catalogs() -> &'static HashMap<Locale, HashMap<String, String>> {

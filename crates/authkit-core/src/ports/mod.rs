@@ -10,14 +10,15 @@ use crate::domain::DomainError;
 use crate::domain::Timestamp;
 use crate::domain::application::Application;
 use crate::domain::audit::AuditEvent;
+use crate::domain::brand::Brand;
 use crate::domain::credential::Credential;
 use crate::domain::email::Email;
 use crate::domain::grant::{AuthorizationCode, Consent, RefreshFamily, RefreshToken};
 use crate::domain::id::{
-    ApplicationEntity, AuthorizationCodeEntity, ConsentEntity, DomainEntity, Entity, Id, IdError,
-    InvitationEntity, MembershipEntity, OAuthClientEntity, OneTimeTokenEntity, OrganizationEntity,
-    RefreshFamilyEntity, RefreshTokenEntity, RoleBindingEntity, RoleEntity, SessionEntity,
-    UserEntity,
+    ApplicationEntity, AuthorizationCodeEntity, BrandEntity, ConsentEntity, DomainEntity, Entity,
+    Id, IdError, InvitationEntity, MembershipEntity, OAuthClientEntity, OneTimeTokenEntity,
+    OrganizationEntity, RefreshFamilyEntity, RefreshTokenEntity, RoleBindingEntity, RoleEntity,
+    SessionEntity, UserEntity,
 };
 use crate::domain::invitation::Invitation;
 use crate::domain::membership::Membership;
@@ -84,6 +85,23 @@ pub trait OrganizationRepository {
         organization: &Organization,
         expected_version: u64,
     ) -> Result<WriteOutcome, DomainError>;
+}
+
+pub trait BrandRepository {
+    /// Finds a brand by identifier.
+    fn find_by_id(&self, id: &Id<BrandEntity>) -> Result<Option<Brand>, DomainError>;
+
+    /// Finds a brand for a host domain.
+    fn find_by_domain(&self, domain: &str) -> Result<Option<Brand>, DomainError>;
+
+    /// Finds a brand for an organization.
+    fn find_by_org(&self, org_id: &Id<OrganizationEntity>) -> Result<Option<Brand>, DomainError>;
+
+    /// Inserts a new brand.
+    fn insert(&self, brand: &Brand) -> Result<WriteOutcome, DomainError>;
+
+    /// Updates an existing brand using optimistic concurrency.
+    fn update(&self, brand: &Brand, expected_version: u64) -> Result<WriteOutcome, DomainError>;
 }
 
 /// Read and write access to tenant-owned memberships.

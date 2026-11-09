@@ -4,6 +4,7 @@
 
 pub mod application;
 pub mod audit;
+pub mod brand;
 pub mod client_id;
 pub mod credential;
 pub mod verified_domain;
@@ -36,6 +37,7 @@ pub mod write;
 
 pub use application::{Application, ApplicationKind, ApplicationStatus};
 pub use audit::{AuditAction, AuditActor, AuditAttribute, AuditEvent, AuditTarget};
+pub use brand::Brand;
 pub use client_id::ClientId;
 pub use credential::{
     Argon2idParameters, AuthenticatorTransport, Credential, CredentialData, CredentialKind,

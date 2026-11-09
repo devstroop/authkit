@@ -122,6 +122,7 @@ pub(crate) async fn register_page(
 pub(crate) async fn login_submit(
     State(state): State<AppState>,
     headers: HeaderMap,
+    session: Option<Extension<SessionContext>>,
     body: axum::body::Bytes,
 ) -> Response {
     let Some(sessions) = state.sessions.as_ref() else {
@@ -133,6 +134,16 @@ pub(crate) async fn login_submit(
     };
     let email = params.get("email").cloned().unwrap_or_default();
     let password = params.get("password").cloned().unwrap_or_default();
+    let next = params.get("next").cloned().unwrap_or_default();
+    let csrf_value = if let Some(ext) = session {
+        if let Some(sessions) = state.sessions.as_ref() {
+            sessions.csrf_token(ext.0.session()).to_owned()
+        } else {
+            String::new()
+        }
+    } else {
+        String::new()
+    };
     let trusted = std::env::var("AUTHKIT_TRUSTED_PROXIES")
         .unwrap_or_default()
         .split(',')
@@ -165,15 +176,11 @@ pub(crate) async fn login_submit(
         }
     }
     if email.is_empty() || password.is_empty() {
-        return html(
+        return login_html(
             StatusCode::BAD_REQUEST,
-            "Sign in",
-            "/login",
-            "Sign in",
             "Email and password are required.",
-            "/register",
-            "Create an account",
-            "",
+            &csrf_value,
+            &next,
         );
     }
 
@@ -181,15 +188,11 @@ pub(crate) async fn login_submit(
     let email_parsed = match Email::parse(&email) {
         Ok(value) => value,
         Err(_) => {
-            return html(
+            return login_html(
                 StatusCode::BAD_REQUEST,
-                "Sign in",
-                "/login",
-                "Sign in",
                 "Invalid email address.",
-                "/register",
-                "Create an account",
-                "",
+                &csrf_value,
+                &next,
             );
         }
     };
@@ -234,15 +237,11 @@ pub(crate) async fn login_submit(
                     return rate_limited(err.retry_after_secs);
                 }
             }
-            return html(
+            return login_html(
                 StatusCode::UNAUTHORIZED,
-                "Sign in",
-                "/login",
-                "Sign in",
                 "Invalid email or password.",
-                "/register",
-                "Create an account",
-                "",
+                &csrf_value,
+                &next,
             );
         }
     };
@@ -257,15 +256,11 @@ pub(crate) async fn login_submit(
         {
             Some(credential) => credential,
             None => {
-                return html(
+                return login_html(
                     StatusCode::UNAUTHORIZED,
-                    "Sign in",
-                    "/login",
-                    "Sign in",
                     "Invalid email or password.",
-                    "/register",
-                    "Create an account",
-                    "",
+                    &csrf_value,
+                    &next,
                 );
             }
         };
@@ -273,15 +268,11 @@ pub(crate) async fn login_submit(
     let verifier = match credential.as_password() {
         Some(value) => value.clone(),
         None => {
-            return html(
+            return login_html(
                 StatusCode::UNAUTHORIZED,
-                "Sign in",
-                "/login",
-                "Sign in",
                 "Invalid email or password.",
-                "/register",
-                "Create an account",
-                "",
+                &csrf_value,
+                &next,
             );
         }
     };
@@ -311,15 +302,11 @@ pub(crate) async fn login_submit(
                 return rate_limited(err.retry_after_secs);
             }
         }
-        return html(
+        return login_html(
             StatusCode::UNAUTHORIZED,
-            "Sign in",
-            "/login",
-            "Sign in",
             "Invalid email or password.",
-            "/register",
-            "Create an account",
-            "",
+            &csrf_value,
+            &next,
         );
     }
 
@@ -474,6 +461,12 @@ pub(crate) async fn login_submit(
     let cookie = sessions.set_cookie(created.session(), created.token(), now);
     let mut response = redirect(&redirect_to);
 
+    let _ = state.email.send(
+        user.email(),
+        "New sign-in to your account",
+        "A new sign-in to your account was recorded. If this was not you, revoke your sessions.",
+    );
+
     if let Ok(value) = axum::http::HeaderValue::from_str(&cookie) {
         response.headers_mut().append(header::SET_COOKIE, value);
     }
@@ -508,13 +501,13 @@ pub(crate) async fn register_submit(
         );
     }
 
-    if !confirm_password.is_empty() && password != confirm_password {
+    if confirm_password.is_empty() || password != confirm_password {
         return html(
             StatusCode::BAD_REQUEST,
             "title_register",
             "/register",
             "register",
-            "Passwords do not match.",
+            "passwords_do_not_match",
             "/login",
             "sign_in",
             "",
@@ -710,6 +703,30 @@ pub(crate) fn html(
         other_href,
         other_text,
         extra,
+    };
+    let body = template.render().unwrap_or_default();
+    (
+        status,
+        [
+            (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
+        body,
+    )
+        .into_response()
+}
+
+pub(crate) fn login_html<'a>(
+    status: StatusCode,
+    error: &'a str,
+    csrf: &'a str,
+    next: &'a str,
+) -> Response {
+    let template = LoginTemplate {
+        title: "title_sign_in",
+        next,
+        csrf,
+        error,
     };
     let body = template.render().unwrap_or_default();
     (
