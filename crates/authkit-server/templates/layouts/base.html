@@ -330,7 +330,7 @@
       *, *::before, *::after { transition: none !important; animation: none !important; }
     }
     /* Admin */
-    .admin-layout { display: grid; grid-template-columns: 14rem 1fr; gap: var(--space-6); max-width: 76rem; margin: var(--space-6) auto; padding: 0 var(--space-4); }
+    .admin-layout { display: grid; grid-template-columns: 14rem minmax(0, 1fr); gap: var(--space-6); width: 100%; margin: var(--space-6) 0; padding: 0; }
     .admin-nav {
       display: flex; flex-direction: column; gap: var(--space-1);
       padding: var(--space-3);
