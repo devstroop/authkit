@@ -104,6 +104,11 @@
       justify-content: center;
       padding: var(--space-4);
     }
+    main.admin-main {
+      align-items: stretch;
+      justify-content: flex-start;
+      padding: var(--space-4);
+    }
     /* Auth shell */
     .auth-shell {
       display: grid;
@@ -330,12 +335,12 @@
       *, *::before, *::after { transition: none !important; animation: none !important; }
     }
     /* Admin */
-    .admin-layout { display: grid; grid-template-columns: 14rem minmax(0, 1fr); gap: var(--space-6); width: 100%; margin: var(--space-6) 0; padding: 0; }
+    .admin-layout { display: grid; grid-template-columns: 14rem minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: var(--space-6); width: 100%; max-width: none; margin: 0; min-width: 0; padding: var(--space-4); }
     .admin-nav {
       display: flex; flex-direction: column; gap: var(--space-1);
       padding: var(--space-3);
       background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--radius); height: fit-content; position: sticky; top: var(--space-4);
+      border-radius: var(--radius); align-self: start; position: sticky; top: var(--space-4);
       box-shadow: var(--shadow-sm);
     }
     .admin-nav a, .admin-nav button {
@@ -349,6 +354,7 @@
     .admin-content {
       background: var(--surface); border: 1px solid var(--border);
       border-radius: var(--radius); padding: var(--space-6); box-shadow: var(--shadow);
+      min-height: 0;
     }
     .card {
       background: var(--surface); border: 1px solid var(--border);
@@ -489,7 +495,7 @@
     </div>
   </header>
   {% endblock %}
-  <main id="main" aria-live="polite">
+  <main id="main" aria-live="polite" class="{% block main_class %}{% endblock %}">
     {% block content %}{% endblock %}
   </main>
   {% block site_footer %}{% endblock %}
