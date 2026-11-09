@@ -22,16 +22,35 @@ use authkit_core::domain::SessionAudience;
 
 #[derive(Template)]
 #[template(path = "pages/admin_login.html")]
-struct AdminLoginTemplate {
+struct AdminLoginTemplate<'a> {
     title: &'static str,
+    error: &'a str,
 }
 
 pub(crate) async fn login_page() -> Response {
     let template = AdminLoginTemplate {
         title: "title_admin_sign_in",
+        error: "",
     };
     let body = template.render().unwrap_or_default();
     html_ok(&body)
+}
+
+pub(crate) fn admin_login_html<'a>(status: StatusCode, error: &'a str) -> Response {
+    let template = AdminLoginTemplate {
+        title: "title_admin_sign_in",
+        error,
+    };
+    let body = template.render().unwrap_or_default();
+    (
+        status,
+        [
+            (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
+        body,
+    )
+        .into_response()
 }
 
 pub(crate) async fn login_submit(
@@ -45,11 +64,11 @@ pub(crate) async fn login_submit(
     let email_str = params.remove("email").unwrap_or_default();
     let password = params.remove("password").unwrap_or_default();
     if email_str.is_empty() || password.is_empty() {
-        return bad_request();
+        return admin_login_html(StatusCode::BAD_REQUEST, "Email and password are required.");
     }
     let email = match Email::parse(&email_str) {
         Ok(v) => v,
-        Err(_) => return bad_request(),
+        Err(_) => return admin_login_html(StatusCode::BAD_REQUEST, "Invalid email address."),
     };
     let store = sessions.store().clone();
     let now = sessions.clock().now();
@@ -62,7 +81,7 @@ pub(crate) async fn login_submit(
     .ok()
     .and_then(|r| r.ok().flatten());
     let Some(user) = user else {
-        return unauthorized();
+        return admin_login_html(StatusCode::UNAUTHORIZED, "Invalid email or password.");
     };
     let credential = tokio::task::spawn_blocking({
         let store = store.clone();
@@ -78,14 +97,14 @@ pub(crate) async fn login_submit(
     .ok()
     .and_then(|r| r.ok().flatten());
     let Some(credential) = credential else {
-        return unauthorized();
+        return admin_login_html(StatusCode::UNAUTHORIZED, "Invalid email or password.");
     };
     let verifier = match credential.as_password() {
         Some(v) => v.clone(),
         None => return unauthorized(),
     };
     if !verify_password(&password, &verifier) {
-        return unauthorized();
+        return admin_login_html(StatusCode::UNAUTHORIZED, "Invalid email or password.");
     }
     let admin = tokio::task::spawn_blocking({
         let store = store.clone();
@@ -96,10 +115,10 @@ pub(crate) async fn login_submit(
     .ok()
     .and_then(|r| r.ok().flatten());
     let Some(admin) = admin else {
-        return unauthorized();
+        return admin_login_html(StatusCode::UNAUTHORIZED, "Invalid email or password.");
     };
     if !admin.is_active() {
-        return unauthorized();
+        return admin_login_html(StatusCode::UNAUTHORIZED, "Invalid email or password.");
     }
     let created = match sessions
         .create(user.id().clone(), None, SessionAudience::Admin, now)

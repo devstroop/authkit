@@ -100,12 +100,16 @@
       flex: 1;
       display: flex;
       align-items: center;
+      align-items: safe center;
       justify-content: center;
+      padding: var(--space-4);
     }
     /* Auth shell */
     .auth-shell {
       display: grid;
       grid-template-columns: 1.1fr 1fr;
+      width: 100%;
+      margin-top: var(--space-4);
       border-radius: var(--radius-lg);
       overflow: hidden;
       box-shadow: var(--shadow-xl);
@@ -123,7 +127,8 @@
       color: #f5f2eb;
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
+      justify-content: center;
+      gap: var(--space-10);
       overflow: hidden;
     }
     @media (prefers-color-scheme: dark) {
@@ -204,7 +209,7 @@
     .auth-card {
       max-width: 22rem;
       width: 100%;
-      margin: 0 auto;
+      margin: var(--space-4) auto;
     }
     .auth-card h1 {
       font-family: var(--font-display);
@@ -374,6 +379,7 @@
       .admin-layout { grid-template-columns: 1fr; }
       .admin-nav { flex-direction: row; flex-wrap: wrap; position: static; }
     }
+    .auth-footer { grid-template-columns: 1fr 1fr; }
     @media (max-width: 40rem) {
       .auth-shell { grid-template-columns: 1fr; min-height: 0; border-radius: 0; box-shadow: none; }
       .auth-brand { padding: var(--space-6) var(--space-5); min-height: 10rem; }
@@ -381,6 +387,7 @@
       .brand-sub { font-size: 0.95rem; }
       .auth-panel { padding: var(--space-5) var(--space-4); }
       .auth-card h1 { font-size: 2.25rem; }
+      .auth-footer { grid-template-columns: 1fr; }
     }
   
     /* Responsive helpers */
@@ -397,9 +404,6 @@
 
     table.table { display: block; overflow-x: auto; max-width: 100%; white-space: nowrap; }
     .empty-state { color: var(--muted); padding: var(--space-6); text-align: center; list-style: none; }
-    .auth-lang-switcher { position: fixed; top: 0.75rem; right: 0.75rem; z-index: 100; font-size: 0.75rem; display: flex; gap: 0.35rem; align-items: center; }
-    .auth-lang-switcher a { color: var(--muted); text-decoration: none; padding: 0.15rem 0.35rem; border-radius: 0.25rem; }
-    .auth-lang-switcher a:hover { color: var(--fg); background: var(--bg-2); }
     /* HTMX loading indicator */
     .htmx-indicator { display: none; }
     .htmx-request .htmx-indicator { display: inline-block; }

@@ -8,12 +8,14 @@
       <h2 class="brand-headline">{{ crate::i18n::t("brand_headline_admin")  | safe }}</h2>
       <p class="brand-sub">{{ crate::i18n::t("brand_sub_admin") }}</p>
     </div>
-    <div class="brand-foot">{{ crate::i18n::t("brand_foot") }}</div>
   </aside>
   <section class="auth-panel">
     <div class="auth-card">
       <h1>{{ crate::i18n::t("title_admin_sign_in") }}</h1>
       <p class="subtitle">{{ crate::i18n::t("subtitle_admin_login") }}</p>
+      {% if !error.is_empty() %}
+      <p class="alert" role="alert">{{ error }}</p>
+      {% endif %}
       <form method="post" action="/admin/login">
         {{ ui::text_input("email", crate::i18n::t("email"), "email", "email") }}
         {{ ui::text_input("password", "Password", "password", "current-password") }}

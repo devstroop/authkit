@@ -2,13 +2,22 @@
 {% block site_header %}{% endblock %}
 {% block site_footer %}{% endblock %}
 {% block content %}
-<div class="auth-lang-switcher">
-  <select class="lang-select" aria-label="Language" onchange="setLang(this.value)">
-    <option value="en" {% if crate::i18n::current_locale().as_str() == "en" %}selected{% endif %}>English</option>
-    <option value="es" {% if crate::i18n::current_locale().as_str() == "es" %}selected{% endif %}>Español</option>
-  </select>
-</div>
 <div class="auth-shell-wrap">
   {% block auth_content %}{% endblock %}
+  <footer class="auth-footer" style="width:100%;margin:var(--space-4) 0 var(--space-4);padding:0;color:var(--muted);font-size:0.75rem;line-height:1.6;display:grid;gap:var(--space-3);">
+    <div style="display:flex;align-items:center;">
+      <span>Powered by <a href="https://devstroop.com" target="_blank" rel="noopener noreferrer" style="color:var(--muted);text-decoration:none;font-weight:500;">Devstroop</a></span>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:var(--space-3);flex-wrap:wrap;">
+      <span>© 2026 AuthKit · MIT / Apache-2.0</span>
+      <label style="display:flex;align-items:center;gap:var(--space-2);color:var(--muted);">
+        <span>Language</span>
+        <select class="lang-select" aria-label="Language" onchange="setLang(this.value)">
+          <option value="en" {% if crate::i18n::current_locale().as_str() == "en" %}selected{% endif %}>English</option>
+          <option value="es" {% if crate::i18n::current_locale().as_str() == "es" %}selected{% endif %}>Español</option>
+        </select>
+      </label>
+    </div>
+  </footer>
 </div>
 {% endblock %}
