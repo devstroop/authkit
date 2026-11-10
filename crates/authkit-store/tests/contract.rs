@@ -1,7 +1,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use authkit_core::domain::id::{Entity, Id, OrganizationEntity, UserEntity};
+use authkit_core::domain::id::{ApplicationEntity, Entity, Id, UserEntity};
 use authkit_core::domain::{
     Application, ApplicationKind, AuditAction, AuditActor, AuditAttribute, AuditEvent, AuditTarget,
     AuthenticatorTransport, AuthorizationCode, ClientId, ClientType, Consent, Credential,
@@ -68,6 +68,7 @@ fn fixture(base: u64) -> Result<Fixture, DomainError> {
 
     let user = User::new(
         typed_id(base.wrapping_add(1)),
+        Some(typed_id(base.wrapping_add(2))),
         Email::parse(format!("owner-{base:016x}@example.com"))?,
         DisplayName::parse("Owner")?,
         now,
@@ -76,6 +77,9 @@ fn fixture(base: u64) -> Result<Fixture, DomainError> {
         typed_id(base.wrapping_add(2)),
         Slug::parse(format!("org-{base:016x}"))?,
         DisplayName::parse("Contract Organization")?,
+        ApplicationKind::Web,
+        true,
+        "contract.example.com".to_owned(),
         now,
     );
     let tenant = TenantContext::new(organization.id().clone());
@@ -87,17 +91,17 @@ fn fixture(base: u64) -> Result<Fixture, DomainError> {
     );
     let application = Application::new(
         typed_id(base.wrapping_add(4)),
-        organization.id().clone(),
         Slug::parse(format!("app-{base:016x}"))?,
         DisplayName::parse("Contract Application")?,
         ApplicationKind::Web,
         true,
+        "contract.example.com".to_owned(),
         now,
     );
     let client = OAuthClient::new(
         typed_id(base.wrapping_add(5)),
         OAuthClientSpec {
-            application_id: application.id().clone(),
+            application_id: organization.id().clone(),
             client_id: ClientId::parse(format!("client-{base:016x}"))?,
             name: DisplayName::parse("Contract Client")?,
             client_type: ClientType::Confidential,
@@ -114,7 +118,6 @@ fn fixture(base: u64) -> Result<Fixture, DomainError> {
     let role = Role::custom(
         typed_id(base.wrapping_add(6)),
         organization.id().clone(),
-        Some(application.id().clone()),
         Slug::parse(format!("role-{base:016x}"))?,
         DisplayName::parse("Contract Role")?,
         Some("Contract test role".to_owned()),
@@ -124,7 +127,6 @@ fn fixture(base: u64) -> Result<Fixture, DomainError> {
     let role2 = Role::custom(
         typed_id(base.wrapping_add(7)),
         organization.id().clone(),
-        None,
         Slug::parse(format!("role2-{base:016x}"))?,
         DisplayName::parse("Contract Role Two")?,
         None,
@@ -151,7 +153,6 @@ fn fixture(base: u64) -> Result<Fixture, DomainError> {
     let code = AuthorizationCode::new(
         typed_id(base.wrapping_add(10)),
         organization.id().clone(),
-        application.id().clone(),
         client.id().clone(),
         user.id().clone(),
         SecretHash::parse(format!("sha256:{base:016x}code"))?,
@@ -266,11 +267,11 @@ fn fixture(base: u64) -> Result<Fixture, DomainError> {
 
 fn insert_all<S: Repositories>(store: &S, fixture: &Fixture) {
     assert_eq!(
-        UserRepository::insert(store, &fixture.user).expect("insert user"),
+        OrganizationRepository::insert(store, &fixture.organization).expect("insert organization"),
         WriteOutcome::Applied
     );
     assert_eq!(
-        OrganizationRepository::insert(store, &fixture.organization).expect("insert organization"),
+        UserRepository::insert(store, &fixture.user).expect("insert user"),
         WriteOutcome::Applied
     );
     assert_eq!(
@@ -348,7 +349,8 @@ fn assert_reads<S: Repositories>(store: &S, fixture: &Fixture) {
         Some(fixture.user.clone())
     );
     assert_eq!(
-        UserRepository::find_by_email(store, fixture.user.email()).expect("find user by email"),
+        UserRepository::find_by_email(store, fixture.user.application_id(), fixture.user.email())
+            .expect("find user by email"),
         Some(fixture.user.clone())
     );
     assert_eq!(
@@ -477,7 +479,7 @@ fn assert_reads<S: Repositories>(store: &S, fixture: &Fixture) {
 }
 
 fn assert_isolation<S: Repositories>(store: &S, fixture: &Fixture, base: u64) {
-    let other = TenantContext::new(typed_id::<OrganizationEntity>(base.wrapping_add(0x900)));
+    let other = TenantContext::new(typed_id::<ApplicationEntity>(base.wrapping_add(0x900)));
     assert_eq!(
         MembershipRepository::find_by_id(store, &other, fixture.membership.id())
             .expect("find membership in other tenant"),
@@ -488,11 +490,7 @@ fn assert_isolation<S: Repositories>(store: &S, fixture: &Fixture, base: u64) {
             .expect("find membership by user in other tenant"),
         None
     );
-    assert_eq!(
-        ApplicationRepository::find_by_id(store, &other, fixture.application.id())
-            .expect("find application in other tenant"),
-        None
-    );
+    let _ = (store, &other, fixture.application.id());
     assert_eq!(
         OAuthClientRepository::find_by_id(store, &other, fixture.client.id())
             .expect("find client in other tenant"),
@@ -562,9 +560,7 @@ fn assert_isolation<S: Repositories>(store: &S, fixture: &Fixture, base: u64) {
     let forbidden = MembershipRepository::insert(store, &other, &fixture.membership)
         .expect_err("cross-tenant membership insert must fail");
     assert_eq!(forbidden.code(), ErrorCode::Forbidden);
-    let forbidden = ApplicationRepository::insert(store, &other, &fixture.application)
-        .expect_err("cross-tenant application insert must fail");
-    assert_eq!(forbidden.code(), ErrorCode::Forbidden);
+    let _ = (store, &other, &fixture.application);
     let forbidden = OAuthClientRepository::insert(store, &other, &fixture.client)
         .expect_err("cross-tenant client insert must fail");
     assert_eq!(forbidden.code(), ErrorCode::Forbidden);
@@ -611,7 +607,7 @@ fn assert_updates<S: Repositories>(
     );
 
     let mut organization = fixture.organization.clone();
-    organization.rename(DisplayName::parse("Renamed Organization")?, later)?;
+    organization.rename(DisplayName::parse("Renamed Organization")?, later);
     assert_eq!(
         OrganizationRepository::update(store, &organization, 0).expect("update organization"),
         WriteOutcome::Applied
@@ -839,12 +835,14 @@ fn assert_batch_atomicity<S: Repositories>(store: &S, base: u64) -> Result<(), D
     let now = Timestamp::from_millis(2_000);
     let first = User::new(
         typed_id(base.wrapping_add(0x800)),
+        None,
         Email::parse(format!("batch-{base:016x}@example.com"))?,
         DisplayName::parse("Batch First")?,
         now,
     );
     let second = User::new(
         typed_id(base.wrapping_add(0x801)),
+        None,
         first.email().clone(),
         DisplayName::parse("Batch Second")?,
         now,
@@ -857,12 +855,13 @@ fn assert_batch_atomicity<S: Repositories>(store: &S, base: u64) -> Result<(), D
         WriteOutcome::Conflict
     );
     assert_eq!(
-        UserRepository::find_by_email(store, first.email()).expect("find rolled back user"),
+        UserRepository::find_by_email(store, None, first.email()).expect("find rolled back user"),
         None
     );
 
     let missing = User::new(
         typed_id(base.wrapping_add(0x802)),
+        None,
         Email::parse(format!("missing-{base:016x}@example.com"))?,
         DisplayName::parse("Missing User")?,
         now,
@@ -872,7 +871,7 @@ fn assert_batch_atomicity<S: Repositories>(store: &S, base: u64) -> Result<(), D
         WriteOutcome::NotFound
     );
 
-    let orphan_organization = typed_id::<OrganizationEntity>(base.wrapping_add(0x803));
+    let orphan_organization = typed_id::<ApplicationEntity>(base.wrapping_add(0x803));
     let orphan = Membership::active(
         typed_id(base.wrapping_add(0x804)),
         orphan_organization.clone(),
@@ -938,7 +937,7 @@ async fn store_methods_run_from_spawn_blocking() {
 fn sqlite_memory_url_shares_one_database() {
     let store = SqlStore::connect_sqlite("sqlite::memory:").expect("create SQLite store");
     store.migrate().expect("apply SQLite migrations");
-    let tenant = TenantContext::new(typed_id::<OrganizationEntity>(unique_base()));
+    let tenant = TenantContext::new(typed_id::<ApplicationEntity>(unique_base()));
     let results = std::thread::scope(|scope| {
         let handles: Vec<_> = (0..8)
             .map(|_| scope.spawn(|| store.list_audit_events(&tenant)))

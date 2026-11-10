@@ -1,5 +1,5 @@
 use crate::domain::DomainError;
-use crate::domain::id::{ApplicationEntity, Id, OrganizationEntity};
+use crate::domain::id::{ApplicationEntity, Id};
 use crate::domain::name::DisplayName;
 use crate::domain::slug::Slug;
 use crate::domain::time::Timestamp;
@@ -26,17 +26,21 @@ pub enum ApplicationStatus {
     Active,
     /// The application is blocked from new authorizations.
     Disabled,
+    /// The application is suspended.
+    Suspended,
+    /// The application is deleted (retained for audit).
+    Deleted,
 }
 
 /// A product surface owned by one organization.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Application {
     id: Id<ApplicationEntity>,
-    organization_id: Id<OrganizationEntity>,
     slug: Slug,
     name: DisplayName,
     kind: ApplicationKind,
     first_party: bool,
+    primary_domain: String,
     status: ApplicationStatus,
     created_at: Timestamp,
     updated_at: Timestamp,
@@ -48,20 +52,20 @@ impl Application {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: Id<ApplicationEntity>,
-        organization_id: Id<OrganizationEntity>,
         slug: Slug,
         name: DisplayName,
         kind: ApplicationKind,
         first_party: bool,
+        primary_domain: String,
         now: Timestamp,
     ) -> Self {
         Self {
             id,
-            organization_id,
             slug,
             name,
             kind,
             first_party,
+            primary_domain,
             status: ApplicationStatus::Active,
             created_at: now,
             updated_at: now,
@@ -76,11 +80,11 @@ impl Application {
     #[allow(clippy::too_many_arguments)]
     pub fn restore(
         id: Id<ApplicationEntity>,
-        organization_id: Id<OrganizationEntity>,
         slug: Slug,
         name: DisplayName,
         kind: ApplicationKind,
         first_party: bool,
+        primary_domain: String,
         status: ApplicationStatus,
         created_at: Timestamp,
         updated_at: Timestamp,
@@ -94,11 +98,11 @@ impl Application {
 
         Ok(Self {
             id,
-            organization_id,
             slug,
             name,
             kind,
             first_party,
+            primary_domain,
             status,
             created_at,
             updated_at,
@@ -111,12 +115,7 @@ impl Application {
         &self.id
     }
 
-    /// Returns the owning tenant.
-    pub const fn organization_id(&self) -> &Id<OrganizationEntity> {
-        &self.organization_id
-    }
-
-    /// Returns the slug unique within the organization.
+    /// Returns the slug.
     pub const fn slug(&self) -> &Slug {
         &self.slug
     }
@@ -134,6 +133,11 @@ impl Application {
     /// Returns `true` when the application is marked first-party.
     pub const fn is_first_party(&self) -> bool {
         self.first_party
+    }
+
+    /// Returns the primary domain (routing key).
+    pub fn primary_domain(&self) -> &str {
+        &self.primary_domain
     }
 
     /// Returns the lifecycle status.
@@ -211,11 +215,11 @@ mod tests {
     fn application() -> Application {
         Application::new(
             Id::<ApplicationEntity>::from_suffix("0123456789abcdef").expect("valid id"),
-            Id::<OrganizationEntity>::from_suffix("fedcba9876543210").expect("valid id"),
             Slug::parse("console").expect("valid slug"),
             DisplayName::parse("Console").expect("valid name"),
             ApplicationKind::Web,
             true,
+            "console.example.com".to_owned(),
             Timestamp::from_millis(1_000),
         )
     }

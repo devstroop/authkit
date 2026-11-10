@@ -406,6 +406,7 @@ pub trait OrganizationProvisioning:
     + crate::ports::MembershipRepository
     + crate::ports::RoleRepository
     + crate::ports::RoleBindingRepository
+    + crate::ports::OAuthClientRepository
     + UnitOfWork
 {
 }
@@ -416,6 +417,7 @@ impl<T> OrganizationProvisioning for T where
         + crate::ports::MembershipRepository
         + crate::ports::RoleRepository
         + crate::ports::RoleBindingRepository
+        + crate::ports::OAuthClientRepository
         + UnitOfWork
 {
 }

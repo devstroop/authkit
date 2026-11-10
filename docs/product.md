@@ -8,8 +8,8 @@ It is designed to be useful in three shapes without becoming three products:
 
 - **Standalone:** one team protects one application and wants a boring, auditable login
   service it can run itself.
-- **Shared platform:** an organization runs several applications and wants one identity
-  plane, one user directory, and one administration surface for all of them.
+- **Shared platform:** an operator runs several applications on one deployment, each with
+  its own isolated user pool, domain, and administration surface.
 - **Embedded deployment:** a product ships AuthKit as part of its own stack, on a native
   server or on Cloudflare Workers.
 
@@ -35,7 +35,7 @@ AuthKit occupies the space between those options:
 
 - one deployable service, one database, one administration surface;
 - a focused OIDC/OAuth 2.0 profile rather than a universal identity broker;
-- organizations as tenants, applications as product surfaces;
+- applications as tenants and product surfaces;
 - server-rendered UI that works without JavaScript;
 - SQLite for a small deployment, Postgres when scale requires it;
 - an optional Workers profile for edge deployments, with explicit limits.
@@ -49,8 +49,9 @@ AuthKit occupies the space between those options:
    defaults.
 3. **Portable by contract.** The domain core is independent of HTTP, storage, templates,
    and runtime. Native and Workers adapters implement the same domain behavior.
-4. **One tenant model.** An organization is the isolation boundary. An application is a
-   surface inside it. Neither concept is overloaded to mean the other.
+4. **One tenant model.** An application is the isolation boundary and the product surface.
+   There is no separate organization concept. (See
+   [ADR-0011](adr/0011-applications-are-tenants.md).)
 5. **Progressive UI.** Server-rendered pages and native forms first; HTMX enhances them.
    Core flows must work with JavaScript disabled.
 6. **Operable by one person.** A single binary, a SQLite file, clear backups, and a
@@ -81,11 +82,11 @@ AuthKit occupies the space between those options:
 
 ### Tenancy and authorization
 
-- Create an organization, invite members, and assign roles.
+- Provision an application, invite members, and assign roles.
 - Define composable roles from granular permissions; keep a safe built-in owner/admin set.
 - Protect the last owner from removal or demotion.
 - Register applications and OAuth clients with exact redirect URIs and allowed scopes.
-- Grant a user access through organization membership and application-scoped role bindings.
+- Grant a user access through application membership and role bindings.
 
 ### OIDC/OAuth integration
 
@@ -101,7 +102,7 @@ AuthKit occupies the space between those options:
 ### Administration and operations
 
 - Complete a first-run setup without a hidden bootstrap account.
-- Manage organizations, applications, clients, members, roles, and sessions from one UI.
+- Manage applications, clients, members, roles, and sessions from one UI.
 - Review and export audit events.
 - Rotate signing keys and client secrets with overlap windows.
 - Back up, restore, upgrade, and monitor a deployment using documented runbooks.

@@ -1,7 +1,7 @@
 //! Organization selection at sign-in for multi-org users.
 
 use askama::Template;
-use authkit_core::domain::id::OrganizationEntity;
+use authkit_core::domain::id::ApplicationEntity;
 use authkit_core::domain::{Id, OneTimeTokenPurpose, SecretHash, WriteOutcome};
 use authkit_core::ports::{MembershipRepository, OneTimeTokenRepository, OrganizationRepository};
 use axum::body::Bytes;
@@ -120,13 +120,13 @@ pub(crate) async fn page(
         }
         let org_res = tokio::task::spawn_blocking({
             let store = sessions.store().clone();
-            let oid = m.organization_id().clone();
+            let oid = m.application_id().clone();
             move || OrganizationRepository::find_by_id(store.as_ref(), &oid)
         })
         .await;
         if let Ok(Ok(Some(org))) = org_res {
             orgs.push(OrgOption {
-                id: m.organization_id().as_str().to_owned(),
+                id: m.application_id().as_str().to_owned(),
                 name: org.name().as_str().to_owned(),
             });
         }
@@ -162,8 +162,8 @@ pub(crate) async fn submit(
         params.insert(k.to_string(), v.to_string());
     }
     let token = params.get("token").cloned().unwrap_or_default();
-    let org_id_str = params.get("org_id").cloned().unwrap_or_default();
-    if token.is_empty() || org_id_str.is_empty() {
+    let application_id_str = params.get("application_id").cloned().unwrap_or_default();
+    if token.is_empty() || application_id_str.is_empty() {
         return crate::http::login::html(
             StatusCode::BAD_REQUEST,
             "title_select_organization",
@@ -230,7 +230,7 @@ pub(crate) async fn submit(
     .ok()
     .and_then(|r| r.ok())
     .unwrap_or_default();
-    let org_id = match Id::<OrganizationEntity>::parse(org_id_str.clone()) {
+    let application_id = match Id::<ApplicationEntity>::parse(application_id_str.clone()) {
         Ok(v) => v,
         Err(_) => {
             return crate::http::login::html(
@@ -247,7 +247,7 @@ pub(crate) async fn submit(
     };
     let allowed = memberships
         .iter()
-        .any(|m| m.organization_id() == &org_id && m.is_active());
+        .any(|m| m.application_id() == &application_id && m.is_active());
     if !allowed {
         return crate::http::login::html(
             StatusCode::BAD_REQUEST,
@@ -282,7 +282,7 @@ pub(crate) async fn submit(
     }
     let now = sessions.clock().now();
     let created = match sessions
-        .create(user_id, Some(org_id), SessionAudience::Account, now)
+        .create(user_id, Some(application_id), SessionAudience::Account, now)
         .await
     {
         Ok(v) => v,

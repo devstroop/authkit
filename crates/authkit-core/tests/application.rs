@@ -2,22 +2,25 @@
 
 use std::cell::{Cell, RefCell};
 
-use authkit_core::application::{CreateOrganization, CreateUser};
+use authkit_core::application::{
+    AcceptInvitation, CreateApplication, CreateUser, DeleteUser, SuspendUser,
+};
 use authkit_core::domain::id::{
-    ApplicationEntity, DomainEntity, Id as TypedId, MembershipEntity, OAuthClientEntity,
-    OrganizationEntity, RoleBindingEntity, RoleEntity, UserEntity,
+    ApplicationEntity, DomainEntity, Id as TypedId, InvitationEntity, MembershipEntity,
+    OAuthClientEntity, RoleBindingEntity, RoleEntity, UserEntity,
 };
 use authkit_core::domain::write::WriteOutcome;
 use authkit_core::domain::{
-    AuditAction, AuditActor, AuditEvent, AuthorizationCode, DisplayName, Domain, DomainError,
-    Email, Entity, ErrorCode, IdError, Invitation, InvitationStatus, Membership, Organization,
-    PkceChallenge, RedirectUri, RefreshFamily, RefreshToken, Role, RoleBinding, Scope, ScopeSet,
-    SecretHash, Slug, TenantContext, Timestamp, User,
+    ApplicationKind, AuditAction, AuditActor, AuditEvent, AuthorizationCode, DisplayName, Domain,
+    DomainError, Email, Entity, ErrorCode, IdError, Invitation, InvitationStatus, Membership,
+    OAuthClient, Organization, PkceChallenge, RedirectUri, RefreshFamily, RefreshToken, Role,
+    RoleBinding, Scope, ScopeSet, SecretHash, Slug, TenantContext, Timestamp, User, UserStatus,
 };
 use authkit_core::ports::write::{EntityKind, UnitOfWork, WriteBatch, WriteCommand};
 use authkit_core::ports::{
-    Clock, DomainRepository, IdGenerator, MembershipRepository, OrganizationRepository,
-    RoleBindingRepository, RoleRepository, UserRepository,
+    Clock, DomainRepository, IdGenerator, InvitationRepository, MembershipRepository,
+    OAuthClientRepository, OrganizationRepository, RoleBindingRepository, RoleRepository,
+    UserRepository,
 };
 
 #[derive(Default)]
@@ -50,6 +53,7 @@ struct Data {
     roles: Vec<Role>,
     bindings: Vec<RoleBinding>,
     invitations: Vec<Invitation>,
+    oauth_clients: Vec<OAuthClient>,
     authorization_codes: Vec<AuthorizationCode>,
     refresh_families: Vec<RefreshFamily>,
     refresh_tokens: Vec<RefreshToken>,
@@ -119,13 +123,17 @@ impl UserRepository for MemoryStore {
             .cloned())
     }
 
-    fn find_by_email(&self, email: &Email) -> Result<Option<User>, DomainError> {
+    fn find_by_email(
+        &self,
+        application_id: Option<&TypedId<ApplicationEntity>>,
+        email: &Email,
+    ) -> Result<Option<User>, DomainError> {
         Ok(self
             .data
             .borrow()
             .users
             .iter()
-            .find(|user| user.email() == email)
+            .find(|user| user.application_id() == application_id && user.email() == email)
             .cloned())
     }
 
@@ -148,7 +156,7 @@ impl UserRepository for MemoryStore {
 impl OrganizationRepository for MemoryStore {
     fn find_by_id(
         &self,
-        id: &TypedId<OrganizationEntity>,
+        id: &TypedId<ApplicationEntity>,
     ) -> Result<Option<Organization>, DomainError> {
         Ok(self
             .data
@@ -206,14 +214,14 @@ impl DomainRepository for MemoryStore {
     }
     fn list_for_organization(
         &self,
-        org_id: &TypedId<OrganizationEntity>,
+        application_id: &TypedId<ApplicationEntity>,
     ) -> Result<Vec<Domain>, DomainError> {
         Ok(self
             .data
             .borrow()
             .domains
             .iter()
-            .filter(|d| d.organization_id() == org_id)
+            .filter(|d| d.application_id() == application_id)
             .cloned()
             .collect())
     }
@@ -246,7 +254,7 @@ impl MembershipRepository for MemoryStore {
             .memberships
             .iter()
             .find(|membership| {
-                membership.organization_id() == tenant.organization_id() && membership.id() == id
+                membership.application_id() == tenant.application_id() && membership.id() == id
             })
             .cloned())
     }
@@ -262,7 +270,7 @@ impl MembershipRepository for MemoryStore {
             .memberships
             .iter()
             .find(|membership| {
-                membership.organization_id() == tenant.organization_id()
+                membership.application_id() == tenant.application_id()
                     && membership.user_id() == user_id
             })
             .cloned())
@@ -274,7 +282,7 @@ impl MembershipRepository for MemoryStore {
             .borrow()
             .memberships
             .iter()
-            .filter(|membership| membership.organization_id() == tenant.organization_id())
+            .filter(|membership| membership.application_id() == tenant.application_id())
             .cloned()
             .collect())
     }
@@ -326,7 +334,7 @@ impl RoleRepository for MemoryStore {
             .borrow()
             .roles
             .iter()
-            .find(|role| role.organization_id() == tenant.organization_id() && role.id() == id)
+            .find(|role| role.application_id() == tenant.application_id() && role.id() == id)
             .cloned())
     }
 
@@ -336,7 +344,7 @@ impl RoleRepository for MemoryStore {
             .borrow()
             .roles
             .iter()
-            .filter(|role| role.organization_id() == tenant.organization_id())
+            .filter(|role| role.application_id() == tenant.application_id())
             .cloned()
             .collect())
     }
@@ -369,7 +377,7 @@ impl RoleBindingRepository for MemoryStore {
             .borrow()
             .bindings
             .iter()
-            .filter(|binding| binding.organization_id() == tenant.organization_id())
+            .filter(|binding| binding.application_id() == tenant.application_id())
             .cloned()
             .collect())
     }
@@ -385,8 +393,7 @@ impl RoleBindingRepository for MemoryStore {
             .bindings
             .iter()
             .filter(|binding| {
-                binding.organization_id() == tenant.organization_id()
-                    && binding.user_id() == user_id
+                binding.application_id() == tenant.application_id() && binding.user_id() == user_id
             })
             .cloned()
             .collect())
@@ -411,6 +418,136 @@ impl RoleBindingRepository for MemoryStore {
         self.commit(&WriteBatch::new().with(WriteCommand::DeleteRoleBinding {
             tenant: tenant.clone(),
             binding_id: binding_id.clone(),
+        }))
+    }
+}
+
+impl InvitationRepository for MemoryStore {
+    fn find_by_id(
+        &self,
+        tenant: &TenantContext,
+        id: &TypedId<InvitationEntity>,
+    ) -> Result<Option<Invitation>, DomainError> {
+        Ok(self
+            .data
+            .borrow()
+            .invitations
+            .iter()
+            .find(|inv| inv.application_id() == tenant.application_id() && inv.id() == id)
+            .cloned())
+    }
+
+    fn find_by_token_hash(
+        &self,
+        token_hash: &authkit_core::domain::secret::SecretHash,
+    ) -> Result<Option<Invitation>, DomainError> {
+        Ok(self
+            .data
+            .borrow()
+            .invitations
+            .iter()
+            .find(|inv| inv.token_hash() == token_hash)
+            .cloned())
+    }
+
+    fn list(&self, tenant: &TenantContext) -> Result<Vec<Invitation>, DomainError> {
+        Ok(self
+            .data
+            .borrow()
+            .invitations
+            .iter()
+            .filter(|inv| inv.application_id() == tenant.application_id())
+            .cloned()
+            .collect())
+    }
+
+    fn insert(
+        &self,
+        tenant: &TenantContext,
+        invitation: &Invitation,
+    ) -> Result<WriteOutcome, DomainError> {
+        self.commit(&WriteBatch::new().with(WriteCommand::InsertInvitation {
+            tenant: tenant.clone(),
+            invitation: invitation.clone(),
+        }))
+    }
+
+    fn update(
+        &self,
+        tenant: &TenantContext,
+        invitation: &Invitation,
+        expected_version: u64,
+    ) -> Result<WriteOutcome, DomainError> {
+        self.commit(&WriteBatch::new().with(WriteCommand::UpdateInvitation {
+            tenant: tenant.clone(),
+            invitation: invitation.clone(),
+            expected_version,
+        }))
+    }
+}
+
+impl OAuthClientRepository for MemoryStore {
+    fn list(&self, tenant: &TenantContext) -> Result<Vec<OAuthClient>, DomainError> {
+        Ok(self
+            .data
+            .borrow()
+            .oauth_clients
+            .iter()
+            .filter(|client| client.application_id() == tenant.application_id())
+            .cloned()
+            .collect())
+    }
+
+    fn find_by_id(
+        &self,
+        tenant: &TenantContext,
+        id: &TypedId<OAuthClientEntity>,
+    ) -> Result<Option<OAuthClient>, DomainError> {
+        Ok(self
+            .data
+            .borrow()
+            .oauth_clients
+            .iter()
+            .find(|client| client.application_id() == tenant.application_id() && client.id() == id)
+            .cloned())
+    }
+
+    fn find_by_client_id(
+        &self,
+        client_id: &authkit_core::domain::ClientId,
+    ) -> Result<Option<OAuthClient>, DomainError> {
+        Ok(self
+            .data
+            .borrow()
+            .oauth_clients
+            .iter()
+            .find(|client| client.client_id() == client_id)
+            .cloned())
+    }
+
+    fn insert(
+        &self,
+        tenant: &TenantContext,
+        client: &OAuthClient,
+    ) -> Result<WriteOutcome, DomainError> {
+        let _ = tenant;
+        self.commit(&WriteBatch::new().with(WriteCommand::InsertOAuthClient {
+            tenant: tenant.clone(),
+            client: client.clone(),
+        }))
+    }
+
+    fn update(
+        &self,
+        tenant: &TenantContext,
+        client: &OAuthClient,
+        expected_version: u64,
+    ) -> Result<WriteOutcome, DomainError> {
+        let _ = tenant;
+        self.commit(&WriteBatch::new().with(WriteCommand::UpdateOAuthClient {
+            tenant: tenant.clone(),
+            client: client.clone(),
+            expected_version,
         }))
     }
 }
@@ -478,14 +615,42 @@ impl UnitOfWork for MemoryStore {
                     }
                     *existing = organization.clone();
                 }
+                WriteCommand::InsertOAuthClient { tenant, client } => {
+                    if staged
+                        .oauth_clients
+                        .iter()
+                        .any(|existing| existing.id() == client.id())
+                    {
+                        return Ok(WriteOutcome::Conflict);
+                    }
+                    // tenant scoping is represented by application_id in client
+                    let _ = tenant;
+                    staged.oauth_clients.push(client.clone());
+                }
                 WriteCommand::InsertMembership { tenant, membership } => {
                     if staged.memberships.iter().any(|existing| {
-                        existing.organization_id() == tenant.organization_id()
+                        existing.application_id() == tenant.application_id()
                             && existing.user_id() == membership.user_id()
                     }) {
                         return Ok(WriteOutcome::Conflict);
                     }
                     staged.memberships.push(membership.clone());
+                }
+                WriteCommand::UpdateOAuthClient {
+                    tenant,
+                    client,
+                    expected_version,
+                } => {
+                    let Some(existing) = staged.oauth_clients.iter_mut().find(|existing| {
+                        existing.application_id() == tenant.application_id()
+                            && existing.id() == client.id()
+                    }) else {
+                        return Ok(WriteOutcome::NotFound);
+                    };
+                    if existing.version() != *expected_version {
+                        return Ok(WriteOutcome::Conflict);
+                    }
+                    *existing = client.clone();
                 }
                 WriteCommand::UpdateMembership {
                     tenant,
@@ -493,7 +658,7 @@ impl UnitOfWork for MemoryStore {
                     expected_version,
                 } => {
                     let Some(existing) = staged.memberships.iter_mut().find(|existing| {
-                        existing.organization_id() == tenant.organization_id()
+                        existing.application_id() == tenant.application_id()
                             && existing.id() == membership.id()
                     }) else {
                         return Ok(WriteOutcome::NotFound);
@@ -505,7 +670,7 @@ impl UnitOfWork for MemoryStore {
                 }
                 WriteCommand::InsertRole { tenant, role } => {
                     if staged.roles.iter().any(|existing| {
-                        existing.organization_id() == tenant.organization_id()
+                        existing.application_id() == tenant.application_id()
                             && (existing.id() == role.id() || existing.slug() == role.slug())
                     }) {
                         return Ok(WriteOutcome::Conflict);
@@ -518,7 +683,7 @@ impl UnitOfWork for MemoryStore {
                     expected_version,
                 } => {
                     let Some(existing) = staged.roles.iter_mut().find(|existing| {
-                        existing.organization_id() == tenant.organization_id()
+                        existing.application_id() == tenant.application_id()
                             && existing.id() == role.id()
                     }) else {
                         return Ok(WriteOutcome::NotFound);
@@ -530,7 +695,7 @@ impl UnitOfWork for MemoryStore {
                 }
                 WriteCommand::InsertRoleBinding { tenant, binding } => {
                     if staged.bindings.iter().any(|existing| {
-                        existing.organization_id() == tenant.organization_id()
+                        existing.application_id() == tenant.application_id()
                             && (existing.id() == binding.id()
                                 || (existing.role_id() == binding.role_id()
                                     && existing.user_id() == binding.user_id()
@@ -543,7 +708,7 @@ impl UnitOfWork for MemoryStore {
                 WriteCommand::DeleteRoleBinding { tenant, binding_id } => {
                     let before = staged.bindings.len();
                     staged.bindings.retain(|existing| {
-                        !(existing.organization_id() == tenant.organization_id()
+                        !(existing.application_id() == tenant.application_id()
                             && existing.id() == binding_id)
                     });
                     if staged.bindings.len() == before {
@@ -552,7 +717,7 @@ impl UnitOfWork for MemoryStore {
                 }
                 WriteCommand::InsertInvitation { tenant, invitation } => {
                     if staged.invitations.iter().any(|existing| {
-                        existing.organization_id() == tenant.organization_id()
+                        existing.application_id() == tenant.application_id()
                             && (existing.id() == invitation.id()
                                 || existing.token_hash() == invitation.token_hash())
                     }) {
@@ -566,7 +731,7 @@ impl UnitOfWork for MemoryStore {
                     expected_version,
                 } => {
                     let Some(existing) = staged.invitations.iter_mut().find(|existing| {
-                        existing.organization_id() == tenant.organization_id()
+                        existing.application_id() == tenant.application_id()
                             && existing.id() == invitation.id()
                     }) else {
                         return Ok(WriteOutcome::NotFound);
@@ -578,7 +743,7 @@ impl UnitOfWork for MemoryStore {
                 }
                 WriteCommand::InsertAuthorizationCode { tenant, code } => {
                     if staged.authorization_codes.iter().any(|existing| {
-                        existing.organization_id() == tenant.organization_id()
+                        existing.application_id() == tenant.application_id()
                             && (existing.id() == code.id()
                                 || existing.code_hash() == code.code_hash())
                     }) {
@@ -592,7 +757,7 @@ impl UnitOfWork for MemoryStore {
                     expected_version,
                 } => {
                     let Some(existing) = staged.authorization_codes.iter_mut().find(|existing| {
-                        existing.organization_id() == tenant.organization_id()
+                        existing.application_id() == tenant.application_id()
                             && existing.id() == code.id()
                     }) else {
                         return Ok(WriteOutcome::NotFound);
@@ -604,7 +769,7 @@ impl UnitOfWork for MemoryStore {
                 }
                 WriteCommand::InsertRefreshFamily { tenant, family } => {
                     if staged.refresh_families.iter().any(|existing| {
-                        existing.organization_id() == tenant.organization_id()
+                        existing.application_id() == tenant.application_id()
                             && existing.id() == family.id()
                     }) {
                         return Ok(WriteOutcome::Conflict);
@@ -617,7 +782,7 @@ impl UnitOfWork for MemoryStore {
                     expected_version,
                 } => {
                     let Some(existing) = staged.refresh_families.iter_mut().find(|existing| {
-                        existing.organization_id() == tenant.organization_id()
+                        existing.application_id() == tenant.application_id()
                             && existing.id() == family.id()
                     }) else {
                         return Ok(WriteOutcome::NotFound);
@@ -688,24 +853,25 @@ fn now() -> Timestamp {
 fn owner() -> User {
     User::new(
         TypedId::<UserEntity>::from_suffix("00000000000000aa").expect("valid id"),
+        Some(application_id()),
         email(),
         name(),
         now(),
     )
 }
 
-fn organization_id() -> TypedId<OrganizationEntity> {
+fn application_id() -> TypedId<ApplicationEntity> {
     TypedId::from_suffix("00000000000000bb").expect("valid id")
 }
 
 fn tenant() -> TenantContext {
-    TenantContext::new(organization_id())
+    TenantContext::new(application_id())
 }
 
 fn audit_event(action: &str) -> AuditEvent {
     AuditEvent::new(
         TypedId::from_suffix("00000000000000cc").expect("valid id"),
-        Some(organization_id()),
+        Some(application_id()),
         AuditActor::System,
         AuditAction::parse(action).expect("valid action"),
         None,
@@ -718,8 +884,7 @@ fn audit_event(action: &str) -> AuditEvent {
 fn authorization_code() -> AuthorizationCode {
     AuthorizationCode::new(
         TypedId::from_suffix("00000000000000dd").expect("valid id"),
-        organization_id(),
-        TypedId::<ApplicationEntity>::from_suffix("00000000000000ee").expect("valid id"),
+        application_id(),
         TypedId::<OAuthClientEntity>::from_suffix("00000000000000ff").expect("valid id"),
         owner().id().clone(),
         SecretHash::parse("sha256:0123456789abcdef").expect("valid hash"),
@@ -741,7 +906,7 @@ fn authorization_code() -> AuthorizationCode {
 fn refresh_family() -> RefreshFamily {
     RefreshFamily::new(
         TypedId::from_suffix("00000000000000ba").expect("valid id"),
-        organization_id(),
+        application_id(),
         TypedId::<OAuthClientEntity>::from_suffix("00000000000000ff").expect("valid id"),
         owner().id().clone(),
         ScopeSet::new([
@@ -770,7 +935,7 @@ fn refresh_token(family: &RefreshFamily) -> RefreshToken {
 fn invitation() -> Invitation {
     Invitation::new(
         TypedId::from_suffix("00000000000000ab").expect("valid id"),
-        organization_id(),
+        application_id(),
         Email::parse("invitee@example.com").expect("valid email"),
         SecretHash::parse("sha256:fedcba9876543210").expect("valid hash"),
         vec![TypedId::<RoleEntity>::from_suffix("00000000000000cd").expect("valid id")],
@@ -786,6 +951,7 @@ fn create_user_can_be_called_with_a_dyn_clock() {
     let store = MemoryStore::default();
     let clock = FixedClock(now());
     let user = CreateUser {
+        application_id: Some(application_id()),
         email: email(),
         display_name: name(),
     }
@@ -793,7 +959,12 @@ fn create_user_can_be_called_with_a_dyn_clock() {
     .expect("create user");
 
     assert_eq!(user.email(), &email());
-    assert!(store.find_by_email(&email()).expect("lookup").is_some());
+    assert!(
+        store
+            .find_by_email(Some(&application_id()), &email())
+            .expect("lookup")
+            .is_some()
+    );
 }
 
 #[test]
@@ -803,10 +974,12 @@ fn create_organization_provisions_an_active_owner() {
     store.seed_user(owner.clone());
     let ids = SequentialIds::default();
 
-    let organization = CreateOrganization {
+    let organization = CreateApplication {
         slug: slug(),
         name: name(),
+        primary_domain: "example.com".to_owned(),
         owner_id: owner.id().clone(),
+        client: None,
     }
     .execute(&store, &FixedClock(now()), &ids)
     .expect("create organization");
@@ -815,7 +988,7 @@ fn create_organization_provisions_an_active_owner() {
     assert_eq!(memberships.len(), 1);
     assert!(memberships[0].is_active());
     assert_eq!(memberships[0].user_id(), owner.id());
-    assert_eq!(memberships[0].organization_id(), organization.id());
+    assert_eq!(memberships[0].application_id(), organization.id());
 
     let roles = store.roles();
     assert_eq!(roles.len(), 1);
@@ -825,12 +998,12 @@ fn create_organization_provisions_an_active_owner() {
     assert_eq!(bindings.len(), 1);
     assert_eq!(bindings[0].user_id(), owner.id());
     assert_eq!(bindings[0].role_id(), roles[0].id());
-    assert_eq!(bindings[0].organization_id(), organization.id());
+    assert_eq!(bindings[0].application_id(), organization.id());
 
     let audits = store.audits();
     assert_eq!(audits.len(), 1);
     assert_eq!(audits[0].action().as_str(), "organization.create");
-    assert_eq!(audits[0].organization_id(), Some(organization.id()));
+    assert_eq!(audits[0].application_id(), Some(organization.id()));
 }
 
 #[test]
@@ -838,10 +1011,12 @@ fn create_organization_rejects_a_missing_owner() {
     let store = MemoryStore::default();
     let owner = owner();
 
-    let error = CreateOrganization {
+    let error = CreateApplication {
         slug: slug(),
         name: name(),
+        primary_domain: "example.com".to_owned(),
         owner_id: owner.id().clone(),
+        client: None,
     }
     .execute(&store, &FixedClock(now()), &SequentialIds::default())
     .expect_err("missing owner");
@@ -858,10 +1033,12 @@ fn create_organization_rejects_an_inactive_owner() {
     owner.suspend(now()).expect("suspend");
     store.seed_user(owner.clone());
 
-    let error = CreateOrganization {
+    let error = CreateApplication {
         slug: slug(),
         name: name(),
+        primary_domain: "example.com".to_owned(),
         owner_id: owner.id().clone(),
+        client: None,
     }
     .execute(&store, &FixedClock(now()), &SequentialIds::default())
     .expect_err("inactive owner");
@@ -877,10 +1054,12 @@ fn create_organization_rolls_back_every_write_when_a_late_command_fails() {
     store.seed_user(owner.clone());
     store.fail_on(EntityKind::RoleBinding);
 
-    let error = CreateOrganization {
+    let error = CreateApplication {
         slug: slug(),
         name: name(),
+        primary_domain: "example.com".to_owned(),
         owner_id: owner.id().clone(),
+        client: None,
     }
     .execute(&store, &FixedClock(now()), &SequentialIds::default())
     .expect_err("injected failure");
@@ -899,10 +1078,12 @@ fn duplicate_slugs_lose_the_race_without_partial_owner_state() {
     let owner = owner();
     store.seed_user(owner.clone());
     let ids = SequentialIds::default();
-    let command = CreateOrganization {
+    let command = CreateApplication {
         slug: slug(),
         name: name(),
+        primary_domain: "example.com".to_owned(),
         owner_id: owner.id().clone(),
+        client: None,
     };
 
     command
@@ -928,9 +1109,12 @@ fn a_guard_conflict_rolls_back_earlier_commands() {
     let ids = SequentialIds::default();
 
     let first = Organization::new(
-        ids.generate::<OrganizationEntity>().expect("first org id"),
+        ids.generate::<ApplicationEntity>().expect("first org id"),
         Slug::parse("first").expect("valid slug"),
         name(),
+        ApplicationKind::Web,
+        false,
+        "first.example.com".to_owned(),
         now(),
     );
     let mut membership = Membership::invited(
@@ -956,9 +1140,12 @@ fn a_guard_conflict_rolls_back_earlier_commands() {
     );
 
     let second = Organization::new(
-        ids.generate::<OrganizationEntity>().expect("second org id"),
+        ids.generate::<ApplicationEntity>().expect("second org id"),
         Slug::parse("second").expect("valid slug"),
         name(),
+        ApplicationKind::Web,
+        false,
+        "second.example.com".to_owned(),
         now(),
     );
     let conflicting = WriteBatch::new()
@@ -1061,7 +1248,7 @@ fn invitation_acceptance_is_atomic_with_membership_and_audit() {
         .expect("accept invitation");
     let membership = Membership::active(
         TypedId::from_suffix("00000000000000bc").expect("valid id"),
-        organization_id(),
+        application_id(),
         owner().id().clone(),
         Timestamp::from_millis(1_500),
     );
@@ -1106,6 +1293,70 @@ fn invitation_acceptance_is_atomic_with_membership_and_audit() {
     );
     assert_eq!(store.memberships().len(), 1);
     assert_eq!(store.audits().len(), 1);
+}
+
+#[test]
+fn accept_invitation_use_case_provisions_membership_and_roles() {
+    let store = MemoryStore::default();
+    let clock = FixedClock(Timestamp::from_millis(1_500));
+    let ids = SequentialIds::default();
+
+    let invitee = User::new(
+        TypedId::<UserEntity>::from_suffix("00000000000000ae").expect("valid id"),
+        Some(application_id()),
+        Email::parse("invitee@example.com").expect("valid email"),
+        DisplayName::parse("Invitee").expect("valid name"),
+        now(),
+    );
+    store.seed_user(invitee.clone());
+
+    assert_eq!(
+        store
+            .commit(&WriteBatch::new().with(WriteCommand::InsertInvitation {
+                tenant: tenant(),
+                invitation: invitation(),
+            }))
+            .expect("seed invitation"),
+        WriteOutcome::Applied
+    );
+
+    let uc = AcceptInvitation {
+        token_hash: SecretHash::parse("sha256:fedcba9876543210").expect("valid hash"),
+        user_id: invitee.id().clone(),
+    };
+    let accepted = uc.execute(&store, &clock, &ids).expect("accept invitation");
+
+    assert_eq!(accepted.status(), InvitationStatus::Accepted);
+    assert_eq!(store.memberships().len(), 1);
+    assert_eq!(store.invitations()[0].status(), InvitationStatus::Accepted);
+}
+
+#[test]
+fn suspend_user_marks_the_user_suspended() {
+    let store = MemoryStore::default();
+    let clock = FixedClock(Timestamp::from_millis(1_500));
+    let user = owner();
+    store.seed_user(user.clone());
+
+    let uc = SuspendUser {
+        user_id: user.id().clone(),
+    };
+    let suspended = uc.execute(&store, &clock).expect("suspend user");
+    assert_eq!(suspended.status(), UserStatus::Suspended);
+}
+
+#[test]
+fn delete_user_marks_the_user_deleted() {
+    let store = MemoryStore::default();
+    let clock = FixedClock(Timestamp::from_millis(1_500));
+    let user = owner();
+    store.seed_user(user.clone());
+
+    let uc = DeleteUser {
+        user_id: user.id().clone(),
+    };
+    let deleted = uc.execute(&store, &clock).expect("delete user");
+    assert_eq!(deleted.status(), UserStatus::Deleted);
 }
 
 #[test]

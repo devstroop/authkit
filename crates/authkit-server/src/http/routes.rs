@@ -213,6 +213,7 @@ pub fn with_session_security(
     issuer: Issuer,
     hsts: bool,
 ) -> Router {
+    let store = sessions.store().clone();
     let state = SessionSecurityState {
         service: sessions,
         issuer,
@@ -220,6 +221,14 @@ pub fn with_session_security(
     router
         .layer(middleware::from_fn_with_state(state, session_context))
         .layer(middleware::from_fn(crate::i18n::locale_middleware))
+        .layer(middleware::from_fn_with_state(
+            store.clone(),
+            crate::tenant::tenant_middleware,
+        ))
+        .layer(middleware::from_fn_with_state(
+            store,
+            crate::branding::branding_middleware,
+        ))
         .layer(middleware::from_fn_with_state(
             SecurityHeaders::new(hsts),
             security_headers,
@@ -298,12 +307,20 @@ fn base_router(
         )
         .route("/setup", get(admin::setup_page).post(admin::setup_submit))
         .route("/admin", get(admin::dashboard))
+        .route(
+            "/admin/",
+            get(|| async { axum::response::Redirect::to("/admin") }),
+        )
         .route("/admin/backup", get(admin::backup_download))
         .route(
             "/admin/restore",
             get(admin::restore_page).post(admin::restore_submit),
         )
         .route("/admin/users", get(admin::users_page))
+        .route(
+            "/admin/applications",
+            get(admin::admin_applications_page).post(admin::admin_provision_application),
+        )
         .route("/admin/impersonate/{id}", post(admin::impersonate))
         .route("/admin/impersonate/exit", post(admin::impersonate_exit))
         .route("/admin/audit", get(admin::audit_page))
@@ -319,68 +336,65 @@ fn base_router(
         )
         .route("/admin/mfa/enroll", post(admin::mfa_enroll))
         .route("/admin/mfa/verify", post(admin::mfa_verify))
+        .route("/organizations", get(organization::organizations_page))
         .route(
-            "/organizations",
-            get(organization::organizations_page).post(organization::create_organization),
-        )
-        .route(
-            "/organizations/{org_id}/members",
+            "/organizations/{application_id}/members",
             get(organization::members_page).post(organization::add_member),
         )
         .route(
-            "/organizations/{org_id}/invitations",
+            "/organizations/{application_id}/invitations",
             get(organization::invitations_page).post(organization::create_invitation),
         )
         .route(
-            "/organizations/{org_id}/invitations/{invitation_id}/revoke",
+            "/organizations/{application_id}/invitations/{invitation_id}/revoke",
             post(organization::revoke_invitation),
         )
         .route(
-            "/organizations/{org_id}/roles",
+            "/organizations/{application_id}/roles",
             get(organization::roles_page).post(organization::create_role),
         )
         .route(
-            "/organizations/{org_id}/applications",
+            "/organizations/{application_id}/applications",
             get(organization::applications_page).post(organization::create_application),
         )
         .route(
-            "/organizations/{org_id}/oauth-clients",
+            "/organizations/{application_id}/oauth-clients",
             get(organization::oauth_clients_page).post(organization::create_oauth_client),
         )
         .route(
-            "/organizations/{org_id}/oauth-clients/{client_id}",
+            "/organizations/{application_id}/oauth-clients/{client_id}",
             get(organization::oauth_client_detail),
         )
         .route(
-            "/organizations/{org_id}/oauth-clients/{client_id}/redirect-uris",
+            "/organizations/{application_id}/oauth-clients/{client_id}/redirect-uris",
             post(organization::add_redirect_uri),
         )
         .route(
-            "/organizations/{org_id}/oauth-clients/{client_id}/redirect-uris/remove",
+            "/organizations/{application_id}/oauth-clients/{client_id}/redirect-uris/remove",
             post(organization::remove_redirect_uri),
         )
         .route(
-            "/organizations/{org_id}/oauth-clients/{client_id}/scopes",
+            "/organizations/{application_id}/oauth-clients/{client_id}/scopes",
             post(organization::replace_scopes),
         )
         .route(
-            "/organizations/{org_id}/role-bindings",
+            "/organizations/{application_id}/role-bindings",
             post(organization::bind_role),
         )
         .route(
-            "/organizations/{org_id}/domains",
+            "/organizations/{application_id}/domains",
             get(organization::domains_page).post(organization::add_domain),
         )
         .route(
-            "/organizations/{org_id}/domains/{domain_id}/verify",
+            "/organizations/{application_id}/domains/{domain_id}/verify",
             post(organization::verify_domain),
         )
         .route(
-            "/organizations/{org_id}/domains/{domain_id}/remove",
+            "/organizations/{application_id}/domains/{domain_id}/remove",
             post(organization::remove_domain),
         )
         .route(
-            "/organizations/{org_id}/domains/{domain_id}/revoke",
+            "/organizations/{application_id}/domains/{domain_id}/revoke",
             post(organization::remove_domain),
         )
         .route("/passkeys", get(passkeys::list_page))
@@ -396,6 +410,14 @@ fn base_router(
         .route(
             "/account/verify-email-request",
             post(reset::request_verify_submit),
+        )
+        .route(
+            "/account/email-change-request",
+            post(account::request_email_change),
+        )
+        .route(
+            "/account/email-change/confirm",
+            get(account::email_change_confirm_page).post(account::confirm_email_change),
         )
         .route(
             "/account/sessions/{id}/revoke",

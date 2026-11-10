@@ -1,6 +1,6 @@
 # ADR-0003: Organizations are tenants; applications are surfaces
 
-- Status: Accepted
+- Status: Superseded by [ADR-0011](0011-applications-are-tenants.md)
 - Deciders: maintainers
 - Related: [Domain model](../domain-model.md#2-aggregate-map), [Security model](../security-model.md#13-tenant-isolation)
 

@@ -35,7 +35,7 @@ pub(crate) async fn jwks(State(state): State<AppState>, headers: HeaderMap) -> R
 }
 
 fn discovery_response(state: &AppState, headers: &HeaderMap) -> Response {
-    let issuer = state.issuer.as_str();
+    let issuer = crate::tenant::current_issuer(state.issuer.as_str());
     let mut document = json!({
         "issuer": issuer,
         "jwks_uri": format!("{issuer}/oauth2/jwks"),

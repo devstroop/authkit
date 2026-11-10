@@ -34,12 +34,7 @@ entity!(
     "usr"
 );
 entity!(
-    /// An organization, the tenant boundary.
-    OrganizationEntity,
-    "org"
-);
-entity!(
-    /// A verified or pending email domain for an organization.
+    /// A verified or pending email domain for an application.
     DomainEntity,
     "dom"
 );
@@ -132,6 +127,11 @@ entity!(
     /// A single-use, expiring token for email verification or password reset.
     OneTimeTokenEntity,
     "tok"
+);
+entity!(
+    /// A deployment or organization brand (title, logo, favicon, custom CSS).
+    BrandEntity,
+    "brd"
 );
 
 /// A typed, prefix-validated entity identifier.
@@ -324,7 +324,7 @@ mod tests {
 
     #[test]
     fn builds_from_a_suffix() {
-        let id = Id::<OrganizationEntity>::from_suffix(VALID_SUFFIX).expect("valid suffix");
-        assert_eq!(id.as_str(), "org_0123456789abcdef");
+        let id = Id::<ApplicationEntity>::from_suffix(VALID_SUFFIX).expect("valid suffix");
+        assert_eq!(id.as_str(), "app_0123456789abcdef");
     }
 }

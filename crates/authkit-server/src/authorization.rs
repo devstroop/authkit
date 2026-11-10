@@ -7,8 +7,8 @@ use authkit_core::domain::audit::{
 };
 use authkit_core::domain::grant::{AuthorizationCode, Consent};
 use authkit_core::domain::id::{
-    AuditEventEntity, AuthorizationCodeEntity, ConsentEntity, Id, OrganizationEntity,
-    SessionEntity, UserEntity,
+    ApplicationEntity, AuditEventEntity, AuthorizationCodeEntity, ConsentEntity, Id, SessionEntity,
+    UserEntity,
 };
 use authkit_core::domain::oauth_client::OAuthClient;
 use authkit_core::domain::pkce::PkceChallenge;
@@ -185,8 +185,7 @@ impl AuthorizationService {
             if !application.is_active() {
                 return Ok(None);
             }
-            let Some(organization) =
-                OrganizationRepository::find_by_id(&*store, application.organization_id())?
+            let Some(organization) = OrganizationRepository::find_by_id(&*store, application.id())?
             else {
                 return Ok(None);
             };
@@ -283,8 +282,7 @@ impl AuthorizationService {
         );
         let code = AuthorizationCode::new(
             code_id.clone(),
-            request.context.tenant.organization_id().clone(),
-            request.context.application.id().clone(),
+            request.context.tenant.application_id().clone(),
             request.context.client.id().clone(),
             request.user_id.clone(),
             code_hash,
@@ -300,7 +298,7 @@ impl AuthorizationService {
 
         let store = self.store.clone();
         let tenant = request.context.tenant.clone();
-        let organization_id = tenant.organization_id().clone();
+        let application_id = tenant.application_id().clone();
         let client_row_id = request.context.client.id().clone();
         let client_public_id = request.context.client.client_id().as_str().to_owned();
         let user_id = request.user_id.clone();
@@ -313,7 +311,7 @@ impl AuthorizationService {
         let code_audit_id = self.ids.generate::<AuditEventEntity>()?;
         let code_event = AuditEvent::new(
             code_audit_id,
-            Some(organization_id.clone()),
+            Some(application_id.clone()),
             AuditActor::User(user_id.clone()),
             AuditAction::parse("authorization.code.issue")?,
             Some(AuditTarget::parse(code_id_for_audit.as_str())?),
@@ -359,7 +357,7 @@ impl AuthorizationService {
                     consent.grant(updated_scopes, now);
                     let event = AuditEvent::new(
                         consent_audit_id,
-                        Some(organization_id.clone()),
+                        Some(application_id.clone()),
                         AuditActor::User(user_id.clone()),
                         AuditAction::parse("authorization.consent.grant")?,
                         Some(AuditTarget::parse(consent.id().as_str())?),
@@ -389,7 +387,7 @@ impl AuthorizationService {
                 None => {
                     let consent = Consent::new(
                         consent_id,
-                        organization_id.clone(),
+                        application_id.clone(),
                         user_id.clone(),
                         client_row_id,
                         scopes.clone(),
@@ -397,7 +395,7 @@ impl AuthorizationService {
                     );
                     let event = AuditEvent::new(
                         consent_audit_id,
-                        Some(organization_id.clone()),
+                        Some(application_id.clone()),
                         AuditActor::User(user_id.clone()),
                         AuditAction::parse("authorization.consent.grant")?,
                         Some(AuditTarget::parse(consent.id().as_str())?),
@@ -451,7 +449,7 @@ impl AuthorizationService {
         request_id: &str,
     ) -> Result<(), DomainError> {
         let event = self.event(
-            Some(context.tenant.organization_id().clone()),
+            Some(context.tenant.application_id().clone()),
             AuditActor::User(user_id.clone()),
             "authorization.consent.deny",
             Some(context.client.id().as_str()),
@@ -463,7 +461,7 @@ impl AuthorizationService {
     /// Records a rejected authorization request.
     pub async fn record_rejection(
         &self,
-        tenant: Option<Id<OrganizationEntity>>,
+        tenant: Option<Id<ApplicationEntity>>,
         actor: AuditActor,
         target: Option<&str>,
         request_id: &str,
@@ -507,7 +505,7 @@ impl AuthorizationService {
 
         let Some(code) = found else {
             self.reject(
-                Some(context.tenant.organization_id().clone()),
+                Some(context.tenant.application_id().clone()),
                 Some(&context),
                 &request,
                 "code_not_found",
@@ -518,7 +516,7 @@ impl AuthorizationService {
 
         if code.client_id() != context.client.id() {
             self.reject(
-                Some(context.tenant.organization_id().clone()),
+                Some(context.tenant.application_id().clone()),
                 Some(&context),
                 &request,
                 "wrong_client",
@@ -528,7 +526,7 @@ impl AuthorizationService {
         }
         if code.redirect_uri() != &request.redirect_uri {
             self.reject(
-                Some(context.tenant.organization_id().clone()),
+                Some(context.tenant.application_id().clone()),
                 Some(&context),
                 &request,
                 "wrong_redirect_uri",
@@ -539,7 +537,7 @@ impl AuthorizationService {
         let now = self.clock.now();
         if code.consumed_at().is_some() {
             self.reject(
-                Some(context.tenant.organization_id().clone()),
+                Some(context.tenant.application_id().clone()),
                 Some(&context),
                 &request,
                 "code_replay",
@@ -549,7 +547,7 @@ impl AuthorizationService {
         }
         if !code.is_usable(now) {
             self.reject(
-                Some(context.tenant.organization_id().clone()),
+                Some(context.tenant.application_id().clone()),
                 Some(&context),
                 &request,
                 "code_expired",
@@ -559,7 +557,7 @@ impl AuthorizationService {
         }
         if !verifier_matches(code.pkce_challenge(), &request.code_verifier) {
             self.reject(
-                Some(context.tenant.organization_id().clone()),
+                Some(context.tenant.application_id().clone()),
                 Some(&context),
                 &request,
                 "pkce_mismatch",
@@ -577,7 +575,7 @@ impl AuthorizationService {
             self.ids
                 .generate::<AuditEventEntity>()
                 .map_err(|_| RedeemError::Unavailable)?,
-            Some(context.tenant.organization_id().clone()),
+            Some(context.tenant.application_id().clone()),
             AuditActor::User(consumed.user_id().clone()),
             AuditAction::parse("authorization.code.consume")
                 .map_err(|_| RedeemError::Unavailable)?,
@@ -610,7 +608,7 @@ impl AuthorizationService {
         .map_err(|_| RedeemError::Unavailable)?;
         if !outcome.is_applied() {
             self.reject(
-                Some(context.tenant.organization_id().clone()),
+                Some(context.tenant.application_id().clone()),
                 Some(&context),
                 &request,
                 "code_replay",
@@ -623,7 +621,7 @@ impl AuthorizationService {
 
     fn event(
         &self,
-        tenant: Option<Id<OrganizationEntity>>,
+        tenant: Option<Id<ApplicationEntity>>,
         actor: AuditActor,
         action: &str,
         target: Option<&str>,
@@ -651,7 +649,7 @@ impl AuthorizationService {
 
     async fn reject(
         &self,
-        tenant: Option<Id<OrganizationEntity>>,
+        tenant: Option<Id<ApplicationEntity>>,
         context: Option<&ClientContext>,
         request: &RedeemCode,
         reason: &'static str,

@@ -7,7 +7,7 @@
     <div style="font-size:0.8rem;color:var(--muted);">{{ invitation.status }}</div>
   </div>
   {% if can_manage %}
-  <form method="post" action="/organizations/{{ org_id }}/invitations/{{ invitation.id }}/revoke" style="display:inline" hx-post="/organizations/{{ org_id }}/invitations/{{ invitation.id }}/revoke" hx-target="#invitations" hx-swap="outerHTML">
+  <form method="post" action="/organizations/{{ application_id }}/invitations/{{ invitation.id }}/revoke" style="display:inline" hx-post="/organizations/{{ application_id }}/invitations/{{ invitation.id }}/revoke" hx-target="#invitations" hx-swap="outerHTML">
     <input type="hidden" name="_csrf" value="{{ csrf }}">
     <button type="submit" class="btn btn-secondary" style="width:auto;padding:0.3rem 0.75rem;font-size:0.85rem;">{{ crate::i18n::t("revoke") }}</button>
   </form>
@@ -20,7 +20,7 @@
 </ul>
 {% if can_manage %}
 <h2 style="font-family:var(--font-display);font-size:1.5rem;font-weight:400;margin:var(--space-5) 0 var(--space-3);">{{ crate::i18n::t("invite_member") }}</h2>
-<form method="post" action="/organizations/{{ org_id }}/invitations" hx-post="/organizations/{{ org_id }}/invitations" hx-target="#invitations" hx-swap="outerHTML">
+<form method="post" action="/organizations/{{ application_id }}/invitations" hx-post="/organizations/{{ application_id }}/invitations" hx-target="#invitations" hx-swap="outerHTML">
   <input type="hidden" name="_csrf" value="{{ csrf }}">
   {{ ui::text_input("email", crate::i18n::t("email"), "email", "email") }}
   <label class="field">

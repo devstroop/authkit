@@ -19,8 +19,9 @@ Related documents:
 
 - A correct, auditable OIDC/OAuth 2.0 authorization server that a developer platform can
   self-host without operating a second control plane.
-- Organizations (workspaces) as the tenant boundary, with applications as product
-  surfaces inside a tenant rather than separate tenants.
+- Applications as the tenant boundary and product surface: each application owns an
+  isolated user pool, memberships, roles, OAuth clients, its primary domain, and audit.
+  (See [ADR-0011](adr/0011-applications-are-tenants.md).)
 - A portable domain core that does not import Axum, workers-rs, SQLx, D1, Askama, or
   browser-cookie types.
 - One canonical issuer per deployment, recommended as `https://auth.<apex>` (for example,
@@ -54,9 +55,11 @@ Related documents:
    without a database, HTTP server, template engine, or Workers runtime.
 2. **Tenant identity is explicit.** Every tenant-scoped use case receives a
    `TenantContext`; repositories require it. There is no ambient "current organization."
-3. **Applications are not tenants.** An application belongs to exactly one organization
-   and may expose several OAuth clients (web, admin, native, service). Isolation,
-   membership, roles, and data residency are organization concerns.
+3. **Applications are tenants.** An application owns an isolated user pool,
+   memberships, roles, and audit, and may expose several OAuth clients (web, admin,
+   native, service). Isolation, membership, roles, and data residency are application
+   concerns. (Supersedes the previous organization-as-tenant model; see
+   [ADR-0011](adr/0011-applications-are-tenants.md).)
 4. **System administration is separate from tenant administration.** AuthKit system
    administrators are a built-in, deployment-level role. Organization and application
    roles are composable and tenant-scoped.
@@ -64,9 +67,10 @@ Related documents:
    The portable core describes reads, decisions, and a guarded write batch. Each runtime
    executes that batch in its native transaction mechanism. This is what allows the same
    use case to run on SQLx and on D1, which has no interactive transactions.
-6. **The issuer is deployment-wide and immutable for the lifetime of client
-   registrations.** Organizations share an issuer; they are separated by tenant
-   identifiers, membership, and authorization, not by issuer URLs.
+6. **The issuer is per application.** `iss` is `https://{primary_domain}`; signing keys
+   are shared across the deployment and each application's discovery document points at
+   the shared JWKS URI. Applications are separated by their domain, tenant identifier,
+   membership, and authorization.
 7. **Browser credentials are host-only and HttpOnly.** Access and refresh tokens are not
    stored in browser-accessible storage in the default architecture.
 
@@ -95,8 +99,8 @@ Actors and trust boundaries:
 | End user | Untrusted browser | Holds only host-only session cookies for the origins it visits. |
 | Application frontend/BFF | Confidential client | Holds its own session and, server-side, its OAuth client credentials and tokens. |
 | Application resource server | Trusted verifier | Validates access tokens locally; never trusts identity headers from the internet. |
-| Organization admin | Authenticated tenant principal | Manages only its organization, memberships, applications, and clients. |
-| AuthKit system admin | Deployment operator principal | Manages deployment-level settings, organizations, signing keys, and break-glass operations. |
+| Application owner/admin | Authenticated tenant principal | Manages only its application, memberships, roles, and clients. |
+| AuthKit system admin | Deployment operator principal | Manages deployment-level settings, applications, signing keys, and break-glass operations. |
 | AuthKit server | Policy decision point | Owns sessions, credentials, authorization decisions, token issuance, and audit. |
 | Database | Trusted infrastructure | Contains credential verifiers, token hashes, audit events, and encrypted key material. |
 | Email provider | External processor | Receives only the minimum content needed for verification and notification. |
@@ -164,15 +168,15 @@ flowchart TB
 
 ### Tenant boundary rules
 
-- An organization is the tenant. Its ID is present on every tenant-owned row and is
+- An application is the tenant. Its ID is present on every tenant-owned row and is
   required by every tenant-scoped repository method.
-- An application is a surface owned by one organization. It is not an isolation boundary.
-  A user can be a member of several organizations and can access applications in each.
+- An application owns an isolated user pool, memberships, roles, OAuth clients, its
+  primary domain, and audit. It is both the tenant boundary and the product surface.
 - OAuth clients belong to an application. A client ID is globally unique within the
   deployment, but the client's tenant is derived from its application and cannot be
   supplied by the client at runtime.
-- Roles are scoped to an organization or an application. Permission checks combine
-  organization membership, application access, and role bindings.
+- Roles are scoped to an application. Permission checks combine application membership
+  and role bindings.
 - System-admin operations use a separate authorization path and are audited as
   deployment-level events. They must not be reachable through organization-admin routes.
 
@@ -235,7 +239,7 @@ The exact Rust signatures will evolve, but the port categories are stable:
 
 | Port | Purpose | Runtime notes |
 | --- | --- | --- |
-| `UserRepository`, `OrganizationRepository`, `ApplicationRepository` | Aggregate reads and guarded writes. | All tenant-owned methods require `TenantContext`. |
+| `UserRepository`, `ApplicationRepository` | Aggregate reads and guarded writes. | All tenant-owned methods require `TenantContext`. |
 | `UnitOfWork` | Executes a precomputed `WriteBatch` atomically. | Native adapters use one SQL transaction; D1 uses one `batch()` call with the same guards. |
 | `CredentialRepository` | Type-specific password, passkey, and TOTP credential persistence. | Adapters hash passwords, encrypt TOTP secrets, and enforce the stored credential type. |
 | `ClientRepository` | OAuth client lookup, secret verifier rotation, redirect URI registration. | Client IDs are deployment-global. |
@@ -269,7 +273,7 @@ The portable contract is `authkit_core::ports::write`: a `WriteBatch` holds orde
 `WriteCommand` values, and `UnitOfWork::commit` applies the batch. The command values carry
 domain aggregates, tenant contexts, and the version or one-time guard the use case read.
 They contain no SQLx, SQLite, PostgreSQL, or runtime transaction type. The command set covers
-users, organizations, memberships, invitations, applications, OAuth clients, credentials,
+users, applications, memberships, invitations, OAuth clients, credentials,
 sessions, roles, role bindings, authorization codes, consents, refresh families and tokens,
 and audit events.
 

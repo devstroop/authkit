@@ -10,12 +10,13 @@ use crate::domain::DomainError;
 use crate::domain::Timestamp;
 use crate::domain::application::Application;
 use crate::domain::audit::AuditEvent;
+use crate::domain::brand::Brand;
 use crate::domain::credential::Credential;
 use crate::domain::email::Email;
 use crate::domain::grant::{AuthorizationCode, Consent, RefreshFamily, RefreshToken};
 use crate::domain::id::{
-    ApplicationEntity, AuthorizationCodeEntity, ConsentEntity, DomainEntity, Entity, Id, IdError,
-    InvitationEntity, MembershipEntity, OAuthClientEntity, OneTimeTokenEntity, OrganizationEntity,
+    ApplicationEntity, AuthorizationCodeEntity, BrandEntity, ConsentEntity, DomainEntity, Entity,
+    Id, IdError, InvitationEntity, MembershipEntity, OAuthClientEntity, OneTimeTokenEntity,
     RefreshFamilyEntity, RefreshTokenEntity, RoleBindingEntity, RoleEntity, SessionEntity,
     UserEntity,
 };
@@ -54,8 +55,13 @@ pub trait UserRepository {
     /// Finds a user by identifier.
     fn find_by_id(&self, id: &Id<UserEntity>) -> Result<Option<User>, DomainError>;
 
-    /// Finds a user by normalized email.
-    fn find_by_email(&self, email: &Email) -> Result<Option<User>, DomainError>;
+    /// Finds a user by normalized email within an application (or globally when
+    /// `application_id` is `None`).
+    fn find_by_email(
+        &self,
+        application_id: Option<&Id<ApplicationEntity>>,
+        email: &Email,
+    ) -> Result<Option<User>, DomainError>;
 
     /// Inserts a new user.
     fn insert(&self, user: &User) -> Result<WriteOutcome, DomainError>;
@@ -70,7 +76,7 @@ pub trait UserRepository {
 /// Read and write access to tenant-owned organizations.
 pub trait OrganizationRepository {
     /// Finds an organization by identifier.
-    fn find_by_id(&self, id: &Id<OrganizationEntity>) -> Result<Option<Organization>, DomainError>;
+    fn find_by_id(&self, id: &Id<ApplicationEntity>) -> Result<Option<Organization>, DomainError>;
 
     /// Finds an organization by slug.
     fn find_by_slug(&self, slug: &Slug) -> Result<Option<Organization>, DomainError>;
@@ -84,6 +90,26 @@ pub trait OrganizationRepository {
         organization: &Organization,
         expected_version: u64,
     ) -> Result<WriteOutcome, DomainError>;
+}
+
+pub trait BrandRepository {
+    /// Finds a brand by identifier.
+    fn find_by_id(&self, id: &Id<BrandEntity>) -> Result<Option<Brand>, DomainError>;
+
+    /// Finds a brand for a host domain.
+    fn find_by_domain(&self, domain: &str) -> Result<Option<Brand>, DomainError>;
+
+    /// Finds a brand for an organization.
+    fn find_by_org(
+        &self,
+        application_id: &Id<ApplicationEntity>,
+    ) -> Result<Option<Brand>, DomainError>;
+
+    /// Inserts a new brand.
+    fn insert(&self, brand: &Brand) -> Result<WriteOutcome, DomainError>;
+
+    /// Updates an existing brand using optimistic concurrency.
+    fn update(&self, brand: &Brand, expected_version: u64) -> Result<WriteOutcome, DomainError>;
 }
 
 /// Read and write access to tenant-owned memberships.
@@ -124,7 +150,7 @@ pub trait DomainRepository {
     fn find_by_domain(&self, domain: &str) -> Result<Option<Domain>, DomainError>;
     fn list_for_organization(
         &self,
-        org_id: &Id<OrganizationEntity>,
+        application_id: &Id<ApplicationEntity>,
     ) -> Result<Vec<Domain>, DomainError>;
     fn insert(&self, domain: &Domain) -> Result<WriteOutcome, DomainError>;
     fn update(&self, domain: &Domain, expected_version: u64) -> Result<WriteOutcome, DomainError>;
@@ -220,6 +246,9 @@ pub trait ApplicationRepository {
         tenant: &TenantContext,
         slug: &crate::domain::slug::Slug,
     ) -> Result<Option<Application>, DomainError>;
+
+    /// Finds an application by its primary domain (global, no tenant scope).
+    fn find_by_domain(&self, domain: &str) -> Result<Option<Application>, DomainError>;
 
     /// Inserts a new application.
     fn insert(

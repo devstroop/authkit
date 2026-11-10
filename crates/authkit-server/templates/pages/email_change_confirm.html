@@ -1,0 +1,15 @@
+{% extends "layouts/app.html" %}
+{% block app_content %}
+<div class="auth-card" style="max-width:32rem;">
+  <h1>Confirm email change</h1>
+  <p class="subtitle">Confirm your new email address.</p>
+  <div class="card">
+    <form method="post" action="/account/email-change/confirm">
+      <input type="hidden" name="_csrf" value="{{ csrf }}">
+      <input type="hidden" name="token" value="{{ token }}">
+      <input type="hidden" name="email" value="{{ email }}">
+      <button type="submit" class="btn">Confirm</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

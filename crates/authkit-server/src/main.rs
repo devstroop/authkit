@@ -119,10 +119,10 @@ fn audit_export(args: Vec<String>) -> Result<(), u8> {
     runtime.block_on(async {
         use sqlx::Row;
         let mut sql = String::from(
-            "SELECT id, org_id, actor_type, actor_id, action, target, occurred_at, attributes FROM audit_event",
+            "SELECT id, application_id, actor_type, actor_id, action, target, occurred_at, attributes FROM audit_event",
         );
         if org.is_some() {
-            sql.push_str(" WHERE org_id = ?");
+            sql.push_str(" WHERE application_id = ?");
         }
         sql.push_str(" ORDER BY occurred_at, id LIMIT ?");
         let mut query = sqlx::query(&sql);
@@ -136,7 +136,7 @@ fn audit_export(args: Vec<String>) -> Result<(), u8> {
         })?;
         for row in rows {
             let id: String = row.get("id");
-            let org_id: Option<String> = row.get("org_id");
+            let application_id: Option<String> = row.get("application_id");
             let actor_type: String = row.get("actor_type");
             let actor_id: Option<String> = row.get("actor_id");
             let action: String = row.get("action");
@@ -145,7 +145,7 @@ fn audit_export(args: Vec<String>) -> Result<(), u8> {
             let attributes: String = row.get("attributes");
             let obj = serde_json::json!({
                 "id": id,
-                "org_id": org_id,
+                "application_id": application_id,
                 "actor_type": actor_type,
                 "actor_id": actor_id,
                 "action": action,
@@ -216,17 +216,20 @@ fn bootstrap() -> Result<(), u8> {
             email_raw.split('@').next().unwrap_or("admin"),
         )
         .unwrap_or_else(|_| authkit_core::domain::DisplayName::parse("Admin").expect("valid"));
-        let user = if let Some(existing_user) =
-            authkit_core::ports::UserRepository::find_by_email(&store, &email).map_err(|e| {
-                eprintln!("error find user: {e}");
-                1
-            })? {
+        let user = if let Some(existing_user) = authkit_core::ports::UserRepository::find_by_email(
+            &store, None, &email,
+        )
+        .map_err(|e| {
+            eprintln!("error find user: {e}");
+            1
+        })? {
             existing_user
         } else {
             let user = authkit_core::domain::User::new(
                 authkit_server::session::SecureIdGenerator
                     .generate::<authkit_core::domain::id::UserEntity>()
                     .expect("id"),
+                None,
                 email.clone(),
                 display_name,
                 now_ts,
@@ -371,7 +374,7 @@ fn audit_prune(args: Vec<String>) -> Result<(), u8> {
     runtime.block_on(async {
         let mut sql = String::from("DELETE FROM audit_event WHERE occurred_at < ?");
         if org.is_some() {
-            sql.push_str(" AND org_id = ?");
+            sql.push_str(" AND application_id = ?");
         }
         let mut query = sqlx::query(&sql).bind(cutoff);
         if let Some(org) = &org {
@@ -424,9 +427,9 @@ fn audit_verify(args: Vec<String>) -> Result<(), u8> {
         })?;
     runtime.block_on(async {
         use sqlx::Row;
-        let mut sql = String::from("SELECT id, org_id, actor_type, actor_id, action, target, occurred_at, attributes, prev_hash, hash FROM audit_event");
-        if org.is_some() { sql.push_str(" WHERE org_id = ?"); }
-        sql.push_str(" ORDER BY org_id, occurred_at, id");
+        let mut sql = String::from("SELECT id, application_id, actor_type, actor_id, action, target, occurred_at, attributes, prev_hash, hash FROM audit_event");
+        if org.is_some() { sql.push_str(" WHERE application_id = ?"); }
+        sql.push_str(" ORDER BY application_id, occurred_at, id");
         let mut query = sqlx::query(&sql);
         if let Some(org) = &org { query = query.bind(org); }
         let rows = query.fetch_all(store.pool()).await.map_err(|e| { eprintln!("error: {e}"); 1u8 })?;
@@ -434,7 +437,7 @@ fn audit_verify(args: Vec<String>) -> Result<(), u8> {
         let mut prev: Option<String> = None;
         let mut failures = 0u64;
         for row in rows {
-            let row_org: Option<String> = row.get("org_id");
+            let row_org: Option<String> = row.get("application_id");
             if current_org != row_org { current_org = row_org.clone(); prev = None; }
             let id: String = row.get("id");
             let actor_type: String = row.get("actor_type");

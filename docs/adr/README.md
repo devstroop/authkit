@@ -8,7 +8,7 @@ in place.
 | --- | --- | --- |
 | [0001](0001-modular-monolith-four-crates.md) | Start with a four-crate modular monolith | Accepted |
 | [0002](0002-native-first-workers-preview.md) | Native runtime first, Workers preview | Accepted |
-| [0003](0003-organizations-are-tenants.md) | Organizations are tenants; applications are surfaces | Accepted |
+| [0003](0003-organizations-are-tenants.md) | Organizations are tenants; applications are surfaces | Superseded by ADR-0011 |
 | [0004](0004-oidc-oauth-only-v1.md) | OIDC/OAuth 2.0 only in v1 | Accepted |
 | [0005](0005-server-rendered-htmx-ui.md) | Server-rendered Askama/HTMX UI | Accepted |
 | [0006](0006-bff-host-only-cookies.md) | BFF default and host-only cookies | Accepted |
@@ -16,6 +16,7 @@ in place.
 | [0008](0008-sqlite-first-postgres-scale.md) | SQLite first, Postgres for scale | Accepted |
 | [0009](0009-generic-consumer-agnostic-product.md) | A generic, consumer-agnostic product | Accepted |
 | [0010](0010-dual-mit-apache-2-0-license.md) | Dual MIT and Apache-2.0 license | Accepted |
+| [0011](0011-applications-are-tenants.md) | Applications are tenants; organizations are removed | Accepted |
 
 ## When an ADR is required
 

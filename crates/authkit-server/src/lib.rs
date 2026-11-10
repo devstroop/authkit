@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 
 pub mod authorization;
+pub mod branding;
 pub mod config;
 pub mod email;
 pub mod http;
@@ -15,6 +16,7 @@ pub mod password;
 pub mod session;
 pub mod signing;
 pub mod telemetry;
+pub mod tenant;
 pub mod tokens;
 pub mod totp;
 

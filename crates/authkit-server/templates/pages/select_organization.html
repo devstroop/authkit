@@ -8,7 +8,6 @@
       <h2 class="brand-headline">{{ crate::i18n::t("brand_headline_select_org")  | safe }}</h2>
       <p class="brand-sub">{{ crate::i18n::t("brand_sub_select_org") }}</p>
     </div>
-    <div class="brand-foot">{{ crate::i18n::t("brand_foot") }}</div>
   </aside>
   <section class="auth-panel">
     <div class="auth-card">
@@ -22,7 +21,7 @@
         <fieldset style="border:0;padding:0;margin:var(--space-3) 0;">
           {% for org in orgs %}
           <label style="display:flex;align-items:center;gap:var(--space-2);padding:var(--space-2) var(--space-3);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:var(--space-2);cursor:pointer;">
-            <input type="radio" name="org_id" value="{{ org.id }}" required>
+            <input type="radio" name="application_id" value="{{ org.id }}" required>
             <span style="font-weight:500;">{{ org.name }}</span>
           </label>
           {% endfor %}

@@ -103,10 +103,14 @@ pub(crate) async fn request_submit(
         return rate_limited(err.retry_after_secs);
     }
 
+    let application_id = crate::tenant::current()
+        .as_ref()
+        .map(|app| app.id().clone());
     let user = tokio::task::spawn_blocking({
         let store = store.clone();
         let email = parsed_email.clone();
-        move || UserRepository::find_by_email(store.as_ref(), &email)
+        let application_id = application_id.clone();
+        move || UserRepository::find_by_email(store.as_ref(), application_id.as_ref(), &email)
     })
     .await
     .ok()

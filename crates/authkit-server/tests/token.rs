@@ -64,6 +64,7 @@ fn fixture() -> Fixture {
     let now = Timestamp::from_millis(1_000);
     let user = User::new(
         typed_id(USER_ID),
+        None,
         Email::parse("token-test@example.com").expect("valid email"),
         DisplayName::parse("Token Test").expect("valid display name"),
         now,
@@ -72,6 +73,9 @@ fn fixture() -> Fixture {
         typed_id(ORGANIZATION_ID),
         Slug::parse("token-test").expect("valid slug"),
         DisplayName::parse("Token Test Org").expect("valid name"),
+        ApplicationKind::Web,
+        true,
+        "token-test.example.com".to_owned(),
         now,
     );
     let membership = Membership::active(
@@ -82,18 +86,18 @@ fn fixture() -> Fixture {
     );
     let application = Application::new(
         typed_id::<ApplicationEntity>(APPLICATION_ID),
-        organization.id().clone(),
         Slug::parse("token-test-app").expect("valid slug"),
         DisplayName::parse("Token Test App").expect("valid name"),
         ApplicationKind::Web,
         true,
+        "token-test.example.com".to_owned(),
         now,
     );
     let secret_hash = hash_client_secret(&PEPPER, CLIENT_SECRET).expect("hashed secret");
     let client = OAuthClient::new(
         typed_id::<OAuthClientEntity>(CLIENT_ROW_ID),
         OAuthClientSpec {
-            application_id: application.id().clone(),
+            application_id: organization.id().clone(),
             client_id: ClientId::parse(CLIENT_ID).expect("valid client id"),
             name: DisplayName::parse("Token Test Client").expect("valid name"),
             client_type: ClientType::Confidential,
@@ -388,7 +392,7 @@ async fn authorization_code_exchange_refresh_rotation_and_reuse_detection() {
     assert_eq!(access_claims["client_id"], CLIENT_ID);
     assert_eq!(
         access_claims[authkit_server::tokens::ORGANIZATION_CLAIM],
-        format!("org_{ORGANIZATION_ID}")
+        format!("app_{ORGANIZATION_ID}")
     );
     let id_claims = jwt_payload(id_token);
     assert_eq!(id_claims["nonce"], "nonce-123");
@@ -498,6 +502,84 @@ async fn reused_authorization_code_is_rejected() {
 }
 
 #[tokio::test]
+async fn authorization_code_exchange_rejects_unknown_code() {
+    let fixture = fixture_async().await;
+    let request = [
+        ("grant_type", "authorization_code"),
+        ("code", "totally-unknown-code-value"),
+        ("redirect_uri", REDIRECT_URI),
+        ("code_verifier", VERIFIER),
+    ];
+
+    let (status, _, body) = token_request(&fixture, &request).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"], "invalid_grant");
+    cleanup(fixture).await;
+}
+
+#[tokio::test]
+async fn authorization_code_rejects_mismatched_redirect_uri() {
+    let fixture = fixture_async().await;
+    let (session_token, _) = create_session(&fixture).await;
+    let code = issue_code(&fixture, &session_token, &["openid"], None).await;
+    let request = [
+        ("grant_type", "authorization_code"),
+        ("code", code.as_str()),
+        ("redirect_uri", "https://evil.example.com/callback"),
+        ("code_verifier", VERIFIER),
+    ];
+
+    let (status, _, body) = token_request(&fixture, &request).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"], "invalid_grant");
+    cleanup(fixture).await;
+}
+
+#[tokio::test]
+async fn authorization_code_exchange_rejects_wrong_verifier() {
+    let fixture = fixture_async().await;
+    let (session_token, _) = create_session(&fixture).await;
+    let code = issue_code(&fixture, &session_token, &["openid"], None).await;
+    let request = [
+        ("grant_type", "authorization_code"),
+        ("code", code.as_str()),
+        ("redirect_uri", REDIRECT_URI),
+        ("code_verifier", "wrong-verifier-value-that-does-not-match"),
+    ];
+
+    let (status, _, body) = token_request(&fixture, &request).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"], "invalid_grant");
+    cleanup(fixture).await;
+}
+
+#[tokio::test]
+async fn authorization_code_exchange_requires_code_verifier() {
+    let fixture = fixture_async().await;
+    let (session_token, _) = create_session(&fixture).await;
+    let code = issue_code(&fixture, &session_token, &["openid"], None).await;
+    let request = [
+        ("grant_type", "authorization_code"),
+        ("code", code.as_str()),
+        ("redirect_uri", REDIRECT_URI),
+    ];
+
+    let (status, _, body) = token_request(&fixture, &request).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"], "invalid_request");
+    cleanup(fixture).await;
+}
+
+#[tokio::test]
+async fn token_endpoint_rejects_unknown_grant_type() {
+    let fixture = fixture_async().await;
+    let (status, _, body) = token_request(&fixture, &[("grant_type", "password")]).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"], "unsupported_grant_type");
+    cleanup(fixture).await;
+}
+
+#[tokio::test]
 async fn token_endpoint_rejects_multiple_client_authentication_methods() {
     let fixture = fixture_async().await;
     let (status, _, body) = send(
@@ -548,6 +630,70 @@ async fn wrong_client_secret_is_rejected() {
 }
 
 #[tokio::test]
+async fn refresh_token_grant_requires_refresh_token() {
+    let fixture = fixture_async().await;
+    let (status, _, body) = token_request(&fixture, &[("grant_type", "refresh_token")]).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"], "invalid_request");
+    cleanup(fixture).await;
+}
+
+#[tokio::test]
+async fn refresh_token_grant_rejects_unknown_token() {
+    let fixture = fixture_async().await;
+    let (status, _, body) = token_request(
+        &fixture,
+        &[
+            ("grant_type", "refresh_token"),
+            ("refresh_token", "unknown-refresh-token"),
+        ],
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"], "invalid_grant");
+    cleanup(fixture).await;
+}
+
+#[tokio::test]
+async fn client_credentials_rejects_unauthorized_scope() {
+    let fixture = fixture_async().await;
+    let (status, _, body) = token_request(
+        &fixture,
+        &[
+            ("grant_type", "client_credentials"),
+            ("scope", "admin:super"),
+        ],
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"], "invalid_scope");
+    cleanup(fixture).await;
+}
+
+#[tokio::test]
+async fn client_credentials_rejects_unknown_client() {
+    let fixture = fixture_async().await;
+    let bad = STANDARD.encode(format!("unknown-client:{}", CLIENT_SECRET));
+    let (status, _, body) = send(
+        app(&fixture),
+        Method::POST,
+        "/oauth2/token",
+        &[
+            (
+                "content-type",
+                "application/x-www-form-urlencoded".to_owned(),
+            ),
+            ("authorization", format!("Basic {bad}")),
+        ],
+        Body::from(token_form(&[("grant_type", "client_credentials")])),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(json(&body)["error"], "invalid_client");
+    cleanup(fixture).await;
+}
+
+#[tokio::test]
 async fn client_credentials_issues_no_refresh_or_id_token() {
     let fixture = fixture_async().await;
     let (status, _, body) = token_request(
@@ -573,6 +719,53 @@ async fn client_credentials_issues_no_refresh_or_id_token() {
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
+    cleanup(fixture).await;
+}
+
+#[tokio::test]
+async fn userinfo_requires_bearer_token() {
+    let fixture = fixture_async().await;
+    let (status, _, _) = send(
+        app(&fixture),
+        Method::GET,
+        "/oauth2/userinfo",
+        &[],
+        Body::empty(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    cleanup(fixture).await;
+}
+
+#[tokio::test]
+async fn userinfo_rejects_token_with_wrong_algorithm() {
+    let fixture = fixture_async().await;
+    let (session_token, _) = create_session(&fixture).await;
+    let code = issue_code(&fixture, &session_token, &["openid"], None).await;
+    let request = [
+        ("grant_type", "authorization_code"),
+        ("code", code.as_str()),
+        ("redirect_uri", REDIRECT_URI),
+        ("code_verifier", VERIFIER),
+    ];
+    let (status, _, body) = token_request(&fixture, &request).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let access = body["access_token"].as_str().expect("access token");
+
+    // Tamper: rebuild the JWT with alg=none and an empty signature.
+    let payload = access.split('.').nth(1).expect("payload");
+    let header = URL_SAFE_NO_PAD.encode(r#"{"alg":"none","typ":"at+jwt"}"#);
+    let none_token = format!("{header}.{payload}.");
+
+    let (status, _, _) = send(
+        app(&fixture),
+        Method::GET,
+        "/oauth2/userinfo",
+        &[("authorization", format!("Bearer {none_token}"))],
+        Body::empty(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
     cleanup(fixture).await;
 }
 
@@ -647,6 +840,108 @@ async fn revocation_revokes_the_refresh_family() {
 }
 
 #[tokio::test]
+async fn revocation_requires_token_parameter() {
+    let fixture = fixture_async().await;
+    let (status, _, body) = send(
+        app(&fixture),
+        Method::POST,
+        "/oauth2/revoke",
+        &[
+            (
+                "content-type",
+                "application/x-www-form-urlencoded".to_owned(),
+            ),
+            ("authorization", basic_header()),
+        ],
+        Body::from(token_form(&[])),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(json(&body)["error"], "invalid_request");
+    cleanup(fixture).await;
+}
+
+#[tokio::test]
+async fn revocation_of_access_token_returns_success() {
+    let fixture = fixture_async().await;
+    let (session_token, _) = create_session(&fixture).await;
+    let code = issue_code(&fixture, &session_token, &["openid"], None).await;
+    let request = [
+        ("grant_type", "authorization_code"),
+        ("code", code.as_str()),
+        ("redirect_uri", REDIRECT_URI),
+        ("code_verifier", VERIFIER),
+    ];
+    let (status, _, body) = token_request(&fixture, &request).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let access = body["access_token"].as_str().expect("access token");
+
+    let (status, _, _) = send(
+        app(&fixture),
+        Method::POST,
+        "/oauth2/revoke",
+        &[
+            (
+                "content-type",
+                "application/x-www-form-urlencoded".to_owned(),
+            ),
+            ("authorization", basic_header()),
+        ],
+        Body::from(token_form(&[("token", access)])),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    cleanup(fixture).await;
+}
+
+#[tokio::test]
+async fn revocation_rejects_wrong_client_credentials() {
+    let fixture = fixture_async().await;
+    let (session_token, _) = create_session(&fixture).await;
+    let code = issue_code(
+        &fixture,
+        &session_token,
+        &["openid", "offline_access"],
+        None,
+    )
+    .await;
+    let (status, _, body) = token_request(
+        &fixture,
+        &[
+            ("grant_type", "authorization_code"),
+            ("code", &code),
+            ("redirect_uri", REDIRECT_URI),
+            ("code_verifier", VERIFIER),
+        ],
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let refresh = body["refresh_token"].as_str().expect("refresh token");
+
+    let bad = STANDARD.encode(format!("{CLIENT_ID}:wrong-secret"));
+    let (status, headers, _) = send(
+        app(&fixture),
+        Method::POST,
+        "/oauth2/revoke",
+        &[
+            (
+                "content-type",
+                "application/x-www-form-urlencoded".to_owned(),
+            ),
+            ("authorization", format!("Basic {bad}")),
+        ],
+        Body::from(token_form(&[
+            ("token", refresh),
+            ("token_type_hint", "refresh_token"),
+        ])),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(headers[header::WWW_AUTHENTICATE], "Basic realm=\"token\"");
+    cleanup(fixture).await;
+}
+
+#[tokio::test]
 async fn logout_validates_redirect_and_revokes_the_session() {
     let fixture = fixture_async().await;
     let (session_token, _) = create_session(&fixture).await;
@@ -714,6 +1009,25 @@ async fn logout_validates_redirect_and_revokes_the_session() {
     assert_eq!(status, StatusCode::OK);
     assert!(headers.get(header::LOCATION).is_none());
     assert!(body.contains("Signed out"));
+    cleanup(fixture).await;
+}
+
+#[tokio::test]
+async fn logout_with_malformed_id_token_hint_still_signs_out() {
+    let fixture = fixture_async().await;
+    let (session_token, _) = create_session(&fixture).await;
+
+    let (status, headers, _) = send(
+        app(&fixture),
+        Method::GET,
+        "/oauth2/logout?id_token_hint=not-a-jwt",
+        &[("cookie", format!("authkit_session={session_token}"))],
+        Body::empty(),
+    )
+    .await;
+    // Should not crash; either signed-out page or redirect.
+    assert!(status == StatusCode::OK || status == StatusCode::SEE_OTHER);
+    let _ = headers;
     cleanup(fixture).await;
 }
 

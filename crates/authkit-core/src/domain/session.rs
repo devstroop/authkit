@@ -1,5 +1,5 @@
 use crate::domain::DomainError;
-use crate::domain::id::{Id, OrganizationEntity, SessionEntity, UserEntity};
+use crate::domain::id::{ApplicationEntity, Id, SessionEntity, UserEntity};
 use crate::domain::secret::SecretHash;
 use crate::domain::time::Timestamp;
 
@@ -26,7 +26,7 @@ pub enum SessionStatus {
 pub struct Session {
     id: Id<SessionEntity>,
     user_id: Id<UserEntity>,
-    organization_id: Option<Id<OrganizationEntity>>,
+    application_id: Option<Id<ApplicationEntity>>,
     audience: SessionAudience,
     token_hash: SecretHash,
     status: SessionStatus,
@@ -45,7 +45,7 @@ impl Session {
     pub fn new(
         id: Id<SessionEntity>,
         user_id: Id<UserEntity>,
-        organization_id: Option<Id<OrganizationEntity>>,
+        application_id: Option<Id<ApplicationEntity>>,
         audience: SessionAudience,
         token_hash: SecretHash,
         now: Timestamp,
@@ -67,7 +67,7 @@ impl Session {
         Ok(Self {
             id,
             user_id,
-            organization_id,
+            application_id,
             audience,
             token_hash,
             status: SessionStatus::Active,
@@ -89,7 +89,7 @@ impl Session {
     pub fn restore(
         id: Id<SessionEntity>,
         user_id: Id<UserEntity>,
-        organization_id: Option<Id<OrganizationEntity>>,
+        application_id: Option<Id<ApplicationEntity>>,
         audience: SessionAudience,
         token_hash: SecretHash,
         status: SessionStatus,
@@ -104,7 +104,7 @@ impl Session {
         let mut session = Self::new(
             id,
             user_id,
-            organization_id,
+            application_id,
             audience,
             token_hash,
             created_at,
@@ -153,8 +153,8 @@ impl Session {
     }
 
     /// Returns the optional organization scope.
-    pub const fn organization_id(&self) -> Option<&Id<OrganizationEntity>> {
-        self.organization_id.as_ref()
+    pub const fn application_id(&self) -> Option<&Id<ApplicationEntity>> {
+        self.application_id.as_ref()
     }
 
     /// Returns the session audience.

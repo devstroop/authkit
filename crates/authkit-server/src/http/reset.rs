@@ -115,10 +115,14 @@ pub(crate) async fn request_reset_submit(
             Some(s) => s.store().clone(),
             None => return unavailable(),
         };
+        let application_id = crate::tenant::current()
+            .as_ref()
+            .map(|app| app.id().clone());
         let user = tokio::task::spawn_blocking({
             let store = store.clone();
             let email = parsed_email.clone();
-            move || UserRepository::find_by_email(store.as_ref(), &email)
+            let application_id = application_id.clone();
+            move || UserRepository::find_by_email(store.as_ref(), application_id.as_ref(), &email)
         })
         .await
         .ok()
@@ -678,7 +682,7 @@ fn unavailable() -> Response {
         .into_response()
 }
 
-fn random_token() -> String {
+pub(crate) fn random_token() -> String {
     use rand_core::{OsRng, RngCore};
     let mut bytes = [0u8; 32];
     OsRng.fill_bytes(&mut bytes);
@@ -686,7 +690,7 @@ fn random_token() -> String {
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
 }
 
-fn hash_token(value: &str, pepper: &[u8]) -> authkit_core::domain::SecretHash {
+pub(crate) fn hash_token(value: &str, pepper: &[u8]) -> authkit_core::domain::SecretHash {
     use hmac::{Hmac, Mac};
     use sha2::Sha256;
     let mut mac = Hmac::<Sha256>::new_from_slice(pepper).expect("hmac");

@@ -978,7 +978,7 @@ async fn reject_context(
 ) {
     if let Err(error) = service
         .record_rejection(
-            Some(context.tenant().organization_id().clone()),
+            Some(context.tenant().application_id().clone()),
             actor,
             Some(context.client().id().as_str()),
             request_id,

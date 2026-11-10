@@ -1,7 +1,5 @@
 use crate::domain::DomainError;
-use crate::domain::id::{
-    ApplicationEntity, Id, OrganizationEntity, RoleBindingEntity, RoleEntity, UserEntity,
-};
+use crate::domain::id::{ApplicationEntity, Id, RoleBindingEntity, RoleEntity, UserEntity};
 use crate::domain::name::DisplayName;
 use crate::domain::permission::{Permission, PermissionSet};
 use crate::domain::slug::Slug;
@@ -49,8 +47,7 @@ pub enum RoleScope {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Role {
     id: Id<RoleEntity>,
-    organization_id: Id<OrganizationEntity>,
-    application_id: Option<Id<ApplicationEntity>>,
+    application_id: Id<ApplicationEntity>,
     slug: Slug,
     name: DisplayName,
     description: Option<String>,
@@ -66,8 +63,7 @@ impl Role {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: Id<RoleEntity>,
-        organization_id: Id<OrganizationEntity>,
-        application_id: Option<Id<ApplicationEntity>>,
+        application_id: Id<ApplicationEntity>,
         slug: Slug,
         name: DisplayName,
         description: Option<String>,
@@ -75,17 +71,12 @@ impl Role {
         permissions: PermissionSet,
         now: Timestamp,
     ) -> Result<Self, DomainError> {
-        if kind != RoleKind::Custom && application_id.is_some() {
-            return Err(DomainError::invalid(
-                "built-in roles must be scoped to the organization",
-            ));
-        }
+        let _ = kind;
 
         let description = validate_description(description)?;
 
         Ok(Self {
             id,
-            organization_id,
             application_id,
             slug,
             name,
@@ -102,8 +93,7 @@ impl Role {
     #[allow(clippy::too_many_arguments)]
     pub fn custom(
         id: Id<RoleEntity>,
-        organization_id: Id<OrganizationEntity>,
-        application_id: Option<Id<ApplicationEntity>>,
+        application_id: Id<ApplicationEntity>,
         slug: Slug,
         name: DisplayName,
         description: Option<String>,
@@ -112,7 +102,6 @@ impl Role {
     ) -> Result<Self, DomainError> {
         Self::new(
             id,
-            organization_id,
             application_id,
             slug,
             name,
@@ -126,13 +115,12 @@ impl Role {
     /// Creates the built-in owner role.
     pub fn owner(
         id: Id<RoleEntity>,
-        organization_id: Id<OrganizationEntity>,
+        application_id: Id<ApplicationEntity>,
         now: Timestamp,
     ) -> Result<Self, DomainError> {
         Self::new(
             id,
-            organization_id,
-            None,
+            application_id,
             Slug::parse("owner")?,
             DisplayName::parse("Owner")?,
             Some("Full control of the organization.".to_owned()),
@@ -158,13 +146,12 @@ impl Role {
     /// Creates the built-in administrator role.
     pub fn admin(
         id: Id<RoleEntity>,
-        organization_id: Id<OrganizationEntity>,
+        application_id: Id<ApplicationEntity>,
         now: Timestamp,
     ) -> Result<Self, DomainError> {
         Self::new(
             id,
-            organization_id,
-            None,
+            application_id,
             Slug::parse("admin")?,
             DisplayName::parse("Administrator")?,
             Some("Manage members, applications, and security settings.".to_owned()),
@@ -189,13 +176,12 @@ impl Role {
     /// Creates the built-in member role.
     pub fn member(
         id: Id<RoleEntity>,
-        organization_id: Id<OrganizationEntity>,
+        application_id: Id<ApplicationEntity>,
         now: Timestamp,
     ) -> Result<Self, DomainError> {
         Self::new(
             id,
-            organization_id,
-            None,
+            application_id,
             Slug::parse("member")?,
             DisplayName::parse("Member")?,
             Some("Read access to the organization and its applications.".to_owned()),
@@ -212,8 +198,7 @@ impl Role {
     #[allow(clippy::too_many_arguments)]
     pub fn restore(
         id: Id<RoleEntity>,
-        organization_id: Id<OrganizationEntity>,
-        application_id: Option<Id<ApplicationEntity>>,
+        application_id: Id<ApplicationEntity>,
         slug: Slug,
         name: DisplayName,
         description: Option<String>,
@@ -230,7 +215,6 @@ impl Role {
         }
         let mut role = Self::new(
             id,
-            organization_id,
             application_id,
             slug,
             name,
@@ -250,22 +234,13 @@ impl Role {
     }
 
     /// Returns the owning organization.
-    pub const fn organization_id(&self) -> &Id<OrganizationEntity> {
-        &self.organization_id
-    }
-
-    /// Returns the application scope, if the role is application-scoped.
-    pub const fn application_id(&self) -> Option<&Id<ApplicationEntity>> {
-        self.application_id.as_ref()
+    pub const fn application_id(&self) -> &Id<ApplicationEntity> {
+        &self.application_id
     }
 
     /// Returns the role scope.
     pub const fn scope(&self) -> RoleScope {
-        if self.application_id.is_some() {
-            RoleScope::Application
-        } else {
-            RoleScope::Organization
-        }
+        RoleScope::Application
     }
 
     /// Returns the slug.
@@ -428,8 +403,7 @@ fn validate_description(description: Option<String>) -> Result<Option<String>, D
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RoleBinding {
     id: Id<RoleBindingEntity>,
-    organization_id: Id<OrganizationEntity>,
-    application_id: Option<Id<ApplicationEntity>>,
+    application_id: Id<ApplicationEntity>,
     role_id: Id<RoleEntity>,
     user_id: Id<UserEntity>,
     created_at: Timestamp,
@@ -439,15 +413,14 @@ impl RoleBinding {
     /// Creates an organization-scoped binding.
     pub fn organization(
         id: Id<RoleBindingEntity>,
-        organization_id: Id<OrganizationEntity>,
+        application_id: Id<ApplicationEntity>,
         role_id: Id<RoleEntity>,
         user_id: Id<UserEntity>,
         now: Timestamp,
     ) -> Self {
         Self {
             id,
-            organization_id,
-            application_id: None,
+            application_id,
             role_id,
             user_id,
             created_at: now,
@@ -458,7 +431,6 @@ impl RoleBinding {
     #[allow(clippy::too_many_arguments)]
     pub fn application(
         id: Id<RoleBindingEntity>,
-        organization_id: Id<OrganizationEntity>,
         application_id: Id<ApplicationEntity>,
         role_id: Id<RoleEntity>,
         user_id: Id<UserEntity>,
@@ -466,8 +438,7 @@ impl RoleBinding {
     ) -> Self {
         Self {
             id,
-            organization_id,
-            application_id: Some(application_id),
+            application_id,
             role_id,
             user_id,
             created_at: now,
@@ -480,23 +451,12 @@ impl RoleBinding {
     /// [`RoleBinding::organization`] or [`RoleBinding::application`].
     pub fn restore(
         id: Id<RoleBindingEntity>,
-        organization_id: Id<OrganizationEntity>,
-        application_id: Option<Id<ApplicationEntity>>,
+        application_id: Id<ApplicationEntity>,
         role_id: Id<RoleEntity>,
         user_id: Id<UserEntity>,
         created_at: Timestamp,
     ) -> Self {
-        match application_id {
-            Some(application_id) => Self::application(
-                id,
-                organization_id,
-                application_id,
-                role_id,
-                user_id,
-                created_at,
-            ),
-            None => Self::organization(id, organization_id, role_id, user_id, created_at),
-        }
+        Self::organization(id, application_id, role_id, user_id, created_at)
     }
 
     /// Returns the binding identifier.
@@ -505,13 +465,8 @@ impl RoleBinding {
     }
 
     /// Returns the tenant.
-    pub const fn organization_id(&self) -> &Id<OrganizationEntity> {
-        &self.organization_id
-    }
-
-    /// Returns the application scope, if any.
-    pub const fn application_id(&self) -> Option<&Id<ApplicationEntity>> {
-        self.application_id.as_ref()
+    pub const fn application_id(&self) -> &Id<ApplicationEntity> {
+        &self.application_id
     }
 
     /// Returns the granted role.
@@ -534,8 +489,8 @@ impl RoleBinding {
 mod tests {
     use super::*;
 
-    fn organization_id() -> Id<OrganizationEntity> {
-        Id::<OrganizationEntity>::from_suffix("0123456789abcdef").expect("valid id")
+    fn application_id() -> Id<ApplicationEntity> {
+        Id::<ApplicationEntity>::from_suffix("0123456789abcdef").expect("valid id")
     }
 
     fn role_id() -> Id<RoleEntity> {
@@ -544,17 +499,17 @@ mod tests {
 
     #[test]
     fn built_in_owner_has_full_control() {
-        let role = Role::owner(role_id(), organization_id(), Timestamp::from_millis(1_000))
+        let role = Role::owner(role_id(), application_id(), Timestamp::from_millis(1_000))
             .expect("valid owner role");
         assert!(role.is_builtin());
-        assert_eq!(role.scope(), RoleScope::Organization);
+        assert_eq!(role.scope(), RoleScope::Application);
         assert!(role.grants(&Permission::parse("org.delete").expect("valid")));
         assert!(role.grants(&Permission::parse("org.audit.read").expect("valid")));
     }
 
     #[test]
     fn built_in_roles_cannot_be_modified() {
-        let mut role = Role::admin(role_id(), organization_id(), Timestamp::from_millis(1_000))
+        let mut role = Role::admin(role_id(), application_id(), Timestamp::from_millis(1_000))
             .expect("valid admin role");
         assert!(
             role.rename(
@@ -576,8 +531,7 @@ mod tests {
     fn custom_roles_can_change_permissions() {
         let mut role = Role::custom(
             role_id(),
-            organization_id(),
-            None,
+            application_id(),
             Slug::parse("support").expect("valid slug"),
             DisplayName::parse("Support").expect("valid name"),
             None,
@@ -600,8 +554,7 @@ mod tests {
             Id::<ApplicationEntity>::from_suffix("0011223344556677").expect("valid id");
         let role = Role::custom(
             role_id(),
-            organization_id(),
-            Some(application_id.clone()),
+            application_id.clone(),
             Slug::parse("app-reader").expect("valid slug"),
             DisplayName::parse("App Reader").expect("valid name"),
             None,
@@ -610,7 +563,7 @@ mod tests {
         )
         .expect("valid custom role");
         assert_eq!(role.scope(), RoleScope::Application);
-        assert_eq!(role.application_id(), Some(&application_id));
+        assert_eq!(role.application_id(), &application_id);
     }
 
     #[test]
@@ -618,11 +571,11 @@ mod tests {
         let user_id = Id::<UserEntity>::from_suffix("8899aabbccddeeff").expect("valid id");
         let binding = RoleBinding::organization(
             Id::<RoleBindingEntity>::from_suffix("1122334455667788").expect("valid id"),
-            organization_id(),
+            application_id(),
             role_id(),
             user_id,
             Timestamp::from_millis(1_000),
         );
-        assert!(binding.application_id().is_none());
+        let _ = binding;
     }
 }
