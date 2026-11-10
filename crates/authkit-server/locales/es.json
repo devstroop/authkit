@@ -168,5 +168,11 @@
   "view_docs": "View docs",
   "welcome": "Bienvenido",
   "welcome_back": "Bienvenido de nuevo",
-  "yes": "Sí"
+  "yes": "Sí",
+  "title_admin_applications": "Aprovisionar aplicación",
+  "primary_domain": "Dominio principal",
+  "owner_email": "Correo del propietario",
+  "owner_password": "Contraseña del propietario (solo usuarios nuevos)",
+  "client_name": "Nombre del cliente",
+  "totp_code": "Código TOTP"
 }

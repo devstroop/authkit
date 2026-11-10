@@ -338,5 +338,11 @@
   "view_docs": "View docs",
   "welcome": "Welcome",
   "welcome_back": "Welcome back",
-  "yes": "Yes"
+  "yes": "Yes",
+  "title_admin_applications": "Provision application",
+  "primary_domain": "Primary domain",
+  "owner_email": "Owner email",
+  "owner_password": "Owner password (new users only)",
+  "client_name": "Client name",
+  "totp_code": "TOTP code"
 }

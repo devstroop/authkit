@@ -1,13 +1,13 @@
 {% extends "layouts/admin.html" %}
 {% import "macros/ui.html" as ui %}
 {% block admin_content %}
-<h1>Provision application</h1>
+<h1>{{ crate::i18n::t("title_admin_applications") }}</h1>
 {% if error != "" %}
-<p style="color:var(--danger);">{{ error }}</p>
+<p class="alert" role="alert">{{ error }}</p>
 {% endif %}
 {% if result.is_some() %}
 <div class="card">
-  <p>Application created: {{ result.as_ref().unwrap().application_id }}</p>
+  <p>Application created: <code>{{ result.as_ref().unwrap().application_id }}</code></p>
   <p>Client ID: <code>{{ result.as_ref().unwrap().client_id }}</code></p>
   <p>Client secret (shown once): <code>{{ result.as_ref().unwrap().client_secret }}</code></p>
 </div>
@@ -15,17 +15,23 @@
 <div class="card">
   <form method="post" action="/admin/applications">
     <input type="hidden" name="_csrf" value="{{ csrf }}">
-    <label>Slug<input name="slug" required></label>
-    <label>Name<input name="name" required></label>
-    <label>Primary domain<input name="primary_domain" required></label>
-    <label>Owner email<input name="owner_email" type="email" required></label>
-    <label>Owner password (new users only)<input name="owner_password" type="password"></label>
-    <label>Client name<input name="client_name"></label>
-    <label>Client type<select name="client_type"><option value="confidential">confidential</option><option value="public">public</option></select></label>
-    <label>Redirect URI<input name="redirect_uri"></label>
-    <label>Scopes<input name="scopes" placeholder="openid profile email"></label>
-    <label>TOTP code<input name="code" required></label>
-    <button type="submit">Provision</button>
+    {{ ui::text_input("slug", crate::i18n::t("slug"), "text", "") }}
+    {{ ui::text_input("name", crate::i18n::t("name"), "text", "") }}
+    {{ ui::text_input("primary_domain", crate::i18n::t("primary_domain"), "text", "") }}
+    {{ ui::text_input("owner_email", crate::i18n::t("owner_email"), "email", "email") }}
+    {{ ui::text_input("owner_password", crate::i18n::t("owner_password"), "password", "new-password") }}
+    {{ ui::text_input("client_name", crate::i18n::t("client_name"), "text", "") }}
+    <label class="field">
+      <span class="field-label">{{ crate::i18n::t("client_type") }}</span>
+      <select class="input" name="client_type">
+        <option value="confidential">confidential</option>
+        <option value="public">public</option>
+      </select>
+    </label>
+    {{ ui::text_input("redirect_uri", crate::i18n::t("redirect_uri"), "url", "") }}
+    {{ ui::text_input("scopes", crate::i18n::t("scopes"), "text", "") }}
+    {{ ui::text_input("code", crate::i18n::t("totp_code"), "text", "one-time-code") }}
+    {{ ui::button(crate::i18n::t("create")) }}
   </form>
 </div>
 {% endblock %}
