@@ -14,15 +14,15 @@ Related documents:
 
 ## 1. Modeling principles
 
-1. **Organizations are tenants.** An organization (also called a workspace in the UI) owns
-   memberships, applications, role definitions, and tenant audit. Tenant isolation is
-   enforced by carrying an explicit organization ID through every tenant-scoped use case.
-2. **Applications are surfaces, not tenants.** An application is a web app, admin app,
-   client app, or service surface owned by one organization. It can have multiple OAuth
-   clients. It does not own users or memberships.
-3. **Users are deployment-global identities.** A user can belong to several organizations
-   with different roles. Email is unique across the deployment, normalized at the
-   boundary.
+1. **Applications are tenants.** An application owns an isolated user pool,
+   memberships, role definitions, OAuth clients, its primary domain, and tenant audit.
+   Tenant isolation is enforced by carrying an explicit application ID through every
+   tenant-scoped use case. (See [ADR-0011](adr/0011-applications-are-tenants.md);
+   supersedes the previous organization-as-tenant model.)
+2. **Organizations are removed.** Grouping inside an application is expressed with
+   memberships and roles; a dedicated lightweight group entity is a future option.
+3. **Users are application-scoped identities.** A user belongs to exactly one application
+   (tenant). Email is unique within an application, normalized at the boundary.
 4. **Authorization is composed, not hard-coded.** Built-in roles provide safe defaults,
    but permissions are granular strings and roles are sets of permissions. Application and
    organization roles are separate scopes. AuthKit system administration is a separate,
@@ -41,12 +41,12 @@ Related documents:
 
 ```mermaid
 erDiagram
+    APPLICATION ||--o{ USER : contains
     USER ||--o{ CREDENTIAL : has
     USER ||--o{ MEMBERSHIP : joins
-    ORGANIZATION ||--o{ MEMBERSHIP : contains
-    ORGANIZATION ||--o{ APPLICATION : owns
-    ORGANIZATION ||--o{ ROLE : defines
-    ORGANIZATION ||--o{ AUDIT_EVENT : records
+    APPLICATION ||--o{ MEMBERSHIP : contains
+    APPLICATION ||--o{ ROLE : defines
+    APPLICATION ||--o{ AUDIT_EVENT : records
     APPLICATION ||--o{ OAUTH_CLIENT : exposes
     APPLICATION ||--o{ ROLE_BINDING : scopes
     ROLE ||--o{ ROLE_PERMISSION : grants
@@ -72,13 +72,14 @@ explain ownership.
 
 ### 3.1 User
 
-A global identity. Users do not belong to an organization directly; membership is a
-separate entity. A user may be suspended without deleting memberships or audit history.
+An identity scoped to exactly one application (tenant). A user may be suspended without
+deleting memberships or audit history. Users are not shared across applications.
 
 | Field | Type | Notes |
 | --- | --- | --- |
 | `id` | text | Prefixed ID, for example `usr_...`. Primary key. |
-| `email` | text | Normalized lowercase, trimmed. Unique deployment-wide. |
+| `application_id` | text | FK to application. Immutable after creation. |
+| `email` | text | Normalized lowercase, trimmed. Unique per application. |
 | `email_verified_at` | integer nullable | Epoch milliseconds. Set only by a verified flow. |
 | `display_name` | text | User-editable. Not an authorization input. |
 | `status` | text | `active`, `suspended`, `deleted`. Check-constrained. |
@@ -96,15 +97,20 @@ Rules:
   the user. Direct identifiers in audit are minimized or pseudonymized according to
   deployment retention policy.
 
-### 3.2 Organization (workspace)
+### 3.2 Application (tenant)
 
-The tenant boundary.
+The tenant boundary and product surface. An application owns an isolated user pool,
+memberships, role definitions, OAuth clients, its primary domain, and tenant audit.
+(See [ADR-0011](adr/0011-applications-are-tenants.md).)
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `id` | text | `org_...`. |
-| `slug` | text | Unique, lowercase ASCII, URL-safe. Public identifier. |
+| `id` | text | `app_...`. |
+| `slug` | text | Unique deployment-wide, lowercase ASCII, URL-safe. Public identifier. |
 | `name` | text | Display name. |
+| `kind` | text | `web`, `admin`, `native`, `service`, `cli` (extensible, check-constrained). |
+| `first_party` | integer | `0`/`1`. Set by a system administrator or trusted deployment config. |
+| `primary_domain` | text | Lowercase hostname. Unique deployment-wide. Routing key for host → application resolution. |
 | `status` | text | `active`, `suspended`, `deleted`. |
 | `settings` | text | JSON object serialized as text. Validated by the application. |
 | `created_at`, `updated_at` | integer | Epoch milliseconds. |
@@ -113,49 +119,16 @@ The tenant boundary.
 Rules:
 
 - The slug is unique deployment-wide. Renaming a slug may break bookmarks; the old slug is
-  not silently redirected unless a deployment enables aliases. **Decision pending:**
-  organization slug aliases.
-- Suspending an organization blocks new authorizations and administrative changes but does
+  not silently redirected unless a deployment enables aliases.
+- Suspending an application blocks new authorizations and administrative changes but does
   not delete data. Existing sessions and tokens are revoked by an explicit operation, not
   implicitly by a status read on every request.
-- Tenant-scoped tables carry `org_id`. A query without an `org_id` predicate is allowed
-  only in system-administration code and deployment-level maintenance.
-
-### 3.3 Application
-
-A product surface owned by exactly one organization. Examples: "Console", "Admin",
-"Desktop", "API". An application is not a tenant and must not be used as an isolation
-boundary.
-
-| Field | Type | Notes |
-| --- | --- | --- |
-| `id` | text | `app_...`. |
-| `org_id` | text | FK to organization. Immutable after creation. |
-| `slug` | text | Unique within the organization. |
-| `name` | text | Display name. |
-| `kind` | text | `web`, `admin`, `native`, `service`, `cli` (extensible, check-constrained). |
-| `first_party` | integer | `0`/`1`. Set by a system administrator or trusted deployment config. |
-| `status` | text | `active`, `disabled`. |
-| `created_at`, `updated_at` | integer | Epoch milliseconds. |
-| `version` | integer | Concurrency control. |
-
-Why applications are not tenants:
-
-- Tenant isolation is about who can see and administer data, billing boundaries, and
-  membership. Applications are deployable surfaces that share the organization's users,
-  roles, and audit.
-- A user with one membership should be able to use every application in that organization
-  without accepting a separate membership per app.
-- OAuth clients are already the correct unit for "a web client" or "a CLI client". Making
-  applications tenants duplicates that concept and creates cross-tenant token problems.
+- Tenant-scoped tables carry `application_id`. A query without an `application_id`
+  predicate is allowed only in system-administration code and deployment-level maintenance.
 - The same application can expose a browser BFF client and a service client with different
   credentials, redirect URIs, and scopes.
-
-Cross-organization access is not modeled in v1. If a future "partner application" feature
-is needed, it should be an explicit grant or organization link, not an application that
-belongs to two organizations. **Decision pending:** whether applications may later be
-shared across organizations. V1 binds each application to one organization; a shared
-application would require a separate organization-selection and consent design.
+- Cross-application access is not modeled in v1. A future shared-application feature must
+  be an explicit grant, not an application owned by two tenants.
 
 ### 3.4 OAuth client
 
@@ -219,8 +192,8 @@ Links a user to an organization.
 
 Constraints and rules:
 
-- Unique `(org_id, user_id)`.
-- Only `active` memberships grant organization permissions.
+- Unique `(application_id, user_id)`.
+- Only `active` memberships grant application permissions.
 - Removing a membership revokes that user's sessions scoped to the organization and
   refresh families issued for its applications. **Decision pending:** whether removal
   revokes global sessions or only organization-scoped authorization.
@@ -236,39 +209,35 @@ Constraints and rules:
 
 ### 3.6 Role, permission, and role binding
 
-Roles are named sets of permissions. Tenant roles have two scopes:
+Roles are named sets of permissions. Since the application is the tenant, role scoping
+collapses to a single level:
 
 | Scope | Owner | Examples |
 | --- | --- | --- |
-| Organization | One organization | `org.member.manage`, `org.application.manage`, `org.audit.read` |
-| Application | One application within an organization | `app.client.manage`, `app.user.read`, `app.audit.read` |
+| Application (tenant) | One application | `app.member.manage`, `app.client.manage`, `app.user.read`, `app.audit.read` |
 
 System administration is not a tenant role. System administrators are a separate,
 deployment-level record with a distinct authorization path and audit events, as described
 in [Architecture](architecture.md#3-planes-and-boundaries).
 
-Organization and application roles are composable: organizations can create custom roles
-from the permission catalog, subject to the permissions the actor may delegate. The v1
-organization roles (`owner`, `admin`, `member`) are seeded and immutable. Application
-built-in roles (`admin`, `operator`, `viewer`) are planned; v1 supports custom
-application-scoped roles.
+The v1 application roles (`owner`, `admin`, `member`) are seeded and immutable. Custom
+application-scoped roles are supported; the previous "organization role" and
+"application role" distinction is removed.
 
-The v1 organization permission catalog is:
+The v1 application (tenant) permission catalog is:
 
 | Permission | Owner | Admin | Member |
 | --- | --- | --- | --- |
-| `org.read` | yes | yes | yes |
-| `org.manage` | yes | yes | no |
-| `org.delete` | yes | no | no |
-| `org.member.read` | yes | yes | no |
-| `org.member.manage` | yes | yes | no |
-| `org.role.read` | yes | yes | no |
-| `org.role.manage` | yes | yes | no |
-| `org.application.read` | yes | yes | yes |
-| `org.application.manage` | yes | yes | no |
-| `org.client.manage` | yes | yes | no |
-| `org.session.manage` | yes | yes | no |
-| `org.audit.read` | yes | yes | no |
+| `app.read` | yes | yes | yes |
+| `app.manage` | yes | yes | no |
+| `app.delete` | yes | no | no |
+| `app.member.read` | yes | yes | no |
+| `app.member.manage` | yes | yes | no |
+| `app.role.read` | yes | yes | no |
+| `app.role.manage` | yes | yes | no |
+| `app.client.manage` | yes | yes | no |
+| `app.session.manage` | yes | yes | no |
+| `app.audit.read` | yes | yes | no |
 
 The catalog is code-defined and migrated with the application. A custom role may include
 only permissions the granting administrator holds.
@@ -278,9 +247,7 @@ only permissions the granting administrator holds.
 | Field | Type | Notes |
 | --- | --- | --- |
 | `id` | text | `rol_...`. |
-| `org_id` | text | Required. Tenant-owned. |
-| `application_id` | text nullable | Set only for application-scoped roles. |
-| `scope` | text | `organization` or `application`; derived from `application_id`. |
+| `application_id` | text | Required. Tenant-owned. |
 | `kind` | text | `owner`, `admin`, `member`, or `custom`. |
 | `key` | text | Stable machine key (slug), unique within the scope. |
 | `name` | text | Display name. |
@@ -307,31 +274,25 @@ authorization review possible.
 | `id` | text | `rbd_...`. |
 | `role_id` | text | FK. |
 | `user_id` | text | Subject. v1 supports users only. |
-| `org_id` | text | Tenant scope, required even for application roles. |
-| `application_id` | text nullable | Required for application-scoped bindings. |
+| `application_id` | text | Tenant scope, required. |
 | `created_at` | integer | Epoch milliseconds. |
 | `created_by` | text | Actor user ID or `system`. |
 
 Constraints:
 
-- Unique `(role_id, user_id, org_id, application_id)` with a portable treatment of nulls.
-  Because SQLite, Postgres, and D1 differ on unique-null semantics, use a non-null
-  `scope_key` column (for example `org` or `app_<id>`) in the uniqueness constraint, or
-  enforce uniqueness with a guarded insert plus a unique index on a generated scope string.
-- A binding requires an active membership in the same organization. Application bindings
-  additionally require access to that application through the organization.
+- Unique `(role_id, user_id, application_id)`.
+- A binding requires an active membership in the same application.
 - Role escalation is prevented in the application layer: an actor cannot grant a
   permission it does not hold, and cannot grant a role it does not hold.
 - Built-in owner membership is represented by a binding to the seeded `owner` role. The
-  last-owner invariant protects against orphaning an organization.
+  last-owner invariant protects against orphaning an application.
 
 Permission evaluation:
 
 ```text
-can(actor, permission, scope):
-  require active membership(actor, org)
-  require scope.application_id belongs to org (if present)
-  union permissions from role bindings for actor at org scope and matching app scope
+can(actor, permission, application):
+  require active membership(actor, application)
+  union permissions from role bindings for actor at application scope
   allow if permission is present, otherwise deny
 ```
 
@@ -427,7 +388,7 @@ Rules:
   is never logged.
 - Cookies are host-only, `Secure`, `HttpOnly`, `SameSite=Lax`, and use the `__Host-` prefix
   where compatible. No `Domain` attribute.
-- Rotate the session token on successful login, privilege change, organization switch that
+- Rotate the session token on successful login, privilege change, application switch that
   changes authorization, and periodic rotation. Rotation creates a new row and revokes the
   old one with `rotated_from` for traceability.
 - Idle and absolute timeouts are configuration. Last-seen updates are throttled to avoid a
@@ -475,7 +436,7 @@ audited. If a code is replayed, revoke the tokens issued from it where traceable
 | `created_at`, `updated_at` | integer | Epoch milliseconds. |
 | `revoked_at` | integer nullable | Consent withdrawal. |
 
-Consent is per user, client, and organization. Scopes not covered by a prior consent
+Consent is per user, client, and application. Scopes not covered by a prior consent
 require a new consent screen. First-party auto-consent is **Decision pending**; if enabled,
 it must still be visible in the UI and auditable.
 
@@ -547,7 +508,7 @@ Rules:
   created/activated/retired times, version.
 - `deployment_setting`: key/value with typed validation. Used only for deployment-level
   configuration that must be editable at runtime; secrets are not stored here.
-- `organization_invitation`: org, email, inviter, intended role bindings, token hash,
+- `application_invitation`: application, email, inviter, intended role bindings, token hash,
   expiry, status.
 
 ## 4. Identifier strategy
@@ -576,27 +537,20 @@ aud_01J...
 
 ### 5.1 Tenant integrity
 
-- Every tenant-owned table has `org_id NOT NULL` and an index beginning with `org_id` for
-  its common access path.
-- Application-scoped rows carry both `org_id` and `application_id`; the repository verifies
-  that the application belongs to the organization. Do not rely on a join in every query to
-  enforce this.
+- Every tenant-owned table has `application_id NOT NULL` and an index beginning with
+  `application_id` for its common access path.
 - Foreign keys are declared and enabled. SQLite requires `PRAGMA foreign_keys = ON`; D1 and
-  Postgres enforce them, but the application still checks ownership because a foreign key
-  cannot express "application belongs to this tenant" without a composite key.
-- Composite foreign keys may be used where practical:
-  `(application_id, org_id) REFERENCES application(id, org_id)`. This is portable across
-  SQLite, Postgres, and D1 but requires a unique index on the referenced pair.
-- Dedicated system-admin queries are the only ones allowed to omit `org_id`. They live in
-  a separate module and are audited.
+  Postgres enforce them.
+- Dedicated system-admin queries are the only ones allowed to omit `application_id`. They
+  live in a separate module and are audited.
 
 ### 5.2 Uniqueness
 
 | Constraint | Notes |
 | --- | --- |
-| `user.email` | Normalized lowercase, unique deployment-wide. |
-| `organization.slug` | Unique deployment-wide. |
-| `application (org_id, slug)` | Unique within tenant. |
+| `user (application_id, email)` | Normalized lowercase, unique per application. |
+| `application.slug` | Unique deployment-wide. |
+| `application.primary_domain` | Unique deployment-wide. |
 | `oauth_client.client_id` | Unique deployment-wide. |
 | `oauth_client_redirect_uri (client_id, uri)` | Exact-match uniqueness. |
 | `membership (org_id, user_id)` | One membership row per pair. |
@@ -698,10 +652,25 @@ CREATE TABLE organization (
   updated_at  INTEGER NOT NULL,
   version     INTEGER NOT NULL DEFAULT 1
 );
-CREATE UNIQUE INDEX organization_slug_uq ON organization (slug);
+CREATE TABLE application (
+  id             TEXT PRIMARY KEY,
+  slug           TEXT NOT NULL,
+  name           TEXT NOT NULL,
+  kind           TEXT NOT NULL CHECK (kind IN ('web','admin','native','service','cli')),
+  first_party    INTEGER NOT NULL DEFAULT 0 CHECK (first_party IN (0,1)),
+  primary_domain TEXT NOT NULL,
+  status         TEXT NOT NULL CHECK (status IN ('active','suspended','deleted')),
+  settings       TEXT NOT NULL DEFAULT '{}',
+  created_at     INTEGER NOT NULL,
+  updated_at     INTEGER NOT NULL,
+  version        INTEGER NOT NULL DEFAULT 1
+);
+CREATE UNIQUE INDEX application_slug_uq ON application (slug);
+CREATE UNIQUE INDEX application_domain_uq ON application (primary_domain);
 
 CREATE TABLE user_account (
   id                TEXT PRIMARY KEY,
+  application_id    TEXT NOT NULL REFERENCES application(id),
   email             TEXT NOT NULL,
   email_display     TEXT,
   email_verified_at INTEGER,
@@ -711,26 +680,11 @@ CREATE TABLE user_account (
   updated_at        INTEGER NOT NULL,
   version           INTEGER NOT NULL DEFAULT 1
 );
-CREATE UNIQUE INDEX user_account_email_uq ON user_account (email);
-
-CREATE TABLE application (
-  id          TEXT PRIMARY KEY,
-  org_id      TEXT NOT NULL REFERENCES organization(id),
-  slug        TEXT NOT NULL,
-  name        TEXT NOT NULL,
-  kind        TEXT NOT NULL CHECK (kind IN ('web','admin','native','service','cli')),
-  first_party INTEGER NOT NULL DEFAULT 0 CHECK (first_party IN (0,1)),
-  status      TEXT NOT NULL CHECK (status IN ('active','disabled')),
-  created_at  INTEGER NOT NULL,
-  updated_at  INTEGER NOT NULL,
-  version     INTEGER NOT NULL DEFAULT 1,
-  UNIQUE (org_id, slug),
-  UNIQUE (id, org_id)
-);
+CREATE UNIQUE INDEX user_account_app_email_uq ON user_account (application_id, email);
 
 CREATE TABLE membership (
   id          TEXT PRIMARY KEY,
-  org_id      TEXT NOT NULL REFERENCES organization(id),
+  application_id TEXT NOT NULL REFERENCES application(id),
   user_id     TEXT NOT NULL REFERENCES user_account(id),
   status      TEXT NOT NULL CHECK (status IN ('invited','active','suspended','removed')),
   invited_by  TEXT REFERENCES user_account(id),
@@ -738,8 +692,9 @@ CREATE TABLE membership (
   created_at  INTEGER NOT NULL,
   updated_at  INTEGER NOT NULL,
   version     INTEGER NOT NULL DEFAULT 1,
-  UNIQUE (org_id, user_id)
+  UNIQUE (application_id, user_id)
 );
+CREATE INDEX membership_app_idx ON membership (application_id);
 
 CREATE TABLE session (
   id              TEXT PRIMARY KEY,
@@ -747,7 +702,7 @@ CREATE TABLE session (
   token_hash      TEXT NOT NULL,
   csrf_hash       TEXT NOT NULL,
   audience        TEXT NOT NULL CHECK (audience IN ('ui','admin','both')),
-  active_org_id   TEXT REFERENCES organization(id),
+  active_application_id TEXT REFERENCES application(id),
   auth_time       INTEGER NOT NULL,
   amr             TEXT NOT NULL DEFAULT '[]',
   idle_expires_at INTEGER NOT NULL,
@@ -765,7 +720,7 @@ CREATE INDEX session_user_idx ON session (user_id, revoked_at, expires_at);
 
 CREATE TABLE audit_event (
   id              TEXT PRIMARY KEY,
-  org_id          TEXT REFERENCES organization(id),
+  application_id  TEXT REFERENCES application(id),
   actor_type      TEXT NOT NULL CHECK (actor_type IN ('user','system','client','anonymous')),
   actor_id        TEXT,
   action          TEXT NOT NULL,
@@ -779,7 +734,7 @@ CREATE TABLE audit_event (
   created_at      INTEGER NOT NULL,
   prev_hash       TEXT
 );
-CREATE INDEX audit_org_time_idx ON audit_event (org_id, created_at);
+CREATE INDEX audit_app_time_idx ON audit_event (application_id, created_at);
 CREATE INDEX audit_actor_time_idx ON audit_event (actor_id, created_at);
 CREATE INDEX audit_action_time_idx ON audit_event (action, created_at);
 ```

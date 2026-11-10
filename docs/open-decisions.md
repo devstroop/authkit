@@ -29,7 +29,7 @@ in the register for traceability; the linked ADR is authoritative.
 | --- | --- | --- | --- | --- |
 | O1 | PKCE for confidential clients | Required; optional | **RFC.** Required for every client | M2 |
 | O2 | `nonce` requirement | Required for all; recommended | Required for OIDC code requests | M2 |
-| O3 | Tenant claim | `org_id`; namespaced; none | Namespaced `https://authkit.dev/org` (final name pending) | M2 |
+| O3 | Tenant claim | `org_id`; namespaced; none | **Resolved by [ADR-0011](adr/0011-applications-are-tenants.md):** per-application `iss` (`https://{primary_domain}`); no separate tenant claim needed. | M2 |
 | O4 | Refresh and ID-token semantics | Rotate ID token; not | Issue a new ID token on refresh only if requested by scope | M2 |
 | O5 | Introspection | v1; later; never | Later. JWT + JWKS is the hot path | M2 |
 | O6 | `form_post` response mode | Support; reject | Reject in v1; revisit on demand | M2 |
@@ -43,11 +43,11 @@ in the register for traceability; the linked ADR is authoritative.
 | D1 | ID format | UUIDv7; ULID; prefixed random | Prefixed UUIDv7 text (`usr_`, `org_`, ...) | M1 |
 | D2 | System administrators | Dedicated table; system-scope binding | Dedicated `system_administrator` table with audited grants | M1 |
 | D3 | Invitations | Standalone aggregate; membership state | Standalone invitation table | M1 |
-| D4 | Application roles | Per application; org-owned with app scope | Org-owned definitions with optional application scope | M1 |
+| D4 | Application roles | Per application; org-owned with app scope | **Resolved by [ADR-0011](adr/0011-applications-are-tenants.md):** single application (tenant) scope; seeded `owner`/`admin`/`member`. | M1 |
 | D5 | Email change effect | Revoke sessions; keep | Revoke other sessions and notify the old address | M1 |
 | D6 | Loopback redirects | Exact; RFC 8252 port wildcard | Exact host/path, any port for loopback only | M2 |
 | D7 | Client-secret overlap | One active; current + previous | One previous secret with an explicit expiry | M2 |
-| D8 | Organization deletion | Operator-only; self-service | Operator-driven, staged, audited | M4 |
+| D8 | Organization deletion | Operator-only; self-service | **Resolved by [ADR-0011](adr/0011-applications-are-tenants.md):** organizations removed; application deletion is operator-driven, staged, audited. | M4 |
 | D9 | Retention defaults | Fixed; per deployment | 30d sessions, 90d audit, 1y refresh family cap | M4 |
 | D10 | Audit tamper evidence | Hash chain; append-only + export | Append-only with signed exports in v1 | M4 |
 
