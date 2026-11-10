@@ -1,17 +1,3 @@
-CREATE TABLE user_account (
-    id                TEXT PRIMARY KEY,
-    application_id    TEXT REFERENCES application (id),
-    email             TEXT NOT NULL,
-    email_verified_at BIGINT,
-    display_name      TEXT NOT NULL,
-    status            TEXT NOT NULL CHECK (status IN ('active', 'suspended', 'deleted')),
-    created_at        BIGINT NOT NULL,
-    updated_at        BIGINT NOT NULL,
-    version           BIGINT NOT NULL
-);
-CREATE UNIQUE INDEX user_account_app_email_uq ON user_account (COALESCE(application_id, ''), email);
-
-
 CREATE TABLE application (
     id          TEXT PRIMARY KEY,
     slug        TEXT NOT NULL,
@@ -25,6 +11,20 @@ CREATE TABLE application (
     version     BIGINT NOT NULL,
     UNIQUE (slug)
 );
+
+CREATE TABLE user_account (
+    id                TEXT PRIMARY KEY,
+    application_id    TEXT REFERENCES application (id),
+    email             TEXT NOT NULL,
+    email_verified_at BIGINT,
+    display_name      TEXT NOT NULL,
+    status            TEXT NOT NULL CHECK (status IN ('active', 'suspended', 'deleted')),
+    created_at        BIGINT NOT NULL,
+    updated_at        BIGINT NOT NULL,
+    version           BIGINT NOT NULL
+);
+CREATE UNIQUE INDEX user_account_app_email_uq ON user_account (COALESCE(application_id, ''), email);
+
 
 CREATE TABLE membership (
     id         TEXT PRIMARY KEY,

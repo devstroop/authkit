@@ -743,7 +743,7 @@ impl SqlStore {
 
 impl OAuthClientRepository for SqlStore {
     fn list(&self, tenant: &TenantContext) -> Result<Vec<OAuthClient>, DomainError> {
-        let sql = self.sql("SELECT id, application_id, application_id, client_id, name, client_type, token_endpoint_auth_method, secret_hash, require_pkce, status, created_at, updated_at, version FROM oauth_client WHERE application_id = ? ORDER BY created_at, id");
+        let sql = self.sql("SELECT id, application_id, client_id, name, client_type, token_endpoint_auth_method, secret_hash, require_pkce, status, created_at, updated_at, version FROM oauth_client WHERE application_id = ? ORDER BY created_at, id");
         let redirect_sql = self.sql("SELECT redirect_uri AS value FROM oauth_client_redirect_uri WHERE client_id = ? ORDER BY position");
         let post_logout_sql = self.sql("SELECT redirect_uri AS value FROM oauth_client_post_logout_redirect_uri WHERE client_id = ? ORDER BY position");
         let scope_sql = self.sql(
@@ -1070,7 +1070,7 @@ impl RoleRepository for SqlStore {
         id: &Id<RoleEntity>,
     ) -> Result<Option<Role>, DomainError> {
         let sql = self.sql(
-            "SELECT id, application_id, application_id, slug, name, description, kind, created_at, updated_at, version FROM role WHERE id = ? AND application_id = ?",
+            "SELECT id, application_id, slug, name, description, kind, created_at, updated_at, version FROM role WHERE id = ? AND application_id = ?",
         );
         let permissions_sql = self.sql(
             "SELECT permission AS value FROM role_permission WHERE role_id = ? ORDER BY position",
@@ -1095,7 +1095,7 @@ impl RoleRepository for SqlStore {
 
     fn list(&self, tenant: &TenantContext) -> Result<Vec<Role>, DomainError> {
         let sql = self.sql(
-            "SELECT id, application_id, application_id, slug, name, description, kind, created_at, updated_at, version FROM role WHERE application_id = ? ORDER BY created_at, id",
+            "SELECT id, application_id, slug, name, description, kind, created_at, updated_at, version FROM role WHERE application_id = ? ORDER BY created_at, id",
         );
         let permissions_sql = self.sql(
             "SELECT role_permission.role_id, role_permission.permission AS value FROM role_permission JOIN role ON role.id = role_permission.role_id WHERE role.application_id = ? ORDER BY role_permission.role_id, role_permission.position",
@@ -1153,7 +1153,7 @@ impl RoleRepository for SqlStore {
 impl RoleBindingRepository for SqlStore {
     fn list(&self, tenant: &TenantContext) -> Result<Vec<RoleBinding>, DomainError> {
         let sql = self.sql(
-            "SELECT id, application_id, application_id, role_id, user_id, created_at FROM role_binding WHERE application_id = ? ORDER BY created_at, id",
+            "SELECT id, application_id, role_id, user_id, created_at FROM role_binding WHERE application_id = ? ORDER BY created_at, id",
         );
         self.block_on(async {
             let rows = sqlx::query(&sql)
@@ -1171,7 +1171,7 @@ impl RoleBindingRepository for SqlStore {
         user_id: &Id<UserEntity>,
     ) -> Result<Vec<RoleBinding>, DomainError> {
         let sql = self.sql(
-            "SELECT id, application_id, application_id, role_id, user_id, created_at FROM role_binding WHERE application_id = ? AND user_id = ? ORDER BY created_at, id",
+            "SELECT id, application_id, role_id, user_id, created_at FROM role_binding WHERE application_id = ? AND user_id = ? ORDER BY created_at, id",
         );
         self.block_on(async {
             let rows = sqlx::query(&sql)
@@ -1214,7 +1214,7 @@ impl AuthorizationCodeRepository for SqlStore {
         id: &Id<AuthorizationCodeEntity>,
     ) -> Result<Option<AuthorizationCode>, DomainError> {
         let sql = self.sql(
-            "SELECT id, application_id, application_id, client_id, user_id, code_hash, redirect_uri, pkce_challenge, nonce, auth_time, session_id, created_at, expires_at, consumed_at, version FROM authorization_code WHERE id = ? AND application_id = ?",
+            "SELECT id, application_id, client_id, user_id, code_hash, redirect_uri, pkce_challenge, nonce, auth_time, session_id, created_at, expires_at, consumed_at, version FROM authorization_code WHERE id = ? AND application_id = ?",
         );
         self.find_authorization_code(sql, id.as_str(), Some(tenant.application_id().as_str()))
     }
@@ -1225,7 +1225,7 @@ impl AuthorizationCodeRepository for SqlStore {
         hash: &SecretHash,
     ) -> Result<Option<AuthorizationCode>, DomainError> {
         let sql = self.sql(
-            "SELECT id, application_id, application_id, client_id, user_id, code_hash, redirect_uri, pkce_challenge, nonce, auth_time, session_id, created_at, expires_at, consumed_at, version FROM authorization_code WHERE application_id = ? AND code_hash = ?",
+            "SELECT id, application_id, client_id, user_id, code_hash, redirect_uri, pkce_challenge, nonce, auth_time, session_id, created_at, expires_at, consumed_at, version FROM authorization_code WHERE application_id = ? AND code_hash = ?",
         );
         self.find_authorization_code_by_hash(sql, tenant.application_id().as_str(), hash.as_str())
     }

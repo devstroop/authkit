@@ -1116,11 +1116,10 @@ async fn insert_authorization_code(
     ensure_tenant(tenant, code.application_id())?;
     ensure_client_tenant(dialect, tx, tenant, code.client_id()).await?;
     let sql = dialect.placeholders(
-        "INSERT INTO authorization_code (id, application_id, application_id, client_id, user_id, code_hash, redirect_uri, pkce_challenge, nonce, auth_time, session_id, created_at, expires_at, consumed_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO authorization_code (id, application_id, client_id, user_id, code_hash, redirect_uri, pkce_challenge, nonce, auth_time, session_id, created_at, expires_at, consumed_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     );
     match sqlx::query(&sql)
         .bind(code.id().as_str())
-        .bind(code.application_id().as_str())
         .bind(code.application_id().as_str())
         .bind(code.client_id().as_str())
         .bind(code.user_id().as_str())
