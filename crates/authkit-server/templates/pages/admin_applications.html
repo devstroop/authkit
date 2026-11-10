@@ -12,26 +12,35 @@
   <p>Client secret (shown once): <code>{{ result.as_ref().unwrap().client_secret }}</code></p>
 </div>
 {% endif %}
-<div class="card">
-  <form method="post" action="/admin/applications">
-    <input type="hidden" name="_csrf" value="{{ csrf }}">
-    {{ ui::text_input("slug", crate::i18n::t("slug"), "text", "") }}
-    {{ ui::text_input("name", crate::i18n::t("name"), "text", "") }}
-    {{ ui::text_input("primary_domain", crate::i18n::t("primary_domain"), "text", "") }}
-    {{ ui::text_input("owner_email", crate::i18n::t("owner_email"), "email", "email") }}
-    {{ ui::text_input("owner_password", crate::i18n::t("owner_password"), "password", "new-password") }}
-    {{ ui::text_input("client_name", crate::i18n::t("client_name"), "text", "") }}
-    <label class="field">
-      <span class="field-label">{{ crate::i18n::t("client_type") }}</span>
-      <select class="input" name="client_type">
-        <option value="confidential">confidential</option>
-        <option value="public">public</option>
-      </select>
-    </label>
-    {{ ui::text_input("redirect_uri", crate::i18n::t("redirect_uri"), "url", "") }}
-    {{ ui::text_input("scopes", crate::i18n::t("scopes"), "text", "") }}
-    {{ ui::text_input("code", crate::i18n::t("totp_code"), "text", "one-time-code") }}
-    {{ ui::button(crate::i18n::t("create")) }}
-  </form>
+<div style="margin:var(--space-5) 0 var(--space-3);">
+  <button type="button" class="btn btn-primary" style="width:auto;" onclick="document.getElementById('provision-app-dialog').showModal()">{{ crate::i18n::t("create") }}</button>
 </div>
+<dialog id="provision-app-dialog" class="modal">
+  <div class="modal-header">
+    <h2>{{ crate::i18n::t("title_admin_applications") }}</h2>
+    <button type="button" class="modal-close" onclick="document.getElementById('provision-app-dialog').close()" aria-label="Close">×</button>
+  </div>
+  <div class="modal-body">
+    <form method="post" action="/admin/applications">
+      <input type="hidden" name="_csrf" value="{{ csrf }}">
+      {{ ui::text_input("slug", crate::i18n::t("slug"), "text", "") }}
+      {{ ui::text_input("name", crate::i18n::t("name"), "text", "") }}
+      {{ ui::text_input("primary_domain", crate::i18n::t("primary_domain"), "text", "") }}
+      {{ ui::text_input("owner_email", crate::i18n::t("owner_email"), "email", "email") }}
+      {{ ui::text_input("owner_password", crate::i18n::t("owner_password"), "password", "new-password") }}
+      {{ ui::text_input("client_name", crate::i18n::t("client_name"), "text", "") }}
+      <label class="field">
+        <span class="field-label">{{ crate::i18n::t("client_type") }}</span>
+        <select class="input" name="client_type">
+          <option value="confidential">confidential</option>
+          <option value="public">public</option>
+        </select>
+      </label>
+      {{ ui::text_input("redirect_uri", crate::i18n::t("redirect_uri"), "url", "") }}
+      {{ ui::text_input("scopes", crate::i18n::t("scopes"), "text", "") }}
+      {{ ui::text_input("code", crate::i18n::t("totp_code"), "text", "one-time-code") }}
+      {{ ui::button(crate::i18n::t("create")) }}
+    </form>
+  </div>
+</dialog>
 {% endblock %}
