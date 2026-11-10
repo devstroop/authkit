@@ -1,12 +1,12 @@
 use crate::domain::DomainError;
-use crate::domain::id::{DomainEntity, Id, OrganizationEntity};
+use crate::domain::id::{ApplicationEntity, DomainEntity, Id};
 use crate::domain::time::Timestamp;
 
 /// A verified (or pending) email domain belonging to an organization.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Domain {
     id: Id<DomainEntity>,
-    organization_id: Id<OrganizationEntity>,
+    application_id: Id<ApplicationEntity>,
     domain: String,
     verification_token: String,
     verified_at: Option<Timestamp>,
@@ -19,7 +19,7 @@ pub struct Domain {
 impl Domain {
     pub fn new(
         id: Id<DomainEntity>,
-        organization_id: Id<OrganizationEntity>,
+        application_id: Id<ApplicationEntity>,
         domain: String,
         verification_token: String,
         now: Timestamp,
@@ -29,7 +29,7 @@ impl Domain {
         }
         Ok(Self {
             id,
-            organization_id,
+            application_id,
             domain,
             verification_token,
             verified_at: None,
@@ -42,7 +42,7 @@ impl Domain {
     #[allow(clippy::too_many_arguments)]
     pub fn restore(
         id: Id<DomainEntity>,
-        organization_id: Id<OrganizationEntity>,
+        application_id: Id<ApplicationEntity>,
         domain: String,
         verification_token: String,
         verified_at: Option<Timestamp>,
@@ -52,7 +52,7 @@ impl Domain {
     ) -> Result<Self, DomainError> {
         Ok(Self {
             id,
-            organization_id,
+            application_id,
             domain,
             verification_token,
             verified_at,
@@ -65,8 +65,8 @@ impl Domain {
     pub const fn id(&self) -> &Id<DomainEntity> {
         &self.id
     }
-    pub const fn organization_id(&self) -> &Id<OrganizationEntity> {
-        &self.organization_id
+    pub const fn application_id(&self) -> &Id<ApplicationEntity> {
+        &self.application_id
     }
     pub fn domain(&self) -> &str {
         &self.domain
@@ -112,7 +112,7 @@ mod tests {
     fn new_domain_unverified() {
         let d = Domain::new(
             Id::<DomainEntity>::from_suffix("0123456789abcdef").unwrap(),
-            Id::<OrganizationEntity>::from_suffix("0123456789abcdef").unwrap(),
+            Id::<ApplicationEntity>::from_suffix("0123456789abcdef").unwrap(),
             "example.com".to_owned(),
             "token".to_owned(),
             Timestamp::from_millis(1000),

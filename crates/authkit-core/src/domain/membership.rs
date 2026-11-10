@@ -1,5 +1,5 @@
 use crate::domain::DomainError;
-use crate::domain::id::{Id, MembershipEntity, OrganizationEntity, UserEntity};
+use crate::domain::id::{ApplicationEntity, Id, MembershipEntity, UserEntity};
 use crate::domain::time::Timestamp;
 
 /// The lifecycle state of a membership.
@@ -19,7 +19,7 @@ pub enum MembershipStatus {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Membership {
     id: Id<MembershipEntity>,
-    organization_id: Id<OrganizationEntity>,
+    application_id: Id<ApplicationEntity>,
     user_id: Id<UserEntity>,
     status: MembershipStatus,
     invited_by: Option<Id<UserEntity>>,
@@ -33,14 +33,14 @@ impl Membership {
     /// Creates an unaccepted invitation state.
     pub fn invited(
         id: Id<MembershipEntity>,
-        organization_id: Id<OrganizationEntity>,
+        application_id: Id<ApplicationEntity>,
         user_id: Id<UserEntity>,
         invited_by: Option<Id<UserEntity>>,
         now: Timestamp,
     ) -> Self {
         Self {
             id,
-            organization_id,
+            application_id,
             user_id,
             status: MembershipStatus::Invited,
             invited_by,
@@ -54,13 +54,13 @@ impl Membership {
     /// Creates an active membership.
     pub fn active(
         id: Id<MembershipEntity>,
-        organization_id: Id<OrganizationEntity>,
+        application_id: Id<ApplicationEntity>,
         user_id: Id<UserEntity>,
         now: Timestamp,
     ) -> Self {
         Self {
             id,
-            organization_id,
+            application_id,
             user_id,
             status: MembershipStatus::Active,
             invited_by: None,
@@ -78,7 +78,7 @@ impl Membership {
     #[allow(clippy::too_many_arguments)]
     pub fn restore(
         id: Id<MembershipEntity>,
-        organization_id: Id<OrganizationEntity>,
+        application_id: Id<ApplicationEntity>,
         user_id: Id<UserEntity>,
         status: MembershipStatus,
         invited_by: Option<Id<UserEntity>>,
@@ -118,7 +118,7 @@ impl Membership {
 
         Ok(Self {
             id,
-            organization_id,
+            application_id,
             user_id,
             status,
             invited_by,
@@ -135,8 +135,8 @@ impl Membership {
     }
 
     /// Returns the tenant.
-    pub const fn organization_id(&self) -> &Id<OrganizationEntity> {
-        &self.organization_id
+    pub const fn application_id(&self) -> &Id<ApplicationEntity> {
+        &self.application_id
     }
 
     /// Returns the member.
@@ -250,7 +250,7 @@ mod tests {
     fn membership() -> Membership {
         Membership::active(
             Id::<MembershipEntity>::from_suffix("0123456789abcdef").expect("valid id"),
-            Id::<OrganizationEntity>::from_suffix("fedcba9876543210").expect("valid id"),
+            Id::<ApplicationEntity>::from_suffix("fedcba9876543210").expect("valid id"),
             Id::<UserEntity>::from_suffix("0011223344556677").expect("valid id"),
             Timestamp::from_millis(1_000),
         )
@@ -260,7 +260,7 @@ mod tests {
     fn invited_members_are_not_active() {
         let membership = Membership::invited(
             Id::<MembershipEntity>::from_suffix("0123456789abcdef").expect("valid id"),
-            Id::<OrganizationEntity>::from_suffix("fedcba9876543210").expect("valid id"),
+            Id::<ApplicationEntity>::from_suffix("fedcba9876543210").expect("valid id"),
             Id::<UserEntity>::from_suffix("0011223344556677").expect("valid id"),
             None,
             Timestamp::from_millis(1_000),
@@ -273,7 +273,7 @@ mod tests {
     fn activation_records_join_time_once() {
         let mut membership = Membership::invited(
             Id::<MembershipEntity>::from_suffix("0123456789abcdef").expect("valid id"),
-            Id::<OrganizationEntity>::from_suffix("fedcba9876543210").expect("valid id"),
+            Id::<ApplicationEntity>::from_suffix("fedcba9876543210").expect("valid id"),
             Id::<UserEntity>::from_suffix("0011223344556677").expect("valid id"),
             None,
             Timestamp::from_millis(1_000),

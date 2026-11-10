@@ -1,6 +1,6 @@
 CREATE TABLE brand (
   id          TEXT PRIMARY KEY,
-  org_id      TEXT REFERENCES organization(id),
+  application_id      TEXT REFERENCES application(id),
   domain      TEXT,
   title       TEXT NOT NULL,
   logo_url    TEXT,
@@ -11,4 +11,4 @@ CREATE TABLE brand (
   version     INTEGER NOT NULL
 );
 CREATE INDEX brand_domain_idx ON brand (domain);
-CREATE INDEX brand_org_idx ON brand (org_id);
+CREATE INDEX brand_application_idx ON brand (application_id);

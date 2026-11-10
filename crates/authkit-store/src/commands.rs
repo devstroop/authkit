@@ -1,9 +1,9 @@
 use authkit_core::domain::DomainError;
-use authkit_core::domain::application::Application;
+use authkit_core::domain::application::{Application, ApplicationKind};
 use authkit_core::domain::audit::AuditEvent;
 use authkit_core::domain::credential::{Credential, CredentialData};
 use authkit_core::domain::grant::{AuthorizationCode, Consent, RefreshFamily, RefreshToken};
-use authkit_core::domain::id::{ApplicationEntity, Id, OrganizationEntity, RoleEntity};
+use authkit_core::domain::id::{ApplicationEntity, Id, RoleEntity};
 use authkit_core::domain::invitation::Invitation;
 use authkit_core::domain::membership::Membership;
 use authkit_core::domain::oauth_client::OAuthClient;
@@ -162,9 +162,9 @@ async fn apply_command(
 
 fn ensure_tenant(
     tenant: &TenantContext,
-    organization_id: &Id<OrganizationEntity>,
+    application_id: &Id<ApplicationEntity>,
 ) -> Result<(), DomainError> {
-    if tenant.organization_id() != organization_id {
+    if tenant.application_id() != application_id {
         return Err(DomainError::forbidden(
             "the aggregate does not belong to the requested tenant",
         ));
@@ -181,23 +181,17 @@ fn scope_text(scopes: &ScopeSet) -> String {
         .join(" ")
 }
 
-fn scope_key(application_id: Option<&Id<ApplicationEntity>>) -> String {
-    application_id.map_or_else(
-        || "org".to_owned(),
-        |application_id| format!("app_{}", application_id.as_str()),
-    )
-}
-
 async fn insert_user(
     dialect: Dialect,
     tx: &mut Transaction<'_, Any>,
     user: &User,
 ) -> Result<WriteOutcome, DomainError> {
     let sql = dialect.placeholders(
-        "INSERT INTO user_account (id, email, email_verified_at, display_name, status, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO user_account (id, application_id, email, email_verified_at, display_name, status, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     );
     match sqlx::query(&sql)
         .bind(user.id().as_str())
+        .bind(user.application_id().map(|id| id.as_str()))
         .bind(user.email().as_str())
         .bind(user.email_verified_at().map(db_timestamp).transpose()?)
         .bind(user.display_name().as_str())
@@ -252,12 +246,15 @@ async fn insert_organization(
     organization: &Organization,
 ) -> Result<WriteOutcome, DomainError> {
     let sql = dialect.placeholders(
-        "INSERT INTO organization (id, slug, name, status, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO application (id, slug, name, kind, first_party, primary_domain, status, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     );
     match sqlx::query(&sql)
         .bind(organization.id().as_str())
         .bind(organization.slug().as_str())
         .bind(organization.name().as_str())
+        .bind(application_kind_str(ApplicationKind::Web))
+        .bind(db_flag(organization.is_first_party()))
+        .bind(organization.primary_domain())
         .bind(organization_status_str(organization.status()))
         .bind(db_timestamp(organization.created_at())?)
         .bind(db_timestamp(organization.updated_at())?)
@@ -277,11 +274,12 @@ async fn update_organization(
     expected_version: u64,
 ) -> Result<WriteOutcome, DomainError> {
     let sql = dialect.placeholders(
-        "UPDATE organization SET slug = ?, name = ?, status = ?, updated_at = ?, version = ? WHERE id = ? AND version = ?",
+        "UPDATE application SET slug = ?, name = ?, primary_domain = ?, status = ?, updated_at = ?, version = ? WHERE id = ? AND version = ?",
     );
     let result = sqlx::query(&sql)
         .bind(organization.slug().as_str())
         .bind(organization.name().as_str())
+        .bind(organization.primary_domain())
         .bind(organization_status_str(organization.status()))
         .bind(db_timestamp(organization.updated_at())?)
         .bind(db_version(organization.version())?)
@@ -293,7 +291,7 @@ async fn update_organization(
     classify_update(
         dialect,
         tx,
-        "organization",
+        "application",
         "id",
         organization.id().as_str(),
         None,
@@ -308,13 +306,13 @@ async fn insert_membership(
     tenant: &TenantContext,
     membership: &Membership,
 ) -> Result<WriteOutcome, DomainError> {
-    ensure_tenant(tenant, membership.organization_id())?;
+    ensure_tenant(tenant, membership.application_id())?;
     let sql = dialect.placeholders(
-        "INSERT INTO membership (id, org_id, user_id, status, invited_by, joined_at, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO membership (id, application_id, user_id, status, invited_by, joined_at, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     );
     match sqlx::query(&sql)
         .bind(membership.id().as_str())
-        .bind(membership.organization_id().as_str())
+        .bind(membership.application_id().as_str())
         .bind(membership.user_id().as_str())
         .bind(membership_status_str(membership.status()))
         .bind(membership.invited_by().map(|id| id.as_str()))
@@ -337,9 +335,9 @@ async fn update_membership(
     membership: &Membership,
     expected_version: u64,
 ) -> Result<WriteOutcome, DomainError> {
-    ensure_tenant(tenant, membership.organization_id())?;
+    ensure_tenant(tenant, membership.application_id())?;
     let sql = dialect.placeholders(
-        "UPDATE membership SET user_id = ?, status = ?, invited_by = ?, joined_at = ?, updated_at = ?, version = ? WHERE id = ? AND org_id = ? AND version = ?",
+        "UPDATE membership SET user_id = ?, status = ?, invited_by = ?, joined_at = ?, updated_at = ?, version = ? WHERE id = ? AND application_id = ? AND version = ?",
     );
     let result = sqlx::query(&sql)
         .bind(membership.user_id().as_str())
@@ -349,7 +347,7 @@ async fn update_membership(
         .bind(db_timestamp(membership.updated_at())?)
         .bind(db_version(membership.version())?)
         .bind(membership.id().as_str())
-        .bind(membership.organization_id().as_str())
+        .bind(membership.application_id().as_str())
         .bind(db_version(expected_version)?)
         .execute(&mut **tx)
         .await
@@ -360,7 +358,7 @@ async fn update_membership(
         "membership",
         "id",
         membership.id().as_str(),
-        Some(membership.organization_id().as_str()),
+        Some(membership.application_id().as_str()),
         result.rows_affected(),
     )
     .await
@@ -372,16 +370,16 @@ async fn insert_invitation(
     tenant: &TenantContext,
     invitation: &Invitation,
 ) -> Result<WriteOutcome, DomainError> {
-    ensure_tenant(tenant, invitation.organization_id())?;
+    ensure_tenant(tenant, invitation.application_id())?;
     for role_id in invitation.role_ids() {
         ensure_role_tenant(dialect, tx, tenant, role_id).await?;
     }
     let sql = dialect.placeholders(
-        "INSERT INTO invitation (id, org_id, email, token_hash, invited_by, status, expires_at, accepted_at, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO invitation (id, application_id, email, token_hash, invited_by, status, expires_at, accepted_at, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     );
     match sqlx::query(&sql)
         .bind(invitation.id().as_str())
-        .bind(invitation.organization_id().as_str())
+        .bind(invitation.application_id().as_str())
         .bind(invitation.email().as_str())
         .bind(invitation.token_hash().as_str())
         .bind(invitation.invited_by().as_str())
@@ -406,12 +404,12 @@ async fn update_invitation(
     invitation: &Invitation,
     expected_version: u64,
 ) -> Result<WriteOutcome, DomainError> {
-    ensure_tenant(tenant, invitation.organization_id())?;
+    ensure_tenant(tenant, invitation.application_id())?;
     for role_id in invitation.role_ids() {
         ensure_role_tenant(dialect, tx, tenant, role_id).await?;
     }
     let sql = dialect.placeholders(
-        "UPDATE invitation SET email = ?, token_hash = ?, invited_by = ?, status = ?, expires_at = ?, accepted_at = ?, updated_at = ?, version = ? WHERE id = ? AND org_id = ? AND version = ?",
+        "UPDATE invitation SET email = ?, token_hash = ?, invited_by = ?, status = ?, expires_at = ?, accepted_at = ?, updated_at = ?, version = ? WHERE id = ? AND application_id = ? AND version = ?",
     );
     let result = sqlx::query(&sql)
         .bind(invitation.email().as_str())
@@ -423,7 +421,7 @@ async fn update_invitation(
         .bind(db_timestamp(invitation.updated_at())?)
         .bind(db_version(invitation.version())?)
         .bind(invitation.id().as_str())
-        .bind(invitation.organization_id().as_str())
+        .bind(invitation.application_id().as_str())
         .bind(db_version(expected_version)?)
         .execute(&mut **tx)
         .await
@@ -434,7 +432,7 @@ async fn update_invitation(
         "invitation",
         "id",
         invitation.id().as_str(),
-        Some(invitation.organization_id().as_str()),
+        Some(invitation.application_id().as_str()),
         result.rows_affected(),
     )
     .await?;
@@ -481,20 +479,19 @@ async fn insert_invitation_roles(
 async fn insert_application(
     dialect: Dialect,
     tx: &mut Transaction<'_, Any>,
-    tenant: &TenantContext,
+    _tenant: &TenantContext,
     application: &Application,
 ) -> Result<WriteOutcome, DomainError> {
-    ensure_tenant(tenant, application.organization_id())?;
     let sql = dialect.placeholders(
-        "INSERT INTO application (id, org_id, slug, name, kind, first_party, status, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO application (id, slug, name, kind, first_party, primary_domain, status, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     );
     match sqlx::query(&sql)
         .bind(application.id().as_str())
-        .bind(application.organization_id().as_str())
         .bind(application.slug().as_str())
         .bind(application.name().as_str())
         .bind(application_kind_str(application.kind()))
         .bind(db_flag(application.is_first_party()))
+        .bind(application.primary_domain())
         .bind(application_status_str(application.status()))
         .bind(db_timestamp(application.created_at())?)
         .bind(db_timestamp(application.updated_at())?)
@@ -510,24 +507,23 @@ async fn insert_application(
 async fn update_application(
     dialect: Dialect,
     tx: &mut Transaction<'_, Any>,
-    tenant: &TenantContext,
+    _tenant: &TenantContext,
     application: &Application,
     expected_version: u64,
 ) -> Result<WriteOutcome, DomainError> {
-    ensure_tenant(tenant, application.organization_id())?;
     let sql = dialect.placeholders(
-        "UPDATE application SET slug = ?, name = ?, kind = ?, first_party = ?, status = ?, updated_at = ?, version = ? WHERE id = ? AND org_id = ? AND version = ?",
+        "UPDATE application SET slug = ?, name = ?, kind = ?, first_party = ?, primary_domain = ?, status = ?, updated_at = ?, version = ? WHERE id = ? AND version = ?",
     );
     let result = sqlx::query(&sql)
         .bind(application.slug().as_str())
         .bind(application.name().as_str())
         .bind(application_kind_str(application.kind()))
         .bind(db_flag(application.is_first_party()))
+        .bind(application.primary_domain())
         .bind(application_status_str(application.status()))
         .bind(db_timestamp(application.updated_at())?)
         .bind(db_version(application.version())?)
         .bind(application.id().as_str())
-        .bind(application.organization_id().as_str())
         .bind(db_version(expected_version)?)
         .execute(&mut **tx)
         .await
@@ -538,7 +534,7 @@ async fn update_application(
         "application",
         "id",
         application.id().as_str(),
-        Some(application.organization_id().as_str()),
+        None,
         result.rows_affected(),
     )
     .await
@@ -550,7 +546,7 @@ async fn insert_oauth_client(
     tenant: &TenantContext,
     client: &OAuthClient,
 ) -> Result<WriteOutcome, DomainError> {
-    ensure_application_tenant(dialect, tx, tenant, client.application_id()).await?;
+    ensure_tenant(tenant, client.application_id())?;
     let sql = dialect.placeholders(
         "INSERT INTO oauth_client (id, application_id, client_id, name, client_type, token_endpoint_auth_method, secret_hash, require_pkce, status, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     );
@@ -584,9 +580,9 @@ async fn update_oauth_client(
     client: &OAuthClient,
     expected_version: u64,
 ) -> Result<WriteOutcome, DomainError> {
-    ensure_application_tenant(dialect, tx, tenant, client.application_id()).await?;
+    ensure_tenant(tenant, client.application_id())?;
     let sql = dialect.placeholders(
-        "UPDATE oauth_client SET application_id = ?, client_id = ?, name = ?, client_type = ?, token_endpoint_auth_method = ?, secret_hash = ?, require_pkce = ?, status = ?, updated_at = ?, version = ? WHERE id = ? AND application_id IN (SELECT id FROM application WHERE org_id = ?) AND version = ?",
+        "UPDATE oauth_client SET application_id = ?, client_id = ?, name = ?, client_type = ?, token_endpoint_auth_method = ?, secret_hash = ?, require_pkce = ?, status = ?, updated_at = ?, version = ? WHERE id = ? AND application_id = ? AND version = ?",
     );
     let result = sqlx::query(&sql)
         .bind(client.application_id().as_str())
@@ -602,7 +598,7 @@ async fn update_oauth_client(
         .bind(db_timestamp(client.updated_at())?)
         .bind(db_version(client.version())?)
         .bind(client.id().as_str())
-        .bind(tenant.organization_id().as_str())
+        .bind(tenant.application_id().as_str())
         .bind(db_version(expected_version)?)
         .execute(&mut **tx)
         .await
@@ -611,7 +607,7 @@ async fn update_oauth_client(
         dialect,
         tx,
         client.id().as_str(),
-        tenant.organization_id().as_str(),
+        tenant.application_id().as_str(),
         result.rows_affected(),
     )
     .await?;
@@ -900,12 +896,12 @@ async fn insert_session(
     session: &Session,
 ) -> Result<WriteOutcome, DomainError> {
     let sql = dialect.placeholders(
-        "INSERT INTO session (id, user_id, organization_id, audience, token_hash, status, created_at, last_seen_at, idle_expires_at, absolute_expires_at, revoked_at, rotated_from, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO session (id, user_id, application_id, audience, token_hash, status, created_at, last_seen_at, idle_expires_at, absolute_expires_at, revoked_at, rotated_from, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     );
     match sqlx::query(&sql)
         .bind(session.id().as_str())
         .bind(session.user_id().as_str())
-        .bind(session.organization_id().map(|id| id.as_str()))
+        .bind(session.application_id().map(|id| id.as_str()))
         .bind(session_audience_str(session.audience()))
         .bind(session.token_hash().as_str())
         .bind(session_status_str(session.status()))
@@ -931,11 +927,11 @@ async fn update_session(
     expected_version: u64,
 ) -> Result<WriteOutcome, DomainError> {
     let sql = dialect.placeholders(
-        "UPDATE session SET user_id = ?, organization_id = ?, audience = ?, token_hash = ?, status = ?, last_seen_at = ?, idle_expires_at = ?, absolute_expires_at = ?, revoked_at = ?, rotated_from = ?, version = ? WHERE id = ? AND version = ?",
+        "UPDATE session SET user_id = ?, application_id = ?, audience = ?, token_hash = ?, status = ?, last_seen_at = ?, idle_expires_at = ?, absolute_expires_at = ?, revoked_at = ?, rotated_from = ?, version = ? WHERE id = ? AND version = ?",
     );
     let result = sqlx::query(&sql)
         .bind(session.user_id().as_str())
-        .bind(session.organization_id().map(|id| id.as_str()))
+        .bind(session.application_id().map(|id| id.as_str()))
         .bind(session_audience_str(session.audience()))
         .bind(session.token_hash().as_str())
         .bind(session_status_str(session.status()))
@@ -968,18 +964,14 @@ async fn insert_role(
     tenant: &TenantContext,
     role: &Role,
 ) -> Result<WriteOutcome, DomainError> {
-    ensure_tenant(tenant, role.organization_id())?;
-    if let Some(application_id) = role.application_id() {
-        ensure_application_tenant(dialect, tx, tenant, application_id).await?;
-    }
+    ensure_tenant(tenant, role.application_id())?;
     let sql = dialect.placeholders(
-        "INSERT INTO role (id, org_id, application_id, scope_key, slug, name, description, kind, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO role (id, application_id, scope_key, slug, name, description, kind, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     );
     match sqlx::query(&sql)
         .bind(role.id().as_str())
-        .bind(role.organization_id().as_str())
-        .bind(role.application_id().map(|id| id.as_str()))
-        .bind(scope_key(role.application_id()))
+        .bind(role.application_id().as_str())
+        .bind("org")
         .bind(role.slug().as_str())
         .bind(role.name().as_str())
         .bind(role.description())
@@ -1002,16 +994,11 @@ async fn update_role(
     role: &Role,
     expected_version: u64,
 ) -> Result<WriteOutcome, DomainError> {
-    ensure_tenant(tenant, role.organization_id())?;
-    if let Some(application_id) = role.application_id() {
-        ensure_application_tenant(dialect, tx, tenant, application_id).await?;
-    }
+    ensure_tenant(tenant, role.application_id())?;
     let sql = dialect.placeholders(
-        "UPDATE role SET application_id = ?, scope_key = ?, slug = ?, name = ?, description = ?, kind = ?, updated_at = ?, version = ? WHERE id = ? AND org_id = ? AND version = ?",
+        "UPDATE role SET slug = ?, name = ?, description = ?, kind = ?, updated_at = ?, version = ? WHERE id = ? AND application_id = ? AND version = ?",
     );
     let result = sqlx::query(&sql)
-        .bind(role.application_id().map(|id| id.as_str()))
-        .bind(scope_key(role.application_id()))
         .bind(role.slug().as_str())
         .bind(role.name().as_str())
         .bind(role.description())
@@ -1019,7 +1006,7 @@ async fn update_role(
         .bind(db_timestamp(role.updated_at())?)
         .bind(db_version(role.version())?)
         .bind(role.id().as_str())
-        .bind(role.organization_id().as_str())
+        .bind(role.application_id().as_str())
         .bind(db_version(expected_version)?)
         .execute(&mut **tx)
         .await
@@ -1030,7 +1017,7 @@ async fn update_role(
         "role",
         "id",
         role.id().as_str(),
-        Some(role.organization_id().as_str()),
+        Some(role.application_id().as_str()),
         result.rows_affected(),
     )
     .await?;
@@ -1080,19 +1067,15 @@ async fn insert_role_binding(
     tenant: &TenantContext,
     binding: &RoleBinding,
 ) -> Result<WriteOutcome, DomainError> {
-    ensure_tenant(tenant, binding.organization_id())?;
+    ensure_tenant(tenant, binding.application_id())?;
     ensure_role_tenant(dialect, tx, tenant, binding.role_id()).await?;
-    if let Some(application_id) = binding.application_id() {
-        ensure_application_tenant(dialect, tx, tenant, application_id).await?;
-    }
     let sql = dialect.placeholders(
-        "INSERT INTO role_binding (id, org_id, application_id, scope_key, role_id, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO role_binding (id, application_id, scope_key, role_id, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
     );
     match sqlx::query(&sql)
         .bind(binding.id().as_str())
-        .bind(binding.organization_id().as_str())
-        .bind(binding.application_id().map(|id| id.as_str()))
-        .bind(scope_key(binding.application_id()))
+        .bind(binding.application_id().as_str())
+        .bind("org")
         .bind(binding.role_id().as_str())
         .bind(binding.user_id().as_str())
         .bind(db_timestamp(binding.created_at())?)
@@ -1110,10 +1093,10 @@ async fn delete_role_binding(
     tenant: &TenantContext,
     binding_id: &Id<authkit_core::domain::id::RoleBindingEntity>,
 ) -> Result<WriteOutcome, DomainError> {
-    let sql = dialect.placeholders("DELETE FROM role_binding WHERE id = ? AND org_id = ?");
+    let sql = dialect.placeholders("DELETE FROM role_binding WHERE id = ? AND application_id = ?");
     let result = sqlx::query(&sql)
         .bind(binding_id.as_str())
-        .bind(tenant.organization_id().as_str())
+        .bind(tenant.application_id().as_str())
         .execute(&mut **tx)
         .await
         .map_err(map_db_error)?;
@@ -1130,15 +1113,14 @@ async fn insert_authorization_code(
     tenant: &TenantContext,
     code: &AuthorizationCode,
 ) -> Result<WriteOutcome, DomainError> {
-    ensure_tenant(tenant, code.organization_id())?;
-    ensure_application_tenant(dialect, tx, tenant, code.application_id()).await?;
+    ensure_tenant(tenant, code.application_id())?;
     ensure_client_tenant(dialect, tx, tenant, code.client_id()).await?;
     let sql = dialect.placeholders(
-        "INSERT INTO authorization_code (id, org_id, application_id, client_id, user_id, code_hash, redirect_uri, pkce_challenge, nonce, auth_time, session_id, created_at, expires_at, consumed_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO authorization_code (id, application_id, application_id, client_id, user_id, code_hash, redirect_uri, pkce_challenge, nonce, auth_time, session_id, created_at, expires_at, consumed_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     );
     match sqlx::query(&sql)
         .bind(code.id().as_str())
-        .bind(code.organization_id().as_str())
+        .bind(code.application_id().as_str())
         .bind(code.application_id().as_str())
         .bind(code.client_id().as_str())
         .bind(code.user_id().as_str())
@@ -1167,11 +1149,9 @@ async fn update_authorization_code(
     code: &AuthorizationCode,
     expected_version: u64,
 ) -> Result<WriteOutcome, DomainError> {
-    ensure_tenant(tenant, code.organization_id())?;
-    ensure_application_tenant(dialect, tx, tenant, code.application_id()).await?;
     ensure_client_tenant(dialect, tx, tenant, code.client_id()).await?;
     let sql = dialect.placeholders(
-        "UPDATE authorization_code SET application_id = ?, client_id = ?, user_id = ?, code_hash = ?, redirect_uri = ?, pkce_challenge = ?, nonce = ?, auth_time = ?, session_id = ?, expires_at = ?, consumed_at = ?, version = ? WHERE id = ? AND org_id = ? AND version = ?",
+        "UPDATE authorization_code SET application_id = ?, client_id = ?, user_id = ?, code_hash = ?, redirect_uri = ?, pkce_challenge = ?, nonce = ?, auth_time = ?, session_id = ?, expires_at = ?, consumed_at = ?, version = ? WHERE id = ? AND application_id = ? AND version = ?",
     );
     let result = sqlx::query(&sql)
         .bind(code.application_id().as_str())
@@ -1187,7 +1167,7 @@ async fn update_authorization_code(
         .bind(code.consumed_at().map(db_timestamp).transpose()?)
         .bind(db_version(code.version())?)
         .bind(code.id().as_str())
-        .bind(code.organization_id().as_str())
+        .bind(code.application_id().as_str())
         .bind(db_version(expected_version)?)
         .execute(&mut **tx)
         .await
@@ -1198,7 +1178,7 @@ async fn update_authorization_code(
         "authorization_code",
         "id",
         code.id().as_str(),
-        Some(code.organization_id().as_str()),
+        Some(code.application_id().as_str()),
         result.rows_affected(),
     )
     .await?;
@@ -1248,14 +1228,14 @@ async fn insert_consent(
     tenant: &TenantContext,
     consent: &Consent,
 ) -> Result<WriteOutcome, DomainError> {
-    ensure_tenant(tenant, consent.organization_id())?;
+    ensure_tenant(tenant, consent.application_id())?;
     ensure_client_tenant(dialect, tx, tenant, consent.client_id()).await?;
     let sql = dialect.placeholders(
-        "INSERT INTO consent (id, org_id, user_id, client_id, created_at, updated_at, revoked_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO consent (id, application_id, user_id, client_id, created_at, updated_at, revoked_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     );
     match sqlx::query(&sql)
         .bind(consent.id().as_str())
-        .bind(consent.organization_id().as_str())
+        .bind(consent.application_id().as_str())
         .bind(consent.user_id().as_str())
         .bind(consent.client_id().as_str())
         .bind(db_timestamp(consent.created_at())?)
@@ -1277,10 +1257,10 @@ async fn update_consent(
     consent: &Consent,
     expected_version: u64,
 ) -> Result<WriteOutcome, DomainError> {
-    ensure_tenant(tenant, consent.organization_id())?;
+    ensure_tenant(tenant, consent.application_id())?;
     ensure_client_tenant(dialect, tx, tenant, consent.client_id()).await?;
     let sql = dialect.placeholders(
-        "UPDATE consent SET user_id = ?, client_id = ?, updated_at = ?, revoked_at = ?, version = ? WHERE id = ? AND org_id = ? AND version = ?",
+        "UPDATE consent SET user_id = ?, client_id = ?, updated_at = ?, revoked_at = ?, version = ? WHERE id = ? AND application_id = ? AND version = ?",
     );
     let result = sqlx::query(&sql)
         .bind(consent.user_id().as_str())
@@ -1289,7 +1269,7 @@ async fn update_consent(
         .bind(consent.revoked_at().map(db_timestamp).transpose()?)
         .bind(db_version(consent.version())?)
         .bind(consent.id().as_str())
-        .bind(consent.organization_id().as_str())
+        .bind(consent.application_id().as_str())
         .bind(db_version(expected_version)?)
         .execute(&mut **tx)
         .await
@@ -1300,7 +1280,7 @@ async fn update_consent(
         "consent",
         "id",
         consent.id().as_str(),
-        Some(consent.organization_id().as_str()),
+        Some(consent.application_id().as_str()),
         result.rows_affected(),
     )
     .await?;
@@ -1349,14 +1329,14 @@ async fn insert_refresh_family(
     tenant: &TenantContext,
     family: &RefreshFamily,
 ) -> Result<WriteOutcome, DomainError> {
-    ensure_tenant(tenant, family.organization_id())?;
+    ensure_tenant(tenant, family.application_id())?;
     ensure_client_tenant(dialect, tx, tenant, family.client_id()).await?;
     let sql = dialect.placeholders(
-        "INSERT INTO refresh_family (id, org_id, client_id, user_id, scope, session_id, auth_time, created_at, absolute_expires_at, revoked_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO refresh_family (id, application_id, client_id, user_id, scope, session_id, auth_time, created_at, absolute_expires_at, revoked_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     );
     match sqlx::query(&sql)
         .bind(family.id().as_str())
-        .bind(family.organization_id().as_str())
+        .bind(family.application_id().as_str())
         .bind(family.client_id().as_str())
         .bind(family.user_id().as_str())
         .bind(scope_text(family.scopes()))
@@ -1381,10 +1361,10 @@ async fn update_refresh_family(
     family: &RefreshFamily,
     expected_version: u64,
 ) -> Result<WriteOutcome, DomainError> {
-    ensure_tenant(tenant, family.organization_id())?;
+    ensure_tenant(tenant, family.application_id())?;
     ensure_client_tenant(dialect, tx, tenant, family.client_id()).await?;
     let sql = dialect.placeholders(
-        "UPDATE refresh_family SET client_id = ?, user_id = ?, scope = ?, session_id = ?, auth_time = ?, absolute_expires_at = ?, revoked_at = ?, version = ? WHERE id = ? AND org_id = ? AND version = ?",
+        "UPDATE refresh_family SET client_id = ?, user_id = ?, scope = ?, session_id = ?, auth_time = ?, absolute_expires_at = ?, revoked_at = ?, version = ? WHERE id = ? AND application_id = ? AND version = ?",
     );
     let result = sqlx::query(&sql)
         .bind(family.client_id().as_str())
@@ -1396,7 +1376,7 @@ async fn update_refresh_family(
         .bind(family.revoked_at().map(db_timestamp).transpose()?)
         .bind(db_version(family.version())?)
         .bind(family.id().as_str())
-        .bind(family.organization_id().as_str())
+        .bind(family.application_id().as_str())
         .bind(db_version(expected_version)?)
         .execute(&mut **tx)
         .await
@@ -1407,7 +1387,7 @@ async fn update_refresh_family(
         "refresh_family",
         "id",
         family.id().as_str(),
-        Some(family.organization_id().as_str()),
+        Some(family.application_id().as_str()),
         result.rows_affected(),
     )
     .await
@@ -1448,7 +1428,7 @@ async fn update_refresh_token(
 ) -> Result<WriteOutcome, DomainError> {
     ensure_refresh_family_tenant(dialect, tx, tenant, token.family_id()).await?;
     let sql = dialect.placeholders(
-        "UPDATE refresh_token SET family_id = ?, token_hash = ?, expires_at = ?, consumed_at = ?, version = ? WHERE id = ? AND family_id IN (SELECT id FROM refresh_family WHERE org_id = ?) AND version = ?",
+        "UPDATE refresh_token SET family_id = ?, token_hash = ?, expires_at = ?, consumed_at = ?, version = ? WHERE id = ? AND family_id IN (SELECT id FROM refresh_family WHERE application_id = ?) AND version = ?",
     );
     let result = sqlx::query(&sql)
         .bind(token.family_id().as_str())
@@ -1457,7 +1437,7 @@ async fn update_refresh_token(
         .bind(token.consumed_at().map(db_timestamp).transpose()?)
         .bind(db_version(token.version())?)
         .bind(token.id().as_str())
-        .bind(tenant.organization_id().as_str())
+        .bind(tenant.application_id().as_str())
         .bind(db_version(expected_version)?)
         .execute(&mut **tx)
         .await
@@ -1466,7 +1446,7 @@ async fn update_refresh_token(
         dialect,
         tx,
         token.id().as_str(),
-        tenant.organization_id().as_str(),
+        tenant.application_id().as_str(),
         result.rows_affected(),
     )
     .await
@@ -1479,7 +1459,7 @@ async fn insert_audit(
     event: &AuditEvent,
 ) -> Result<WriteOutcome, DomainError> {
     let event_org = event
-        .organization_id()
+        .application_id()
         .ok_or_else(|| DomainError::forbidden("tenant audit events require an organization"))?;
     ensure_tenant(tenant, event_org)?;
     insert_audit_row(dialect, tx, event).await
@@ -1512,14 +1492,14 @@ async fn insert_audit_row(
         .iter()
         .map(|attribute| (attribute.key().to_owned(), attribute.value().to_owned()))
         .collect::<Vec<_>>();
-    let prev_sql = if event.organization_id().is_some() {
-        "SELECT hash FROM audit_event WHERE org_id = ? ORDER BY occurred_at DESC, id DESC LIMIT 1"
+    let prev_sql = if event.application_id().is_some() {
+        "SELECT hash FROM audit_event WHERE application_id = ? ORDER BY occurred_at DESC, id DESC LIMIT 1"
     } else {
-        "SELECT hash FROM audit_event WHERE org_id IS NULL ORDER BY occurred_at DESC, id DESC LIMIT 1"
+        "SELECT hash FROM audit_event WHERE application_id IS NULL ORDER BY occurred_at DESC, id DESC LIMIT 1"
     };
     let prev_sql = dialect.placeholders(prev_sql);
     let mut prev_query = sqlx::query(&prev_sql);
-    if let Some(org) = event.organization_id() {
+    if let Some(org) = event.application_id() {
         prev_query = prev_query.bind(org.as_str());
     }
     let prev_hash: Option<String> = prev_query
@@ -1538,7 +1518,7 @@ async fn insert_audit_row(
         hasher.update(prev.as_bytes());
     }
     hasher.update(event.id().as_str().as_bytes());
-    if let Some(org) = event.organization_id() {
+    if let Some(org) = event.application_id() {
         hasher.update(org.as_str().as_bytes());
     }
     hasher.update(actor_type.as_bytes());
@@ -1557,11 +1537,11 @@ async fn insert_audit_row(
     let hash = format!("{:x}", hasher.finalize());
 
     let sql = dialect.placeholders(
-        "INSERT INTO audit_event (id, org_id, actor_type, actor_id, action, target, occurred_at, attributes, prev_hash, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO audit_event (id, application_id, actor_type, actor_id, action, target, occurred_at, attributes, prev_hash, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     );
     match sqlx::query(&sql)
         .bind(event.id().as_str())
-        .bind(event.organization_id().map(|id| id.as_str()))
+        .bind(event.application_id().map(|id| id.as_str()))
         .bind(actor_type)
         .bind(actor_id)
         .bind(event.action().as_str())
@@ -1578,37 +1558,17 @@ async fn insert_audit_row(
     }
 }
 
-async fn ensure_application_tenant(
-    dialect: Dialect,
-    tx: &mut Transaction<'_, Any>,
-    tenant: &TenantContext,
-    application_id: &Id<ApplicationEntity>,
-) -> Result<(), DomainError> {
-    let sql = dialect.placeholders("SELECT 1 FROM application WHERE id = ? AND org_id = ? LIMIT 1");
-    let found = sqlx::query(&sql)
-        .bind(application_id.as_str())
-        .bind(tenant.organization_id().as_str())
-        .fetch_optional(&mut **tx)
-        .await
-        .map_err(map_db_error)?;
-    if found.is_none() {
-        return Err(DomainError::forbidden(
-            "the application does not belong to the requested tenant",
-        ));
-    }
-    Ok(())
-}
-
 async fn ensure_role_tenant(
     dialect: Dialect,
     tx: &mut Transaction<'_, Any>,
     tenant: &TenantContext,
     role_id: &Id<RoleEntity>,
 ) -> Result<(), DomainError> {
-    let sql = dialect.placeholders("SELECT 1 FROM role WHERE id = ? AND org_id = ? LIMIT 1");
+    let sql =
+        dialect.placeholders("SELECT 1 FROM role WHERE id = ? AND application_id = ? LIMIT 1");
     let found = sqlx::query(&sql)
         .bind(role_id.as_str())
-        .bind(tenant.organization_id().as_str())
+        .bind(tenant.application_id().as_str())
         .fetch_optional(&mut **tx)
         .await
         .map_err(map_db_error)?;
@@ -1627,11 +1587,11 @@ async fn ensure_client_tenant(
     client_id: &Id<authkit_core::domain::id::OAuthClientEntity>,
 ) -> Result<(), DomainError> {
     let sql = dialect.placeholders(
-        "SELECT 1 FROM oauth_client c JOIN application a ON a.id = c.application_id WHERE c.id = ? AND a.org_id = ? LIMIT 1",
+        "SELECT 1 FROM oauth_client c JOIN application a ON a.id = c.application_id WHERE c.id = ? AND a.id = ? LIMIT 1",
     );
     let found = sqlx::query(&sql)
         .bind(client_id.as_str())
-        .bind(tenant.organization_id().as_str())
+        .bind(tenant.application_id().as_str())
         .fetch_optional(&mut **tx)
         .await
         .map_err(map_db_error)?;
@@ -1649,11 +1609,11 @@ async fn ensure_refresh_family_tenant(
     tenant: &TenantContext,
     family_id: &Id<authkit_core::domain::id::RefreshFamilyEntity>,
 ) -> Result<(), DomainError> {
-    let sql =
-        dialect.placeholders("SELECT 1 FROM refresh_family WHERE id = ? AND org_id = ? LIMIT 1");
+    let sql = dialect
+        .placeholders("SELECT 1 FROM refresh_family WHERE id = ? AND application_id = ? LIMIT 1");
     let found = sqlx::query(&sql)
         .bind(family_id.as_str())
-        .bind(tenant.organization_id().as_str())
+        .bind(tenant.application_id().as_str())
         .fetch_optional(&mut **tx)
         .await
         .map_err(map_db_error)?;
@@ -1695,7 +1655,7 @@ async fn classify_update(
     }
     let sql = match tenant_id {
         Some(_) => dialect.placeholders(&format!(
-            "SELECT 1 FROM {table} WHERE {id_column} = ? AND org_id = ? LIMIT 1"
+            "SELECT 1 FROM {table} WHERE {id_column} = ? AND application_id = ? LIMIT 1"
         )),
         None => dialect.placeholders(&format!(
             "SELECT 1 FROM {table} WHERE {id_column} = ? LIMIT 1"
@@ -1727,7 +1687,7 @@ async fn classify_oauth_client_update(
         return Ok(WriteOutcome::Applied);
     }
     let sql = dialect.placeholders(
-        "SELECT 1 FROM oauth_client c JOIN application a ON a.id = c.application_id WHERE c.id = ? AND a.org_id = ? LIMIT 1",
+        "SELECT 1 FROM oauth_client c JOIN application a ON a.id = c.application_id WHERE c.id = ? AND a.id = ? LIMIT 1",
     );
     let exists = sqlx::query(&sql)
         .bind(id)
@@ -1753,7 +1713,7 @@ async fn classify_refresh_token_update(
         return Ok(WriteOutcome::Applied);
     }
     let sql = dialect.placeholders(
-        "SELECT 1 FROM refresh_token t JOIN refresh_family f ON f.id = t.family_id WHERE t.id = ? AND f.org_id = ? LIMIT 1",
+        "SELECT 1 FROM refresh_token t JOIN refresh_family f ON f.id = t.family_id WHERE t.id = ? AND f.application_id = ? LIMIT 1",
     );
     let exists = sqlx::query(&sql)
         .bind(id)

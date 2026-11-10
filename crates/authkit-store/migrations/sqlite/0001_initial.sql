@@ -1,5 +1,6 @@
 CREATE TABLE user_account (
     id                TEXT PRIMARY KEY,
+    application_id    TEXT REFERENCES application (id),
     email             TEXT NOT NULL,
     email_verified_at INTEGER,
     display_name      TEXT NOT NULL,
@@ -8,36 +9,26 @@ CREATE TABLE user_account (
     updated_at        INTEGER NOT NULL,
     version           INTEGER NOT NULL
 );
-CREATE UNIQUE INDEX user_account_email_uq ON user_account (email);
+CREATE UNIQUE INDEX user_account_app_email_uq ON user_account (COALESCE(application_id, ''), email);
 
-CREATE TABLE organization (
-    id         TEXT PRIMARY KEY,
-    slug       TEXT NOT NULL,
-    name       TEXT NOT NULL,
-    status     TEXT NOT NULL CHECK (status IN ('active', 'suspended', 'deleted')),
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL,
-    version    INTEGER NOT NULL
-);
-CREATE UNIQUE INDEX organization_slug_uq ON organization (slug);
 
 CREATE TABLE application (
     id          TEXT PRIMARY KEY,
-    org_id      TEXT NOT NULL REFERENCES organization (id),
     slug        TEXT NOT NULL,
     name        TEXT NOT NULL,
+    primary_domain TEXT NOT NULL DEFAULT '',
     kind        TEXT NOT NULL CHECK (kind IN ('web', 'admin', 'native', 'service', 'cli')),
     first_party INTEGER NOT NULL CHECK (first_party IN (0, 1)),
-    status      TEXT NOT NULL CHECK (status IN ('active', 'disabled')),
+    status      TEXT NOT NULL CHECK (status IN ('active', 'disabled', 'suspended', 'deleted')),
     created_at  INTEGER NOT NULL,
     updated_at  INTEGER NOT NULL,
     version     INTEGER NOT NULL,
-    UNIQUE (org_id, slug)
+    UNIQUE (slug)
 );
 
 CREATE TABLE membership (
     id         TEXT PRIMARY KEY,
-    org_id     TEXT NOT NULL REFERENCES organization (id),
+    application_id     TEXT NOT NULL REFERENCES application (id),
     user_id    TEXT NOT NULL REFERENCES user_account (id),
     status     TEXT NOT NULL CHECK (status IN ('invited', 'active', 'suspended', 'removed')),
     invited_by TEXT REFERENCES user_account (id),
@@ -45,13 +36,12 @@ CREATE TABLE membership (
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     version    INTEGER NOT NULL,
-    UNIQUE (org_id, user_id)
+    UNIQUE (application_id, user_id)
 );
 
 CREATE TABLE role (
     id             TEXT PRIMARY KEY,
-    org_id         TEXT NOT NULL REFERENCES organization (id),
-    application_id TEXT REFERENCES application (id),
+    application_id         TEXT NOT NULL REFERENCES application (id),
     scope_key      TEXT NOT NULL,
     slug           TEXT NOT NULL,
     name           TEXT NOT NULL,
@@ -60,7 +50,7 @@ CREATE TABLE role (
     created_at     INTEGER NOT NULL,
     updated_at     INTEGER NOT NULL,
     version        INTEGER NOT NULL,
-    UNIQUE (org_id, scope_key, slug)
+    UNIQUE (application_id, scope_key, slug)
 );
 
 CREATE TABLE role_permission (
@@ -72,18 +62,17 @@ CREATE TABLE role_permission (
 
 CREATE TABLE role_binding (
     id             TEXT PRIMARY KEY,
-    org_id         TEXT NOT NULL REFERENCES organization (id),
-    application_id TEXT REFERENCES application (id),
+    application_id         TEXT NOT NULL REFERENCES application (id),
     scope_key      TEXT NOT NULL,
     role_id        TEXT NOT NULL REFERENCES role (id),
     user_id        TEXT NOT NULL REFERENCES user_account (id),
     created_at     INTEGER NOT NULL,
-    UNIQUE (org_id, scope_key, role_id, user_id)
+    UNIQUE (application_id, scope_key, role_id, user_id)
 );
 
 CREATE TABLE invitation (
     id         TEXT PRIMARY KEY,
-    org_id     TEXT NOT NULL REFERENCES organization (id),
+    application_id     TEXT NOT NULL REFERENCES application (id),
     email      TEXT NOT NULL,
     token_hash TEXT NOT NULL,
     invited_by TEXT NOT NULL REFERENCES user_account (id),
@@ -180,7 +169,7 @@ CREATE INDEX credential_user_idx ON credential (user_id);
 CREATE TABLE session (
     id                  TEXT PRIMARY KEY,
     user_id             TEXT NOT NULL REFERENCES user_account (id),
-    organization_id     TEXT REFERENCES organization (id),
+    application_id     TEXT REFERENCES application (id),
     audience            TEXT NOT NULL CHECK (audience IN ('account', 'admin')),
     token_hash          TEXT NOT NULL,
     status              TEXT NOT NULL CHECK (status IN ('active', 'revoked')),
@@ -197,7 +186,6 @@ CREATE INDEX session_user_idx ON session (user_id, status, absolute_expires_at);
 
 CREATE TABLE authorization_code (
     id             TEXT PRIMARY KEY,
-    org_id         TEXT NOT NULL REFERENCES organization (id),
     application_id TEXT NOT NULL REFERENCES application (id),
     client_id      TEXT NOT NULL REFERENCES oauth_client (id),
     user_id        TEXT NOT NULL REFERENCES user_account (id),
@@ -221,14 +209,14 @@ CREATE TABLE authorization_code_scope (
 
 CREATE TABLE consent (
     id         TEXT PRIMARY KEY,
-    org_id     TEXT NOT NULL REFERENCES organization (id),
+    application_id     TEXT NOT NULL REFERENCES application (id),
     user_id    TEXT NOT NULL REFERENCES user_account (id),
     client_id  TEXT NOT NULL REFERENCES oauth_client (id),
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     revoked_at INTEGER,
     version    INTEGER NOT NULL,
-    UNIQUE (org_id, user_id, client_id)
+    UNIQUE (application_id, user_id, client_id)
 );
 
 CREATE TABLE consent_scope (
@@ -240,7 +228,7 @@ CREATE TABLE consent_scope (
 
 CREATE TABLE refresh_family (
     id                  TEXT PRIMARY KEY,
-    org_id              TEXT NOT NULL REFERENCES organization (id),
+    application_id              TEXT NOT NULL REFERENCES application (id),
     client_id           TEXT NOT NULL REFERENCES oauth_client (id),
     user_id             TEXT NOT NULL REFERENCES user_account (id),
     created_at          INTEGER NOT NULL,
@@ -264,7 +252,7 @@ CREATE INDEX refresh_token_family_idx ON refresh_token (family_id);
 
 CREATE TABLE audit_event (
     id          TEXT PRIMARY KEY,
-    org_id      TEXT REFERENCES organization (id),
+    application_id      TEXT REFERENCES application (id),
     actor_type  TEXT NOT NULL CHECK (actor_type IN ('user', 'client', 'system', 'anonymous')),
     actor_id    TEXT,
     action      TEXT NOT NULL,
@@ -272,6 +260,6 @@ CREATE TABLE audit_event (
     occurred_at INTEGER NOT NULL,
     attributes  TEXT NOT NULL
 );
-CREATE INDEX audit_event_org_time_idx ON audit_event (org_id, occurred_at);
+CREATE INDEX audit_event_org_time_idx ON audit_event (application_id, occurred_at);
 CREATE INDEX audit_event_actor_time_idx ON audit_event (actor_id, occurred_at);
 CREATE INDEX audit_event_action_time_idx ON audit_event (action, occurred_at);

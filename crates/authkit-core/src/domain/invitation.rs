@@ -1,6 +1,6 @@
 use crate::domain::DomainError;
 use crate::domain::email::Email;
-use crate::domain::id::{Id, InvitationEntity, OrganizationEntity, RoleEntity, UserEntity};
+use crate::domain::id::{ApplicationEntity, Id, InvitationEntity, RoleEntity, UserEntity};
 use crate::domain::secret::SecretHash;
 use crate::domain::time::Timestamp;
 
@@ -19,7 +19,7 @@ pub enum InvitationStatus {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Invitation {
     id: Id<InvitationEntity>,
-    organization_id: Id<OrganizationEntity>,
+    application_id: Id<ApplicationEntity>,
     email: Email,
     token_hash: SecretHash,
     role_ids: Vec<Id<RoleEntity>>,
@@ -37,7 +37,7 @@ impl Invitation {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: Id<InvitationEntity>,
-        organization_id: Id<OrganizationEntity>,
+        application_id: Id<ApplicationEntity>,
         email: Email,
         token_hash: SecretHash,
         role_ids: Vec<Id<RoleEntity>>,
@@ -65,7 +65,7 @@ impl Invitation {
 
         Ok(Self {
             id,
-            organization_id,
+            application_id,
             email,
             token_hash,
             role_ids: unique_roles,
@@ -86,7 +86,7 @@ impl Invitation {
     #[allow(clippy::too_many_arguments)]
     pub fn restore(
         id: Id<InvitationEntity>,
-        organization_id: Id<OrganizationEntity>,
+        application_id: Id<ApplicationEntity>,
         email: Email,
         token_hash: SecretHash,
         role_ids: Vec<Id<RoleEntity>>,
@@ -105,7 +105,7 @@ impl Invitation {
         }
         let mut invitation = Self::new(
             id,
-            organization_id,
+            application_id,
             email,
             token_hash,
             role_ids,
@@ -145,8 +145,8 @@ impl Invitation {
     }
 
     /// Returns the tenant.
-    pub const fn organization_id(&self) -> &Id<OrganizationEntity> {
-        &self.organization_id
+    pub const fn application_id(&self) -> &Id<ApplicationEntity> {
+        &self.application_id
     }
 
     /// Returns the invited email address.
@@ -241,7 +241,7 @@ mod tests {
     fn invitation(now: Timestamp, expires_at: Timestamp) -> Invitation {
         Invitation::new(
             Id::<InvitationEntity>::from_suffix("0123456789abcdef").expect("valid id"),
-            Id::<OrganizationEntity>::from_suffix("fedcba9876543210").expect("valid id"),
+            Id::<ApplicationEntity>::from_suffix("fedcba9876543210").expect("valid id"),
             Email::parse("alice@example.com").expect("valid email"),
             SecretHash::parse("sha256:0123456789abcdef").expect("valid hash"),
             vec![Id::<RoleEntity>::from_suffix("0011223344556677").expect("valid id")],
@@ -258,7 +258,7 @@ mod tests {
         assert!(
             Invitation::new(
                 Id::<InvitationEntity>::from_suffix("0123456789abcdef").expect("valid id"),
-                Id::<OrganizationEntity>::from_suffix("fedcba9876543210").expect("valid id"),
+                Id::<ApplicationEntity>::from_suffix("fedcba9876543210").expect("valid id"),
                 Email::parse("alice@example.com").expect("valid email"),
                 SecretHash::parse("sha256:0123456789abcdef").expect("valid hash"),
                 Vec::new(),
@@ -271,7 +271,7 @@ mod tests {
         assert!(
             Invitation::new(
                 Id::<InvitationEntity>::from_suffix("0123456789abcdef").expect("valid id"),
-                Id::<OrganizationEntity>::from_suffix("fedcba9876543210").expect("valid id"),
+                Id::<ApplicationEntity>::from_suffix("fedcba9876543210").expect("valid id"),
                 Email::parse("alice@example.com").expect("valid email"),
                 SecretHash::parse("sha256:0123456789abcdef").expect("valid hash"),
                 vec![Id::<RoleEntity>::from_suffix("0011223344556677").expect("valid id")],
@@ -304,7 +304,7 @@ mod tests {
         let role = Id::<RoleEntity>::from_suffix("0011223344556677").expect("valid id");
         let invitation = Invitation::new(
             Id::<InvitationEntity>::from_suffix("0123456789abcdef").expect("valid id"),
-            Id::<OrganizationEntity>::from_suffix("fedcba9876543210").expect("valid id"),
+            Id::<ApplicationEntity>::from_suffix("fedcba9876543210").expect("valid id"),
             Email::parse("alice@example.com").expect("valid email"),
             SecretHash::parse("sha256:0123456789abcdef").expect("valid hash"),
             vec![role.clone(), role.clone()],

@@ -1,6 +1,6 @@
 use crate::domain::DomainError;
 use crate::domain::email::Email;
-use crate::domain::id::{Id, UserEntity};
+use crate::domain::id::{ApplicationEntity, Id, UserEntity};
 use crate::domain::name::DisplayName;
 use crate::domain::time::Timestamp;
 
@@ -15,10 +15,11 @@ pub enum UserStatus {
     Deleted,
 }
 
-/// A deployment-global user identity.
+/// A user identity scoped to one application (tenant).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct User {
     id: Id<UserEntity>,
+    application_id: Option<Id<ApplicationEntity>>,
     email: Email,
     email_verified_at: Option<Timestamp>,
     display_name: DisplayName,
@@ -32,12 +33,14 @@ impl User {
     /// Creates an active, unverified user.
     pub fn new(
         id: Id<UserEntity>,
+        application_id: Option<Id<ApplicationEntity>>,
         email: Email,
         display_name: DisplayName,
         now: Timestamp,
     ) -> Self {
         Self {
             id,
+            application_id,
             email,
             email_verified_at: None,
             display_name,
@@ -54,6 +57,7 @@ impl User {
     #[allow(clippy::too_many_arguments)]
     pub fn restore(
         id: Id<UserEntity>,
+        application_id: Option<Id<ApplicationEntity>>,
         email: Email,
         email_verified_at: Option<Timestamp>,
         display_name: DisplayName,
@@ -77,6 +81,7 @@ impl User {
 
         Ok(Self {
             id,
+            application_id,
             email,
             email_verified_at,
             display_name,
@@ -90,6 +95,11 @@ impl User {
     /// Returns the user identifier.
     pub const fn id(&self) -> &Id<UserEntity> {
         &self.id
+    }
+
+    /// Returns the owning application, if any.
+    pub const fn application_id(&self) -> Option<&Id<ApplicationEntity>> {
+        self.application_id.as_ref()
     }
 
     /// Returns the normalized email address.
@@ -224,6 +234,7 @@ mod tests {
     fn user() -> User {
         User::new(
             Id::<UserEntity>::from_suffix("0123456789abcdef").expect("valid id"),
+            Some(Id::<ApplicationEntity>::from_suffix("fedcba9876543210").expect("valid id")),
             Email::parse("alice@example.com").expect("valid email"),
             DisplayName::parse("Alice").expect("valid name"),
             Timestamp::from_millis(1_000),

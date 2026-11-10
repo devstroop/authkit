@@ -1,7 +1,7 @@
 use core::fmt;
 
 use crate::domain::DomainError;
-use crate::domain::id::{AuditEventEntity, Id, OAuthClientEntity, OrganizationEntity, UserEntity};
+use crate::domain::id::{ApplicationEntity, AuditEventEntity, Id, OAuthClientEntity, UserEntity};
 use crate::domain::time::Timestamp;
 use crate::domain::value::ValueError;
 
@@ -208,7 +208,7 @@ impl AuditAttribute {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuditEvent {
     id: Id<AuditEventEntity>,
-    organization_id: Option<Id<OrganizationEntity>>,
+    application_id: Option<Id<ApplicationEntity>>,
     actor: AuditActor,
     action: AuditAction,
     target: Option<AuditTarget>,
@@ -220,7 +220,7 @@ impl AuditEvent {
     /// Creates an audit event.
     pub fn new(
         id: Id<AuditEventEntity>,
-        organization_id: Option<Id<OrganizationEntity>>,
+        application_id: Option<Id<ApplicationEntity>>,
         actor: AuditActor,
         action: AuditAction,
         target: Option<AuditTarget>,
@@ -241,7 +241,7 @@ impl AuditEvent {
 
         Ok(Self {
             id,
-            organization_id,
+            application_id,
             actor,
             action,
             target,
@@ -256,8 +256,8 @@ impl AuditEvent {
     }
 
     /// Returns the tenant, when the event is tenant-scoped.
-    pub const fn organization_id(&self) -> Option<&Id<OrganizationEntity>> {
-        self.organization_id.as_ref()
+    pub const fn application_id(&self) -> Option<&Id<ApplicationEntity>> {
+        self.application_id.as_ref()
     }
 
     /// Returns the actor.

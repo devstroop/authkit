@@ -1,4 +1,4 @@
-use crate::domain::id::{Id, OrganizationEntity};
+use crate::domain::id::{ApplicationEntity, Id};
 
 /// The organization scope for a tenant-scoped operation.
 ///
@@ -6,18 +6,18 @@ use crate::domain::id::{Id, OrganizationEntity};
 /// "current organization"; callers must obtain and pass the context explicitly.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TenantContext {
-    organization_id: Id<OrganizationEntity>,
+    application_id: Id<ApplicationEntity>,
 }
 
 impl TenantContext {
     /// Creates a tenant context for an organization.
-    pub const fn new(organization_id: Id<OrganizationEntity>) -> Self {
-        Self { organization_id }
+    pub const fn new(application_id: Id<ApplicationEntity>) -> Self {
+        Self { application_id }
     }
 
     /// Returns the organization that owns the operation.
-    pub const fn organization_id(&self) -> &Id<OrganizationEntity> {
-        &self.organization_id
+    pub const fn application_id(&self) -> &Id<ApplicationEntity> {
+        &self.application_id
     }
 }
 
@@ -26,10 +26,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn carries_the_organization_id() {
-        let organization_id = Id::<OrganizationEntity>::from_suffix("0123456789abcdef")
+    fn carries_the_application_id() {
+        let application_id = Id::<ApplicationEntity>::from_suffix("0123456789abcdef")
             .expect("valid organization id");
-        let context = TenantContext::new(organization_id.clone());
-        assert_eq!(context.organization_id(), &organization_id);
+        let context = TenantContext::new(application_id.clone());
+        assert_eq!(context.application_id(), &application_id);
     }
 }

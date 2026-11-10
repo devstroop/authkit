@@ -10,8 +10,8 @@ use authkit_core::domain::grant::{AuthorizationCode, Consent, RefreshFamily, Ref
 use authkit_core::domain::id::{
     ApplicationEntity, AuthorizationCodeEntity, BrandEntity, ConsentEntity, CredentialEntity,
     DomainEntity, Id, InvitationEntity, MembershipEntity, OAuthClientEntity, OneTimeTokenEntity,
-    OrganizationEntity, RecoveryCodeEntity, RefreshFamilyEntity, RefreshTokenEntity,
-    RoleBindingEntity, RoleEntity, SessionEntity, SystemAdministratorEntity, UserEntity,
+    RecoveryCodeEntity, RefreshFamilyEntity, RefreshTokenEntity, RoleBindingEntity, RoleEntity,
+    SessionEntity, SystemAdministratorEntity, UserEntity,
 };
 use authkit_core::domain::invitation::Invitation;
 use authkit_core::domain::membership::Membership;
@@ -102,7 +102,7 @@ fn parse_role_ids(values: Vec<String>) -> Result<Vec<Id<RoleEntity>>, DomainErro
 impl UserRepository for SqlStore {
     fn find_by_id(&self, id: &Id<UserEntity>) -> Result<Option<User>, DomainError> {
         let sql = self.sql(
-            "SELECT id, email, email_verified_at, display_name, status, created_at, updated_at, version FROM user_account WHERE id = ?",
+            "SELECT id, application_id, email, email_verified_at, display_name, status, created_at, updated_at, version FROM user_account WHERE id = ?",
         );
         self.block_on(async {
             let row = sqlx::query(&sql)
@@ -114,13 +114,26 @@ impl UserRepository for SqlStore {
         })
     }
 
-    fn find_by_email(&self, email: &Email) -> Result<Option<User>, DomainError> {
-        let sql = self.sql(
-            "SELECT id, email, email_verified_at, display_name, status, created_at, updated_at, version FROM user_account WHERE email = ?",
-        );
+    fn find_by_email(
+        &self,
+        application_id: Option<&Id<ApplicationEntity>>,
+        email: &Email,
+    ) -> Result<Option<User>, DomainError> {
+        let sql = if application_id.is_none() {
+            self.sql(
+                "SELECT id, application_id, email, email_verified_at, display_name, status, created_at, updated_at, version FROM user_account WHERE email = ? AND application_id IS NULL",
+            )
+        } else {
+            self.sql(
+                "SELECT id, application_id, email, email_verified_at, display_name, status, created_at, updated_at, version FROM user_account WHERE email = ? AND application_id = ?",
+            )
+        };
         self.block_on(async {
-            let row = sqlx::query(&sql)
-                .bind(email.as_str())
+            let mut query = sqlx::query(&sql).bind(email.as_str());
+            if let Some(application_id) = application_id {
+                query = query.bind(application_id.as_str());
+            }
+            let row = query
                 .fetch_optional(&self.pool)
                 .await
                 .map_err(map_db_error)?;
@@ -141,7 +154,7 @@ impl UserRepository for SqlStore {
 
     fn list(&self) -> Result<Vec<User>, DomainError> {
         let sql = self.sql(
-            "SELECT id, email, email_verified_at, display_name, status, created_at, updated_at, version FROM user_account ORDER BY created_at, id",
+            "SELECT id, application_id, email, email_verified_at, display_name, status, created_at, updated_at, version FROM user_account ORDER BY created_at, id",
         );
         self.block_on(async {
             let rows = sqlx::query(&sql)
@@ -154,9 +167,9 @@ impl UserRepository for SqlStore {
 }
 
 impl OrganizationRepository for SqlStore {
-    fn find_by_id(&self, id: &Id<OrganizationEntity>) -> Result<Option<Organization>, DomainError> {
+    fn find_by_id(&self, id: &Id<ApplicationEntity>) -> Result<Option<Organization>, DomainError> {
         let sql = self.sql(
-            "SELECT id, slug, name, status, created_at, updated_at, version FROM organization WHERE id = ?",
+            "SELECT id, slug, name, first_party, primary_domain, status, created_at, updated_at, version FROM application WHERE id = ?",
         );
         self.block_on(async {
             let row = sqlx::query(&sql)
@@ -170,7 +183,7 @@ impl OrganizationRepository for SqlStore {
 
     fn find_by_slug(&self, slug: &Slug) -> Result<Option<Organization>, DomainError> {
         let sql = self.sql(
-            "SELECT id, slug, name, status, created_at, updated_at, version FROM organization WHERE slug = ?",
+            "SELECT id, slug, name, first_party, primary_domain, status, created_at, updated_at, version FROM application WHERE slug = ?",
         );
         self.block_on(async {
             let row = sqlx::query(&sql)
@@ -201,7 +214,7 @@ impl OrganizationRepository for SqlStore {
 impl BrandRepository for SqlStore {
     fn find_by_id(&self, id: &Id<BrandEntity>) -> Result<Option<Brand>, DomainError> {
         let sql = self.sql(
-            "SELECT id, org_id, domain, title, logo_url, favicon_url, custom_css, created_at, updated_at, version FROM brand WHERE id = ?",
+            "SELECT id, application_id, domain, title, logo_url, favicon_url, custom_css, created_at, updated_at, version FROM brand WHERE id = ?",
         );
         self.block_on(async {
             let row = sqlx::query(&sql)
@@ -215,7 +228,7 @@ impl BrandRepository for SqlStore {
 
     fn find_by_domain(&self, domain: &str) -> Result<Option<Brand>, DomainError> {
         let sql = self.sql(
-            "SELECT id, org_id, domain, title, logo_url, favicon_url, custom_css, created_at, updated_at, version FROM brand WHERE domain = ?",
+            "SELECT id, application_id, domain, title, logo_url, favicon_url, custom_css, created_at, updated_at, version FROM brand WHERE domain = ?",
         );
         self.block_on(async {
             let row = sqlx::query(&sql)
@@ -227,13 +240,16 @@ impl BrandRepository for SqlStore {
         })
     }
 
-    fn find_by_org(&self, org_id: &Id<OrganizationEntity>) -> Result<Option<Brand>, DomainError> {
+    fn find_by_org(
+        &self,
+        application_id: &Id<ApplicationEntity>,
+    ) -> Result<Option<Brand>, DomainError> {
         let sql = self.sql(
-            "SELECT id, org_id, domain, title, logo_url, favicon_url, custom_css, created_at, updated_at, version FROM brand WHERE org_id = ?",
+            "SELECT id, application_id, domain, title, logo_url, favicon_url, custom_css, created_at, updated_at, version FROM brand WHERE application_id = ?",
         );
         self.block_on(async {
             let row = sqlx::query(&sql)
-                .bind(org_id.as_str())
+                .bind(application_id.as_str())
                 .fetch_optional(&self.pool)
                 .await
                 .map_err(map_db_error)?;
@@ -243,12 +259,12 @@ impl BrandRepository for SqlStore {
 
     fn insert(&self, brand: &Brand) -> Result<WriteOutcome, DomainError> {
         let sql = self.sql(
-            "INSERT INTO brand (id, org_id, domain, title, logo_url, favicon_url, custom_css, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO brand (id, application_id, domain, title, logo_url, favicon_url, custom_css, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         );
         self.block_on(async {
             sqlx::query(&sql)
                 .bind(brand.id().as_str())
-                .bind(brand.org_id().map(|v| v.as_str()))
+                .bind(brand.application_id().map(|v| v.as_str()))
                 .bind(brand.domain())
                 .bind(brand.title())
                 .bind(brand.logo_url())
@@ -266,11 +282,11 @@ impl BrandRepository for SqlStore {
 
     fn update(&self, brand: &Brand, expected_version: u64) -> Result<WriteOutcome, DomainError> {
         let sql = self.sql(
-            "UPDATE brand SET org_id = ?, domain = ?, title = ?, logo_url = ?, favicon_url = ?, custom_css = ?, updated_at = ?, version = version + 1 WHERE id = ? AND version = ?",
+            "UPDATE brand SET application_id = ?, domain = ?, title = ?, logo_url = ?, favicon_url = ?, custom_css = ?, updated_at = ?, version = version + 1 WHERE id = ? AND version = ?",
         );
         self.block_on(async {
             let result = sqlx::query(&sql)
-                .bind(brand.org_id().map(|v| v.as_str()))
+                .bind(brand.application_id().map(|v| v.as_str()))
                 .bind(brand.domain())
                 .bind(brand.title())
                 .bind(brand.logo_url())
@@ -294,7 +310,7 @@ impl BrandRepository for SqlStore {
 impl DomainRepository for SqlStore {
     fn find_by_id(&self, id: &Id<DomainEntity>) -> Result<Option<Domain>, DomainError> {
         let sql = self.sql(
-            "SELECT id, organization_id, domain, verification_token, verified_at, created_at, updated_at, version FROM domain WHERE id = ?",
+            "SELECT id, application_id, domain, verification_token, verified_at, created_at, updated_at, version FROM domain WHERE id = ?",
         );
         self.block_on(async {
             let row = sqlx::query(&sql)
@@ -308,7 +324,7 @@ impl DomainRepository for SqlStore {
 
     fn find_by_domain(&self, domain: &str) -> Result<Option<Domain>, DomainError> {
         let sql = self.sql(
-            "SELECT id, organization_id, domain, verification_token, verified_at, created_at, updated_at, version FROM domain WHERE domain = ?",
+            "SELECT id, application_id, domain, verification_token, verified_at, created_at, updated_at, version FROM domain WHERE domain = ?",
         );
         self.block_on(async {
             let row = sqlx::query(&sql)
@@ -322,14 +338,14 @@ impl DomainRepository for SqlStore {
 
     fn list_for_organization(
         &self,
-        org_id: &Id<OrganizationEntity>,
+        application_id: &Id<ApplicationEntity>,
     ) -> Result<Vec<Domain>, DomainError> {
         let sql = self.sql(
-            "SELECT id, organization_id, domain, verification_token, created_at, updated_at, version, verified_at FROM domain WHERE organization_id = ? ORDER BY created_at, id",
+            "SELECT id, application_id, domain, verification_token, created_at, updated_at, version, verified_at FROM domain WHERE application_id = ? ORDER BY created_at, id",
         );
         self.block_on(async {
             let rows = sqlx::query(&sql)
-                .bind(org_id.as_str())
+                .bind(application_id.as_str())
                 .fetch_all(&self.pool)
                 .await
                 .map_err(map_db_error)?;
@@ -339,12 +355,12 @@ impl DomainRepository for SqlStore {
 
     fn insert(&self, domain: &Domain) -> Result<WriteOutcome, DomainError> {
         let sql = self.sql(
-            "INSERT INTO domain (id, organization_id, domain, verification_token, verified_at, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO domain (id, application_id, domain, verification_token, verified_at, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         );
         self.block_on(async {
             sqlx::query(&sql)
                 .bind(domain.id().as_str())
-                .bind(domain.organization_id().as_str())
+                .bind(domain.application_id().as_str())
                 .bind(domain.domain())
                 .bind(domain.verification_token())
                 .bind(domain.verified_at().map(|t| t.as_millis() as i64))
@@ -399,12 +415,12 @@ impl MembershipRepository for SqlStore {
         id: &Id<MembershipEntity>,
     ) -> Result<Option<Membership>, DomainError> {
         let sql = self.sql(
-            "SELECT id, org_id, user_id, status, invited_by, joined_at, created_at, updated_at, version FROM membership WHERE id = ? AND org_id = ?",
+            "SELECT id, application_id, user_id, status, invited_by, joined_at, created_at, updated_at, version FROM membership WHERE id = ? AND application_id = ?",
         );
         self.block_on(async {
             let row = sqlx::query(&sql)
                 .bind(id.as_str())
-                .bind(tenant.organization_id().as_str())
+                .bind(tenant.application_id().as_str())
                 .fetch_optional(&self.pool)
                 .await
                 .map_err(map_db_error)?;
@@ -418,11 +434,11 @@ impl MembershipRepository for SqlStore {
         user_id: &Id<UserEntity>,
     ) -> Result<Option<Membership>, DomainError> {
         let sql = self.sql(
-            "SELECT id, org_id, user_id, status, invited_by, joined_at, created_at, updated_at, version FROM membership WHERE org_id = ? AND user_id = ?",
+            "SELECT id, application_id, user_id, status, invited_by, joined_at, created_at, updated_at, version FROM membership WHERE application_id = ? AND user_id = ?",
         );
         self.block_on(async {
             let row = sqlx::query(&sql)
-                .bind(tenant.organization_id().as_str())
+                .bind(tenant.application_id().as_str())
                 .bind(user_id.as_str())
                 .fetch_optional(&self.pool)
                 .await
@@ -433,11 +449,11 @@ impl MembershipRepository for SqlStore {
 
     fn list(&self, tenant: &TenantContext) -> Result<Vec<Membership>, DomainError> {
         let sql = self.sql(
-            "SELECT id, org_id, user_id, status, invited_by, joined_at, created_at, updated_at, version FROM membership WHERE org_id = ? ORDER BY created_at, id",
+            "SELECT id, application_id, user_id, status, invited_by, joined_at, created_at, updated_at, version FROM membership WHERE application_id = ? ORDER BY created_at, id",
         );
         self.block_on(async {
             let rows = sqlx::query(&sql)
-                .bind(tenant.organization_id().as_str())
+                .bind(tenant.application_id().as_str())
                 .fetch_all(&self.pool)
                 .await
                 .map_err(map_db_error)?;
@@ -447,7 +463,7 @@ impl MembershipRepository for SqlStore {
 
     fn list_for_user(&self, user_id: &Id<UserEntity>) -> Result<Vec<Membership>, DomainError> {
         let sql = self.sql(
-            "SELECT id, org_id, user_id, status, invited_by, joined_at, created_at, updated_at, version FROM membership WHERE user_id = ? ORDER BY created_at, id",
+            "SELECT id, application_id, user_id, status, invited_by, joined_at, created_at, updated_at, version FROM membership WHERE user_id = ? ORDER BY created_at, id",
         );
         self.block_on(async {
             let rows = sqlx::query(&sql)
@@ -491,7 +507,7 @@ impl InvitationRepository for SqlStore {
         id: &Id<InvitationEntity>,
     ) -> Result<Option<Invitation>, DomainError> {
         let sql = self.sql(
-            "SELECT id, org_id, email, token_hash, invited_by, status, expires_at, accepted_at, created_at, updated_at, version FROM invitation WHERE id = ? AND org_id = ?",
+            "SELECT id, application_id, email, token_hash, invited_by, status, expires_at, accepted_at, created_at, updated_at, version FROM invitation WHERE id = ? AND application_id = ?",
         );
         let roles_sql = self.sql(
             "SELECT role_id AS value FROM invitation_role WHERE invitation_id = ? ORDER BY position",
@@ -500,7 +516,7 @@ impl InvitationRepository for SqlStore {
             let mut tx = self.pool.begin().await.map_err(map_db_error)?;
             let row = sqlx::query(&sql)
                 .bind(id.as_str())
-                .bind(tenant.organization_id().as_str())
+                .bind(tenant.application_id().as_str())
                 .fetch_optional(&mut *tx)
                 .await
                 .map_err(map_db_error)?;
@@ -519,7 +535,7 @@ impl InvitationRepository for SqlStore {
         token_hash: &SecretHash,
     ) -> Result<Option<Invitation>, DomainError> {
         let sql = self.sql(
-            "SELECT id, org_id, email, token_hash, invited_by, status, expires_at, accepted_at, created_at, updated_at, version FROM invitation WHERE token_hash = ?",
+            "SELECT id, application_id, email, token_hash, invited_by, status, expires_at, accepted_at, created_at, updated_at, version FROM invitation WHERE token_hash = ?",
         );
         let roles_sql = self.sql(
             "SELECT role_id AS value FROM invitation_role WHERE invitation_id = ? ORDER BY position",
@@ -553,14 +569,14 @@ impl InvitationRepository for SqlStore {
 
     fn list(&self, tenant: &TenantContext) -> Result<Vec<Invitation>, DomainError> {
         let sql = self.sql(
-            "SELECT id, org_id, email, token_hash, invited_by, status, expires_at, accepted_at, created_at, updated_at, version FROM invitation WHERE org_id = ? ORDER BY created_at, id",
+            "SELECT id, application_id, email, token_hash, invited_by, status, expires_at, accepted_at, created_at, updated_at, version FROM invitation WHERE application_id = ? ORDER BY created_at, id",
         );
         let roles_sql = self.sql(
             "SELECT role_id AS value FROM invitation_role WHERE invitation_id = ? ORDER BY position",
         );
         self.block_on(async {
             let rows = sqlx::query(&sql)
-                .bind(tenant.organization_id().as_str())
+                .bind(tenant.application_id().as_str())
                 .fetch_all(&self.pool)
                 .await
                 .map_err(map_db_error)?;
@@ -613,10 +629,10 @@ impl InvitationRepository for SqlStore {
 
 impl ApplicationRepository for SqlStore {
     fn list(&self, tenant: &TenantContext) -> Result<Vec<Application>, DomainError> {
-        let sql = self.sql("SELECT id, org_id, slug, name, kind, first_party, status, created_at, updated_at, version FROM application WHERE org_id = ? ORDER BY created_at, id");
+        let sql = self.sql("SELECT id, application_id, slug, name, kind, first_party, status, created_at, updated_at, version FROM application WHERE application_id = ? ORDER BY created_at, id");
         self.block_on(async {
             let rows = sqlx::query(&sql)
-                .bind(tenant.organization_id().as_str())
+                .bind(tenant.application_id().as_str())
                 .fetch_all(&self.pool)
                 .await
                 .map_err(map_db_error)?;
@@ -629,13 +645,13 @@ impl ApplicationRepository for SqlStore {
         tenant: &TenantContext,
         id: &Id<ApplicationEntity>,
     ) -> Result<Option<Application>, DomainError> {
+        let _ = tenant;
         let sql = self.sql(
-            "SELECT id, org_id, slug, name, kind, first_party, status, created_at, updated_at, version FROM application WHERE id = ? AND org_id = ?",
+            "SELECT id, slug, name, kind, first_party, primary_domain, status, created_at, updated_at, version FROM application WHERE id = ?",
         );
         self.block_on(async {
             let row = sqlx::query(&sql)
                 .bind(id.as_str())
-                .bind(tenant.organization_id().as_str())
                 .fetch_optional(&self.pool)
                 .await
                 .map_err(map_db_error)?;
@@ -649,12 +665,26 @@ impl ApplicationRepository for SqlStore {
         slug: &Slug,
     ) -> Result<Option<Application>, DomainError> {
         let sql = self.sql(
-            "SELECT id, org_id, slug, name, kind, first_party, status, created_at, updated_at, version FROM application WHERE org_id = ? AND slug = ?",
+            "SELECT id, slug, name, kind, first_party, primary_domain, status, created_at, updated_at, version FROM application WHERE slug = ?",
+        );
+        let _ = tenant;
+        self.block_on(async {
+            let row = sqlx::query(&sql)
+                .bind(slug.as_str())
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(map_db_error)?;
+            row.as_ref().map(map_application).transpose()
+        })
+    }
+
+    fn find_by_domain(&self, domain: &str) -> Result<Option<Application>, DomainError> {
+        let sql = self.sql(
+            "SELECT id, slug, name, kind, first_party, primary_domain, status, created_at, updated_at, version FROM application WHERE primary_domain = ?",
         );
         self.block_on(async {
             let row = sqlx::query(&sql)
-                .bind(tenant.organization_id().as_str())
-                .bind(slug.as_str())
+                .bind(domain)
                 .fetch_optional(&self.pool)
                 .await
                 .map_err(map_db_error)?;
@@ -698,7 +728,7 @@ impl SqlStore {
         id: &Id<ApplicationEntity>,
     ) -> Result<Option<Application>, DomainError> {
         let sql = self.sql(
-            "SELECT id, org_id, slug, name, kind, first_party, status, created_at, updated_at, version FROM application WHERE id = ?",
+            "SELECT id, slug, name, kind, first_party, primary_domain, status, created_at, updated_at, version FROM application WHERE id = ?",
         );
         self.block_on(async {
             let row = sqlx::query(&sql)
@@ -713,7 +743,7 @@ impl SqlStore {
 
 impl OAuthClientRepository for SqlStore {
     fn list(&self, tenant: &TenantContext) -> Result<Vec<OAuthClient>, DomainError> {
-        let sql = self.sql("SELECT id, org_id, application_id, client_id, name, client_type, token_endpoint_auth_method, secret_hash, require_pkce, status, created_at, updated_at, version FROM oauth_client WHERE org_id = ? ORDER BY created_at, id");
+        let sql = self.sql("SELECT id, application_id, application_id, client_id, name, client_type, token_endpoint_auth_method, secret_hash, require_pkce, status, created_at, updated_at, version FROM oauth_client WHERE application_id = ? ORDER BY created_at, id");
         let redirect_sql = self.sql("SELECT redirect_uri AS value FROM oauth_client_redirect_uri WHERE client_id = ? ORDER BY position");
         let post_logout_sql = self.sql("SELECT redirect_uri AS value FROM oauth_client_post_logout_redirect_uri WHERE client_id = ? ORDER BY position");
         let scope_sql = self.sql(
@@ -723,7 +753,7 @@ impl OAuthClientRepository for SqlStore {
         self.block_on(async {
             let mut tx = self.pool.begin().await.map_err(map_db_error)?;
             let rows = sqlx::query(&sql)
-                .bind(tenant.organization_id().as_str())
+                .bind(tenant.application_id().as_str())
                 .fetch_all(&mut *tx)
                 .await
                 .map_err(map_db_error)?;
@@ -755,9 +785,9 @@ impl OAuthClientRepository for SqlStore {
         id: &Id<OAuthClientEntity>,
     ) -> Result<Option<OAuthClient>, DomainError> {
         let sql = self.sql(
-            "SELECT c.id, c.application_id, c.client_id, c.name, c.client_type, c.token_endpoint_auth_method, c.secret_hash, c.require_pkce, c.status, c.created_at, c.updated_at, c.version FROM oauth_client c JOIN application a ON a.id = c.application_id WHERE c.id = ? AND a.org_id = ?",
+            "SELECT c.id, c.application_id, c.client_id, c.name, c.client_type, c.token_endpoint_auth_method, c.secret_hash, c.require_pkce, c.status, c.created_at, c.updated_at, c.version FROM oauth_client c JOIN application a ON a.id = c.application_id WHERE c.id = ? AND a.id = ?",
         );
-        self.find_oauth_client(sql, id.as_str(), Some(tenant.organization_id().as_str()))
+        self.find_oauth_client(sql, id.as_str(), Some(tenant.application_id().as_str()))
     }
 
     fn find_by_client_id(
@@ -892,7 +922,7 @@ impl CredentialRepository for SqlStore {
 impl SessionRepository for SqlStore {
     fn find_by_id(&self, id: &Id<SessionEntity>) -> Result<Option<Session>, DomainError> {
         let sql = self.sql(
-            "SELECT id, user_id, organization_id, audience, token_hash, status, created_at, last_seen_at, idle_expires_at, absolute_expires_at, revoked_at, rotated_from, version FROM session WHERE id = ?",
+            "SELECT id, user_id, application_id, audience, token_hash, status, created_at, last_seen_at, idle_expires_at, absolute_expires_at, revoked_at, rotated_from, version FROM session WHERE id = ?",
         );
         self.block_on(async {
             let row = sqlx::query(&sql)
@@ -906,7 +936,7 @@ impl SessionRepository for SqlStore {
 
     fn find_by_token_hash(&self, token_hash: &SecretHash) -> Result<Option<Session>, DomainError> {
         let sql = self.sql(
-            "SELECT id, user_id, organization_id, audience, token_hash, status, created_at, last_seen_at, idle_expires_at, absolute_expires_at, revoked_at, rotated_from, version FROM session WHERE token_hash = ?",
+            "SELECT id, user_id, application_id, audience, token_hash, status, created_at, last_seen_at, idle_expires_at, absolute_expires_at, revoked_at, rotated_from, version FROM session WHERE token_hash = ?",
         );
         self.block_on(async {
             let row = sqlx::query(&sql)
@@ -920,7 +950,7 @@ impl SessionRepository for SqlStore {
 
     fn list_for_user(&self, user_id: &Id<UserEntity>) -> Result<Vec<Session>, DomainError> {
         let sql = self.sql(
-            "SELECT id, user_id, organization_id, audience, token_hash, status, created_at, last_seen_at, idle_expires_at, absolute_expires_at, revoked_at, rotated_from, version FROM session WHERE user_id = ? ORDER BY created_at, id",
+            "SELECT id, user_id, application_id, audience, token_hash, status, created_at, last_seen_at, idle_expires_at, absolute_expires_at, revoked_at, rotated_from, version FROM session WHERE user_id = ? ORDER BY created_at, id",
         );
         self.block_on(async {
             let rows = sqlx::query(&sql)
@@ -1040,7 +1070,7 @@ impl RoleRepository for SqlStore {
         id: &Id<RoleEntity>,
     ) -> Result<Option<Role>, DomainError> {
         let sql = self.sql(
-            "SELECT id, org_id, application_id, slug, name, description, kind, created_at, updated_at, version FROM role WHERE id = ? AND org_id = ?",
+            "SELECT id, application_id, application_id, slug, name, description, kind, created_at, updated_at, version FROM role WHERE id = ? AND application_id = ?",
         );
         let permissions_sql = self.sql(
             "SELECT permission AS value FROM role_permission WHERE role_id = ? ORDER BY position",
@@ -1049,7 +1079,7 @@ impl RoleRepository for SqlStore {
             let mut tx = self.pool.begin().await.map_err(map_db_error)?;
             let row = sqlx::query(&sql)
                 .bind(id.as_str())
-                .bind(tenant.organization_id().as_str())
+                .bind(tenant.application_id().as_str())
                 .fetch_optional(&mut *tx)
                 .await
                 .map_err(map_db_error)?;
@@ -1065,20 +1095,20 @@ impl RoleRepository for SqlStore {
 
     fn list(&self, tenant: &TenantContext) -> Result<Vec<Role>, DomainError> {
         let sql = self.sql(
-            "SELECT id, org_id, application_id, slug, name, description, kind, created_at, updated_at, version FROM role WHERE org_id = ? ORDER BY created_at, id",
+            "SELECT id, application_id, application_id, slug, name, description, kind, created_at, updated_at, version FROM role WHERE application_id = ? ORDER BY created_at, id",
         );
         let permissions_sql = self.sql(
-            "SELECT role_permission.role_id, role_permission.permission AS value FROM role_permission JOIN role ON role.id = role_permission.role_id WHERE role.org_id = ? ORDER BY role_permission.role_id, role_permission.position",
+            "SELECT role_permission.role_id, role_permission.permission AS value FROM role_permission JOIN role ON role.id = role_permission.role_id WHERE role.application_id = ? ORDER BY role_permission.role_id, role_permission.position",
         );
         self.block_on(async {
             let mut tx = self.pool.begin().await.map_err(map_db_error)?;
             let rows = sqlx::query(&sql)
-                .bind(tenant.organization_id().as_str())
+                .bind(tenant.application_id().as_str())
                 .fetch_all(&mut *tx)
                 .await
                 .map_err(map_db_error)?;
             let permission_rows = sqlx::query(&permissions_sql)
-                .bind(tenant.organization_id().as_str())
+                .bind(tenant.application_id().as_str())
                 .fetch_all(&mut *tx)
                 .await
                 .map_err(map_db_error)?;
@@ -1123,11 +1153,11 @@ impl RoleRepository for SqlStore {
 impl RoleBindingRepository for SqlStore {
     fn list(&self, tenant: &TenantContext) -> Result<Vec<RoleBinding>, DomainError> {
         let sql = self.sql(
-            "SELECT id, org_id, application_id, role_id, user_id, created_at FROM role_binding WHERE org_id = ? ORDER BY created_at, id",
+            "SELECT id, application_id, application_id, role_id, user_id, created_at FROM role_binding WHERE application_id = ? ORDER BY created_at, id",
         );
         self.block_on(async {
             let rows = sqlx::query(&sql)
-                .bind(tenant.organization_id().as_str())
+                .bind(tenant.application_id().as_str())
                 .fetch_all(&self.pool)
                 .await
                 .map_err(map_db_error)?;
@@ -1141,11 +1171,11 @@ impl RoleBindingRepository for SqlStore {
         user_id: &Id<UserEntity>,
     ) -> Result<Vec<RoleBinding>, DomainError> {
         let sql = self.sql(
-            "SELECT id, org_id, application_id, role_id, user_id, created_at FROM role_binding WHERE org_id = ? AND user_id = ? ORDER BY created_at, id",
+            "SELECT id, application_id, application_id, role_id, user_id, created_at FROM role_binding WHERE application_id = ? AND user_id = ? ORDER BY created_at, id",
         );
         self.block_on(async {
             let rows = sqlx::query(&sql)
-                .bind(tenant.organization_id().as_str())
+                .bind(tenant.application_id().as_str())
                 .bind(user_id.as_str())
                 .fetch_all(&self.pool)
                 .await
@@ -1184,9 +1214,9 @@ impl AuthorizationCodeRepository for SqlStore {
         id: &Id<AuthorizationCodeEntity>,
     ) -> Result<Option<AuthorizationCode>, DomainError> {
         let sql = self.sql(
-            "SELECT id, org_id, application_id, client_id, user_id, code_hash, redirect_uri, pkce_challenge, nonce, auth_time, session_id, created_at, expires_at, consumed_at, version FROM authorization_code WHERE id = ? AND org_id = ?",
+            "SELECT id, application_id, application_id, client_id, user_id, code_hash, redirect_uri, pkce_challenge, nonce, auth_time, session_id, created_at, expires_at, consumed_at, version FROM authorization_code WHERE id = ? AND application_id = ?",
         );
-        self.find_authorization_code(sql, id.as_str(), Some(tenant.organization_id().as_str()))
+        self.find_authorization_code(sql, id.as_str(), Some(tenant.application_id().as_str()))
     }
 
     fn find_by_hash(
@@ -1195,9 +1225,9 @@ impl AuthorizationCodeRepository for SqlStore {
         hash: &SecretHash,
     ) -> Result<Option<AuthorizationCode>, DomainError> {
         let sql = self.sql(
-            "SELECT id, org_id, application_id, client_id, user_id, code_hash, redirect_uri, pkce_challenge, nonce, auth_time, session_id, created_at, expires_at, consumed_at, version FROM authorization_code WHERE org_id = ? AND code_hash = ?",
+            "SELECT id, application_id, application_id, client_id, user_id, code_hash, redirect_uri, pkce_challenge, nonce, auth_time, session_id, created_at, expires_at, consumed_at, version FROM authorization_code WHERE application_id = ? AND code_hash = ?",
         );
-        self.find_authorization_code_by_hash(sql, tenant.organization_id().as_str(), hash.as_str())
+        self.find_authorization_code_by_hash(sql, tenant.application_id().as_str(), hash.as_str())
     }
 
     fn insert(
@@ -1292,12 +1322,12 @@ impl ConsentRepository for SqlStore {
         id: &Id<ConsentEntity>,
     ) -> Result<Option<Consent>, DomainError> {
         let sql = self.sql(
-            "SELECT id, org_id, user_id, client_id, created_at, updated_at, revoked_at, version FROM consent WHERE id = ? AND org_id = ?",
+            "SELECT id, application_id, user_id, client_id, created_at, updated_at, revoked_at, version FROM consent WHERE id = ? AND application_id = ?",
         );
         self.find_consent(
             sql,
             id.as_str(),
-            Some(tenant.organization_id().as_str()),
+            Some(tenant.application_id().as_str()),
             None,
         )
     }
@@ -1309,11 +1339,11 @@ impl ConsentRepository for SqlStore {
         user_id: &Id<UserEntity>,
     ) -> Result<Option<Consent>, DomainError> {
         let sql = self.sql(
-            "SELECT id, org_id, user_id, client_id, created_at, updated_at, revoked_at, version FROM consent WHERE org_id = ? AND client_id = ? AND user_id = ?",
+            "SELECT id, application_id, user_id, client_id, created_at, updated_at, revoked_at, version FROM consent WHERE application_id = ? AND client_id = ? AND user_id = ?",
         );
         self.find_consent(
             sql,
-            tenant.organization_id().as_str(),
+            tenant.application_id().as_str(),
             Some(client_id.as_str()),
             Some(user_id.as_str()),
         )
@@ -1321,7 +1351,7 @@ impl ConsentRepository for SqlStore {
 
     fn list_for_user(&self, user_id: &Id<UserEntity>) -> Result<Vec<Consent>, DomainError> {
         let sql = self.sql(
-            "SELECT id, org_id, user_id, client_id, created_at, updated_at, revoked_at, version FROM consent WHERE user_id = ? ORDER BY created_at, id",
+            "SELECT id, application_id, user_id, client_id, created_at, updated_at, revoked_at, version FROM consent WHERE user_id = ? ORDER BY created_at, id",
         );
         let scopes_sql = self
             .sql("SELECT scope AS value FROM consent_scope WHERE consent_id = ? ORDER BY position");
@@ -1416,12 +1446,12 @@ impl RefreshFamilyRepository for SqlStore {
         id: &Id<RefreshFamilyEntity>,
     ) -> Result<Option<RefreshFamily>, DomainError> {
         let sql = self.sql(
-            "SELECT id, org_id, client_id, user_id, scope, session_id, auth_time, created_at, absolute_expires_at, revoked_at, version FROM refresh_family WHERE id = ? AND org_id = ?",
+            "SELECT id, application_id, client_id, user_id, scope, session_id, auth_time, created_at, absolute_expires_at, revoked_at, version FROM refresh_family WHERE id = ? AND application_id = ?",
         );
         self.block_on(async {
             let row = sqlx::query(&sql)
                 .bind(id.as_str())
-                .bind(tenant.organization_id().as_str())
+                .bind(tenant.application_id().as_str())
                 .fetch_optional(&self.pool)
                 .await
                 .map_err(map_db_error)?;
@@ -1461,12 +1491,12 @@ impl RefreshTokenRepository for SqlStore {
         id: &Id<RefreshTokenEntity>,
     ) -> Result<Option<RefreshToken>, DomainError> {
         let sql = self.sql(
-            "SELECT t.id, t.family_id, t.token_hash, t.created_at, t.expires_at, t.consumed_at, t.version FROM refresh_token t JOIN refresh_family f ON f.id = t.family_id WHERE t.id = ? AND f.org_id = ?",
+            "SELECT t.id, t.family_id, t.token_hash, t.created_at, t.expires_at, t.consumed_at, t.version FROM refresh_token t JOIN refresh_family f ON f.id = t.family_id WHERE t.id = ? AND f.application_id = ?",
         );
         self.block_on(async {
             let row = sqlx::query(&sql)
                 .bind(id.as_str())
-                .bind(tenant.organization_id().as_str())
+                .bind(tenant.application_id().as_str())
                 .fetch_optional(&self.pool)
                 .await
                 .map_err(map_db_error)?;
@@ -1480,11 +1510,11 @@ impl RefreshTokenRepository for SqlStore {
         hash: &SecretHash,
     ) -> Result<Option<RefreshToken>, DomainError> {
         let sql = self.sql(
-            "SELECT t.id, t.family_id, t.token_hash, t.created_at, t.expires_at, t.consumed_at, t.version FROM refresh_token t JOIN refresh_family f ON f.id = t.family_id WHERE f.org_id = ? AND t.token_hash = ?",
+            "SELECT t.id, t.family_id, t.token_hash, t.created_at, t.expires_at, t.consumed_at, t.version FROM refresh_token t JOIN refresh_family f ON f.id = t.family_id WHERE f.application_id = ? AND t.token_hash = ?",
         );
         self.block_on(async {
             let row = sqlx::query(&sql)
-                .bind(tenant.organization_id().as_str())
+                .bind(tenant.application_id().as_str())
                 .bind(hash.as_str())
                 .fetch_optional(&self.pool)
                 .await
@@ -1540,7 +1570,7 @@ impl SqlStore {
         offset: i64,
     ) -> Result<Vec<AuditEvent>, DomainError> {
         let mut sql = String::from(
-            "SELECT id, org_id, actor_type, actor_id, action, target, occurred_at, attributes FROM audit_event",
+            "SELECT id, application_id, actor_type, actor_id, action, target, occurred_at, attributes FROM audit_event",
         );
         if action.is_some() {
             sql.push_str(" WHERE action = ?");
@@ -1585,7 +1615,7 @@ impl SqlStore {
     /// Lists recent audit events across all tenants.
     pub fn list_all_audit_events(&self, limit: i64) -> Result<Vec<AuditEvent>, DomainError> {
         let sql = self.sql(
-            "SELECT id, org_id, actor_type, actor_id, action, target, occurred_at, attributes FROM audit_event ORDER BY occurred_at DESC, id DESC LIMIT ?",
+            "SELECT id, application_id, actor_type, actor_id, action, target, occurred_at, attributes FROM audit_event ORDER BY occurred_at DESC, id DESC LIMIT ?",
         );
         self.block_on(async {
             let rows = sqlx::query(&sql)
@@ -1608,11 +1638,11 @@ impl SqlStore {
         tenant: &TenantContext,
     ) -> Result<Vec<AuditEvent>, DomainError> {
         let sql = self.sql(
-            "SELECT id, org_id, actor_type, actor_id, action, target, occurred_at, attributes FROM audit_event WHERE org_id = ? ORDER BY occurred_at, id",
+            "SELECT id, application_id, actor_type, actor_id, action, target, occurred_at, attributes FROM audit_event WHERE application_id = ? ORDER BY occurred_at, id",
         );
         self.block_on(async {
             let rows = sqlx::query(&sql)
-                .bind(tenant.organization_id().as_str())
+                .bind(tenant.application_id().as_str())
                 .fetch_all(&self.pool)
                 .await
                 .map_err(map_db_error)?;
@@ -1641,7 +1671,7 @@ impl SqlStore {
         action: &str,
     ) -> Result<Vec<AuditEvent>, DomainError> {
         let sql = self.sql(
-            "SELECT id, org_id, actor_type, actor_id, action, target, occurred_at, attributes FROM audit_event WHERE action = ? ORDER BY occurred_at, id",
+            "SELECT id, application_id, actor_type, actor_id, action, target, occurred_at, attributes FROM audit_event WHERE action = ? ORDER BY occurred_at, id",
         );
         self.block_on(async {
             let rows = sqlx::query(&sql)

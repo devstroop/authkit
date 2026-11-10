@@ -15,8 +15,8 @@ use authkit_core::domain::grant::{AuthorizationCode, Consent, RefreshFamily, Ref
 use authkit_core::domain::id::{
     ApplicationEntity, AuditEventEntity, AuthorizationCodeEntity, BrandEntity, ConsentEntity,
     DomainEntity, Entity, Id, InvitationEntity, MembershipEntity, OAuthClientEntity,
-    OrganizationEntity, RecoveryCodeEntity, RefreshFamilyEntity, RefreshTokenEntity,
-    RoleBindingEntity, RoleEntity, SessionEntity, SystemAdministratorEntity, UserEntity,
+    RecoveryCodeEntity, RefreshFamilyEntity, RefreshTokenEntity, RoleBindingEntity, RoleEntity,
+    SessionEntity, SystemAdministratorEntity, UserEntity,
 };
 use authkit_core::domain::invitation::{Invitation, InvitationStatus};
 use authkit_core::domain::membership::{Membership, MembershipStatus};
@@ -142,6 +142,7 @@ pub(crate) fn decode_pairs(value: &str) -> Result<Vec<(String, String)>, DomainE
 pub(crate) fn map_user(row: &AnyRow) -> Result<User, DomainError> {
     User::restore(
         id::<UserEntity>(row, "id")?,
+        opt_id::<ApplicationEntity>(row, "application_id")?,
         Email::parse(text(row, "email")?).map_err(|_| invalid_stored_value())?,
         opt_timestamp(row, "email_verified_at")?,
         DisplayName::parse(text(row, "display_name")?).map_err(|_| invalid_stored_value())?,
@@ -154,9 +155,12 @@ pub(crate) fn map_user(row: &AnyRow) -> Result<User, DomainError> {
 
 pub(crate) fn map_organization(row: &AnyRow) -> Result<Organization, DomainError> {
     Organization::restore(
-        id::<OrganizationEntity>(row, "id")?,
+        id::<ApplicationEntity>(row, "id")?,
         Slug::parse(text(row, "slug")?).map_err(|_| invalid_stored_value())?,
         DisplayName::parse(text(row, "name")?).map_err(|_| invalid_stored_value())?,
+        ApplicationKind::Web,
+        flag(row, "first_party")?,
+        text(row, "primary_domain").unwrap_or_default(),
         organization_status(&text(row, "status")?)?,
         timestamp(row, "created_at")?,
         timestamp(row, "updated_at")?,
@@ -167,10 +171,12 @@ pub(crate) fn map_organization(row: &AnyRow) -> Result<Organization, DomainError
 pub(crate) fn map_brand(row: &AnyRow) -> Result<Brand, DomainError> {
     use sqlx::Row;
     let id = id::<BrandEntity>(row, "id")?;
-    let org_id: Option<String> = row.try_get("org_id").map_err(|_| invalid_stored_value())?;
-    let org_id = match org_id {
+    let application_id: Option<String> = row
+        .try_get("application_id")
+        .map_err(|_| invalid_stored_value())?;
+    let application_id = match application_id {
         Some(v) if !v.is_empty() => Some(
-            Id::<authkit_core::domain::id::OrganizationEntity>::parse(&v)
+            Id::<authkit_core::domain::id::ApplicationEntity>::parse(&v)
                 .map_err(|_| invalid_stored_value())?,
         ),
         _ => None,
@@ -182,7 +188,7 @@ pub(crate) fn map_brand(row: &AnyRow) -> Result<Brand, DomainError> {
     let custom_css = text(row, "custom_css").ok().filter(|v| !v.is_empty());
     Brand::restore(
         id,
-        org_id,
+        application_id,
         domain,
         title,
         logo_url,
@@ -201,7 +207,7 @@ pub(crate) fn map_domain(
     use authkit_core::domain::verified_domain::Domain;
     Domain::restore(
         id::<DomainEntity>(row, "id")?,
-        id::<OrganizationEntity>(row, "organization_id")?,
+        id::<ApplicationEntity>(row, "application_id")?,
         text(row, "domain")?,
         text(row, "verification_token")?,
         opt_timestamp(row, "verified_at")?,
@@ -227,11 +233,11 @@ pub(crate) fn map_system_administrator(row: &AnyRow) -> Result<SystemAdministrat
 pub(crate) fn map_application(row: &AnyRow) -> Result<Application, DomainError> {
     Application::restore(
         id::<ApplicationEntity>(row, "id")?,
-        id::<OrganizationEntity>(row, "org_id")?,
         Slug::parse(text(row, "slug")?).map_err(|_| invalid_stored_value())?,
         DisplayName::parse(text(row, "name")?).map_err(|_| invalid_stored_value())?,
         application_kind(&text(row, "kind")?)?,
         flag(row, "first_party")?,
+        text(row, "primary_domain").unwrap_or_default(),
         application_status(&text(row, "status")?)?,
         timestamp(row, "created_at")?,
         timestamp(row, "updated_at")?,
@@ -242,7 +248,7 @@ pub(crate) fn map_application(row: &AnyRow) -> Result<Application, DomainError> 
 pub(crate) fn map_membership(row: &AnyRow) -> Result<Membership, DomainError> {
     Membership::restore(
         id::<MembershipEntity>(row, "id")?,
-        id::<OrganizationEntity>(row, "org_id")?,
+        id::<ApplicationEntity>(row, "application_id")?,
         id::<UserEntity>(row, "user_id")?,
         membership_status(&text(row, "status")?)?,
         opt_id::<UserEntity>(row, "invited_by")?,
@@ -259,7 +265,7 @@ pub(crate) fn map_invitation(
 ) -> Result<Invitation, DomainError> {
     Invitation::restore(
         id::<InvitationEntity>(row, "id")?,
-        id::<OrganizationEntity>(row, "org_id")?,
+        id::<ApplicationEntity>(row, "application_id")?,
         Email::parse(text(row, "email")?).map_err(|_| invalid_stored_value())?,
         SecretHash::parse(text(row, "token_hash")?).map_err(|_| invalid_stored_value())?,
         role_ids,
@@ -376,7 +382,7 @@ pub(crate) fn map_session(row: &AnyRow) -> Result<Session, DomainError> {
     Session::restore(
         id::<SessionEntity>(row, "id")?,
         id::<UserEntity>(row, "user_id")?,
-        opt_id::<OrganizationEntity>(row, "organization_id")?,
+        opt_id::<ApplicationEntity>(row, "application_id")?,
         session_audience(&text(row, "audience")?)?,
         SecretHash::parse(text(row, "token_hash")?).map_err(|_| invalid_stored_value())?,
         session_status(&text(row, "status")?)?,
@@ -393,8 +399,7 @@ pub(crate) fn map_session(row: &AnyRow) -> Result<Session, DomainError> {
 pub(crate) fn map_role(row: &AnyRow, permissions: Vec<String>) -> Result<Role, DomainError> {
     Role::restore(
         id::<RoleEntity>(row, "id")?,
-        id::<OrganizationEntity>(row, "org_id")?,
-        opt_id::<ApplicationEntity>(row, "application_id")?,
+        id::<ApplicationEntity>(row, "application_id")?,
         Slug::parse(text(row, "slug")?).map_err(|_| invalid_stored_value())?,
         DisplayName::parse(text(row, "name")?).map_err(|_| invalid_stored_value())?,
         opt_text(row, "description")?,
@@ -409,8 +414,7 @@ pub(crate) fn map_role(row: &AnyRow, permissions: Vec<String>) -> Result<Role, D
 pub(crate) fn map_role_binding(row: &AnyRow) -> Result<RoleBinding, DomainError> {
     Ok(RoleBinding::restore(
         id::<RoleBindingEntity>(row, "id")?,
-        id::<OrganizationEntity>(row, "org_id")?,
-        opt_id::<ApplicationEntity>(row, "application_id")?,
+        id::<ApplicationEntity>(row, "application_id")?,
         id::<RoleEntity>(row, "role_id")?,
         id::<UserEntity>(row, "user_id")?,
         timestamp(row, "created_at")?,
@@ -423,7 +427,6 @@ pub(crate) fn map_authorization_code(
 ) -> Result<AuthorizationCode, DomainError> {
     AuthorizationCode::restore(
         id::<AuthorizationCodeEntity>(row, "id")?,
-        id::<OrganizationEntity>(row, "org_id")?,
         id::<ApplicationEntity>(row, "application_id")?,
         id::<OAuthClientEntity>(row, "client_id")?,
         id::<UserEntity>(row, "user_id")?,
@@ -447,7 +450,7 @@ pub(crate) fn map_authorization_code(
 pub(crate) fn map_consent(row: &AnyRow, scopes: Vec<String>) -> Result<Consent, DomainError> {
     Consent::restore(
         id::<ConsentEntity>(row, "id")?,
-        id::<OrganizationEntity>(row, "org_id")?,
+        id::<ApplicationEntity>(row, "application_id")?,
         id::<UserEntity>(row, "user_id")?,
         id::<OAuthClientEntity>(row, "client_id")?,
         scope_set(scopes)?,
@@ -461,7 +464,7 @@ pub(crate) fn map_consent(row: &AnyRow, scopes: Vec<String>) -> Result<Consent, 
 pub(crate) fn map_refresh_family(row: &AnyRow) -> Result<RefreshFamily, DomainError> {
     RefreshFamily::restore(
         id::<RefreshFamilyEntity>(row, "id")?,
-        id::<OrganizationEntity>(row, "org_id")?,
+        id::<ApplicationEntity>(row, "application_id")?,
         id::<OAuthClientEntity>(row, "client_id")?,
         id::<UserEntity>(row, "user_id")?,
         scope_set(
@@ -515,7 +518,7 @@ pub(crate) fn map_audit_event(row: &AnyRow) -> Result<AuditEvent, DomainError> {
 
     AuditEvent::new(
         id::<AuditEventEntity>(row, "id")?,
-        opt_id::<OrganizationEntity>(row, "org_id")?,
+        opt_id::<ApplicationEntity>(row, "application_id")?,
         actor,
         AuditAction::parse(text(row, "action")?).map_err(|_| invalid_stored_value())?,
         opt_text(row, "target")?
@@ -602,6 +605,7 @@ fn system_administrator_role(
 fn organization_status(value: &str) -> Result<OrganizationStatus, DomainError> {
     match value {
         "active" => Ok(OrganizationStatus::Active),
+        "disabled" => Ok(OrganizationStatus::Disabled),
         "suspended" => Ok(OrganizationStatus::Suspended),
         "deleted" => Ok(OrganizationStatus::Deleted),
         _ => Err(invalid_stored_value()),
@@ -744,6 +748,7 @@ pub(crate) fn user_status_str(value: UserStatus) -> &'static str {
 pub(crate) fn organization_status_str(value: OrganizationStatus) -> &'static str {
     match value {
         OrganizationStatus::Active => "active",
+        OrganizationStatus::Disabled => "disabled",
         OrganizationStatus::Suspended => "suspended",
         OrganizationStatus::Deleted => "deleted",
     }
@@ -763,6 +768,8 @@ pub(crate) fn application_status_str(value: ApplicationStatus) -> &'static str {
     match value {
         ApplicationStatus::Active => "active",
         ApplicationStatus::Disabled => "disabled",
+        ApplicationStatus::Suspended => "suspended",
+        ApplicationStatus::Deleted => "deleted",
     }
 }
 

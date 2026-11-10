@@ -1,12 +1,12 @@
 use crate::domain::DomainError;
-use crate::domain::id::{BrandEntity, Id, OrganizationEntity};
+use crate::domain::id::{ApplicationEntity, BrandEntity, Id};
 use crate::domain::time::Timestamp;
 
 /// A branding profile applied to a deployment or organization.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Brand {
     id: Id<BrandEntity>,
-    org_id: Option<Id<OrganizationEntity>>,
+    application_id: Option<Id<ApplicationEntity>>,
     domain: Option<String>,
     title: String,
     logo_url: Option<String>,
@@ -21,14 +21,14 @@ impl Brand {
     /// Creates a new brand.
     pub fn new(
         id: Id<BrandEntity>,
-        org_id: Option<Id<OrganizationEntity>>,
+        application_id: Option<Id<ApplicationEntity>>,
         domain: Option<String>,
         title: String,
         now: Timestamp,
     ) -> Self {
         Self {
             id,
-            org_id,
+            application_id,
             domain,
             title,
             logo_url: None,
@@ -43,7 +43,7 @@ impl Brand {
     #[allow(clippy::too_many_arguments)]
     pub fn restore(
         id: Id<BrandEntity>,
-        org_id: Option<Id<OrganizationEntity>>,
+        application_id: Option<Id<ApplicationEntity>>,
         domain: Option<String>,
         title: String,
         logo_url: Option<String>,
@@ -60,7 +60,7 @@ impl Brand {
         }
         Ok(Self {
             id,
-            org_id,
+            application_id,
             domain,
             title,
             logo_url,
@@ -75,8 +75,8 @@ impl Brand {
     pub const fn id(&self) -> &Id<BrandEntity> {
         &self.id
     }
-    pub const fn org_id(&self) -> Option<&Id<OrganizationEntity>> {
-        self.org_id.as_ref()
+    pub const fn application_id(&self) -> Option<&Id<ApplicationEntity>> {
+        self.application_id.as_ref()
     }
     pub fn domain(&self) -> Option<&str> {
         self.domain.as_deref()
@@ -131,8 +131,8 @@ impl Brand {
         self.domain = domain;
         self.touch(now);
     }
-    pub fn set_org(&mut self, org_id: Option<Id<OrganizationEntity>>, now: Timestamp) {
-        self.org_id = org_id;
+    pub fn set_org(&mut self, application_id: Option<Id<ApplicationEntity>>, now: Timestamp) {
+        self.application_id = application_id;
         self.touch(now);
     }
 }

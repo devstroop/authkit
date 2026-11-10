@@ -1,7 +1,7 @@
 use crate::domain::DomainError;
 use crate::domain::id::{
     ApplicationEntity, AuthorizationCodeEntity, ConsentEntity, Id, OAuthClientEntity,
-    OrganizationEntity, RefreshFamilyEntity, RefreshTokenEntity, SessionEntity, UserEntity,
+    RefreshFamilyEntity, RefreshTokenEntity, SessionEntity, UserEntity,
 };
 use crate::domain::pkce::{Nonce, PkceChallenge};
 use crate::domain::redirect_uri::RedirectUri;
@@ -13,7 +13,6 @@ use crate::domain::time::Timestamp;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuthorizationCode {
     id: Id<AuthorizationCodeEntity>,
-    organization_id: Id<OrganizationEntity>,
     application_id: Id<ApplicationEntity>,
     client_id: Id<OAuthClientEntity>,
     user_id: Id<UserEntity>,
@@ -35,7 +34,6 @@ impl AuthorizationCode {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: Id<AuthorizationCodeEntity>,
-        organization_id: Id<OrganizationEntity>,
         application_id: Id<ApplicationEntity>,
         client_id: Id<OAuthClientEntity>,
         user_id: Id<UserEntity>,
@@ -62,7 +60,6 @@ impl AuthorizationCode {
 
         Ok(Self {
             id,
-            organization_id,
             application_id,
             client_id,
             user_id,
@@ -87,7 +84,6 @@ impl AuthorizationCode {
     #[allow(clippy::too_many_arguments)]
     pub fn restore(
         id: Id<AuthorizationCodeEntity>,
-        organization_id: Id<OrganizationEntity>,
         application_id: Id<ApplicationEntity>,
         client_id: Id<OAuthClientEntity>,
         user_id: Id<UserEntity>,
@@ -105,7 +101,6 @@ impl AuthorizationCode {
     ) -> Result<Self, DomainError> {
         let mut code = Self::new(
             id,
-            organization_id,
             application_id,
             client_id,
             user_id,
@@ -137,11 +132,6 @@ impl AuthorizationCode {
     }
 
     /// Returns the tenant.
-    pub const fn organization_id(&self) -> &Id<OrganizationEntity> {
-        &self.organization_id
-    }
-
-    /// Returns the application.
     pub const fn application_id(&self) -> &Id<ApplicationEntity> {
         &self.application_id
     }
@@ -236,7 +226,7 @@ impl AuthorizationCode {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Consent {
     id: Id<ConsentEntity>,
-    organization_id: Id<OrganizationEntity>,
+    application_id: Id<ApplicationEntity>,
     user_id: Id<UserEntity>,
     client_id: Id<OAuthClientEntity>,
     scopes: ScopeSet,
@@ -250,7 +240,7 @@ impl Consent {
     /// Creates an active consent.
     pub fn new(
         id: Id<ConsentEntity>,
-        organization_id: Id<OrganizationEntity>,
+        application_id: Id<ApplicationEntity>,
         user_id: Id<UserEntity>,
         client_id: Id<OAuthClientEntity>,
         scopes: ScopeSet,
@@ -258,7 +248,7 @@ impl Consent {
     ) -> Self {
         Self {
             id,
-            organization_id,
+            application_id,
             user_id,
             client_id,
             scopes,
@@ -276,7 +266,7 @@ impl Consent {
     #[allow(clippy::too_many_arguments)]
     pub fn restore(
         id: Id<ConsentEntity>,
-        organization_id: Id<OrganizationEntity>,
+        application_id: Id<ApplicationEntity>,
         user_id: Id<UserEntity>,
         client_id: Id<OAuthClientEntity>,
         scopes: ScopeSet,
@@ -300,7 +290,7 @@ impl Consent {
 
         Ok(Self {
             id,
-            organization_id,
+            application_id,
             user_id,
             client_id,
             scopes,
@@ -317,8 +307,8 @@ impl Consent {
     }
 
     /// Returns the tenant.
-    pub const fn organization_id(&self) -> &Id<OrganizationEntity> {
-        &self.organization_id
+    pub const fn application_id(&self) -> &Id<ApplicationEntity> {
+        &self.application_id
     }
 
     /// Returns the consenting user.
@@ -398,7 +388,7 @@ impl Consent {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RefreshFamily {
     id: Id<RefreshFamilyEntity>,
-    organization_id: Id<OrganizationEntity>,
+    application_id: Id<ApplicationEntity>,
     client_id: Id<OAuthClientEntity>,
     user_id: Id<UserEntity>,
     scopes: ScopeSet,
@@ -415,7 +405,7 @@ impl RefreshFamily {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: Id<RefreshFamilyEntity>,
-        organization_id: Id<OrganizationEntity>,
+        application_id: Id<ApplicationEntity>,
         client_id: Id<OAuthClientEntity>,
         user_id: Id<UserEntity>,
         scopes: ScopeSet,
@@ -442,7 +432,7 @@ impl RefreshFamily {
 
         Ok(Self {
             id,
-            organization_id,
+            application_id,
             client_id,
             user_id,
             scopes,
@@ -462,7 +452,7 @@ impl RefreshFamily {
     #[allow(clippy::too_many_arguments)]
     pub fn restore(
         id: Id<RefreshFamilyEntity>,
-        organization_id: Id<OrganizationEntity>,
+        application_id: Id<ApplicationEntity>,
         client_id: Id<OAuthClientEntity>,
         user_id: Id<UserEntity>,
         scopes: ScopeSet,
@@ -475,7 +465,7 @@ impl RefreshFamily {
     ) -> Result<Self, DomainError> {
         let mut family = Self::new(
             id,
-            organization_id,
+            application_id,
             client_id,
             user_id,
             scopes,
@@ -502,8 +492,8 @@ impl RefreshFamily {
     }
 
     /// Returns the tenant.
-    pub const fn organization_id(&self) -> &Id<OrganizationEntity> {
-        &self.organization_id
+    pub const fn application_id(&self) -> &Id<ApplicationEntity> {
+        &self.application_id
     }
 
     /// Returns the client.
@@ -714,12 +704,8 @@ mod tests {
     use super::*;
     use crate::domain::scope::Scope;
 
-    fn organization_id() -> Id<OrganizationEntity> {
-        Id::<OrganizationEntity>::from_suffix("0123456789abcdef").expect("valid id")
-    }
-
     fn application_id() -> Id<ApplicationEntity> {
-        Id::<ApplicationEntity>::from_suffix("fedcba9876543210").expect("valid id")
+        Id::<ApplicationEntity>::from_suffix("0123456789abcdef").expect("valid id")
     }
 
     fn client_id() -> Id<OAuthClientEntity> {
@@ -744,7 +730,6 @@ mod tests {
     fn code() -> AuthorizationCode {
         AuthorizationCode::new(
             Id::<AuthorizationCodeEntity>::from_suffix("1122334455667788").expect("valid id"),
-            organization_id(),
             application_id(),
             client_id(),
             user_id(),
@@ -782,7 +767,7 @@ mod tests {
     fn consent_covers_only_granted_scopes() {
         let consent = Consent::new(
             Id::<ConsentEntity>::from_suffix("2233445566778899").expect("valid id"),
-            organization_id(),
+            application_id(),
             user_id(),
             client_id(),
             ScopeSet::new([Scope::parse("openid").expect("valid")]),
@@ -796,7 +781,7 @@ mod tests {
     fn consent_grant_reactivates_and_replaces_scopes() {
         let mut consent = Consent::new(
             Id::<ConsentEntity>::from_suffix("2233445566778899").expect("valid id"),
-            organization_id(),
+            application_id(),
             user_id(),
             client_id(),
             ScopeSet::new([Scope::parse("openid").expect("valid")]),
@@ -824,7 +809,7 @@ mod tests {
     fn refresh_families_revoke_idempotently() {
         let mut family = RefreshFamily::new(
             Id::<RefreshFamilyEntity>::from_suffix("33445566778899aa").expect("valid id"),
-            organization_id(),
+            application_id(),
             client_id(),
             user_id(),
             scopes(),
