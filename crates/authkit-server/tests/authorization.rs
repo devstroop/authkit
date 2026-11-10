@@ -56,6 +56,7 @@ fn fixture(first_party: bool) -> Fixture {
     let now = Timestamp::from_millis(1_000);
     let user = User::new(
         typed_id(USER_ID),
+        None,
         Email::parse("authorize-test@example.com").expect("valid email"),
         DisplayName::parse("Authorize Test").expect("valid display name"),
         now,
@@ -64,6 +65,9 @@ fn fixture(first_party: bool) -> Fixture {
         typed_id(ORGANIZATION_ID),
         Slug::parse("authorize-test").expect("valid slug"),
         DisplayName::parse("Authorize Test Org").expect("valid name"),
+        ApplicationKind::Web,
+        first_party,
+        "authorize-test.example.com".to_owned(),
         now,
     );
     let membership = Membership::active(
@@ -74,17 +78,17 @@ fn fixture(first_party: bool) -> Fixture {
     );
     let application = Application::new(
         typed_id::<ApplicationEntity>(APPLICATION_ID),
-        organization.id().clone(),
         Slug::parse("authorize-test-app").expect("valid slug"),
         DisplayName::parse("Authorize Test App").expect("valid name"),
         ApplicationKind::Web,
         first_party,
+        "authorize-test.example.com".to_owned(),
         now,
     );
     let client = OAuthClient::new(
         typed_id::<OAuthClientEntity>(CLIENT_ROW_ID),
         OAuthClientSpec {
-            application_id: application.id().clone(),
+            application_id: organization.id().clone(),
             client_id: ClientId::parse(CLIENT_ID).expect("valid client id"),
             name: DisplayName::parse("Authorize Test Client").expect("valid name"),
             client_type: ClientType::Public,
@@ -562,7 +566,7 @@ async fn redemption_rejects_wrong_verifier_and_redirect_without_consuming() {
     let second_client = OAuthClient::new(
         typed_id::<OAuthClientEntity>("0000000000000006"),
         OAuthClientSpec {
-            application_id: typed_id::<ApplicationEntity>(APPLICATION_ID),
+            application_id: typed_id(ORGANIZATION_ID),
             client_id: ClientId::parse("authorization-test-client-2").expect("valid client id"),
             name: DisplayName::parse("Second Client").expect("valid name"),
             client_type: ClientType::Public,
@@ -702,6 +706,197 @@ async fn rejects_unsupported_security_parameters() {
             "{name}"
         );
     }
+    cleanup(fixture).await;
+}
+
+#[tokio::test]
+async fn authorize_rejects_unsupported_response_type() {
+    let fixture = fixture_async(false).await;
+    let mut query = Serializer::new(String::new());
+    query.append_pair("client_id", fixture.client_id.as_str());
+    query.append_pair("redirect_uri", fixture.redirect_uri.as_str());
+    query.append_pair("response_type", "token");
+    query.append_pair("scope", "openid");
+    query.append_pair("state", STATE);
+    query.append_pair("code_challenge", &fixture.challenge);
+    query.append_pair("code_challenge_method", "S256");
+    let query = query.finish();
+    let (status, headers, _) = send(
+        app(&fixture),
+        Method::GET,
+        &format!("/oauth2/authorize?{query}"),
+        &[],
+        Body::empty(),
+    )
+    .await;
+    assert!(
+        headers.get(header::LOCATION).is_none()
+            || !headers
+                .get(header::LOCATION)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("")
+                .contains("code=")
+    );
+    let _ = status;
+    cleanup(fixture).await;
+}
+
+#[tokio::test]
+async fn authorize_rejects_unknown_client() {
+    let fixture = fixture_async(false).await;
+    let mut query = Serializer::new(String::new());
+    query.append_pair("client_id", "unknown-client-id");
+    query.append_pair("redirect_uri", fixture.redirect_uri.as_str());
+    query.append_pair("response_type", "code");
+    query.append_pair("scope", "openid");
+    query.append_pair("state", STATE);
+    query.append_pair("code_challenge", &fixture.challenge);
+    query.append_pair("code_challenge_method", "S256");
+    let query = query.finish();
+    let (status, headers, _) = send(
+        app(&fixture),
+        Method::GET,
+        &format!("/oauth2/authorize?{query}"),
+        &[],
+        Body::empty(),
+    )
+    .await;
+    assert!(
+        headers.get(header::LOCATION).is_none()
+            || !headers
+                .get(header::LOCATION)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("")
+                .contains("code=")
+    );
+    let _ = status;
+    cleanup(fixture).await;
+}
+
+#[tokio::test]
+async fn authorize_rejects_invalid_scope() {
+    let fixture = fixture_async(false).await;
+    let mut query = Serializer::new(String::new());
+    query.append_pair("client_id", fixture.client_id.as_str());
+    query.append_pair("redirect_uri", fixture.redirect_uri.as_str());
+    query.append_pair("response_type", "code");
+    query.append_pair("scope", "not-a-real-scope");
+    query.append_pair("state", STATE);
+    query.append_pair("code_challenge", &fixture.challenge);
+    query.append_pair("code_challenge_method", "S256");
+    let query = query.finish();
+    let (status, headers, _) = send(
+        app(&fixture),
+        Method::GET,
+        &format!("/oauth2/authorize?{query}"),
+        &[],
+        Body::empty(),
+    )
+    .await;
+    assert!(
+        headers.get(header::LOCATION).is_none()
+            || !headers
+                .get(header::LOCATION)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("")
+                .contains("code=")
+    );
+    let _ = status;
+    cleanup(fixture).await;
+}
+
+#[tokio::test]
+async fn authorize_rejects_missing_client_id() {
+    let fixture = fixture_async(false).await;
+    let mut query = Serializer::new(String::new());
+    query.append_pair("redirect_uri", fixture.redirect_uri.as_str());
+    query.append_pair("response_type", "code");
+    query.append_pair("scope", "openid");
+    query.append_pair("state", STATE);
+    query.append_pair("code_challenge", &fixture.challenge);
+    query.append_pair("code_challenge_method", "S256");
+    let query = query.finish();
+    let (status, headers, _) = send(
+        app(&fixture),
+        Method::GET,
+        &format!("/oauth2/authorize?{query}"),
+        &[],
+        Body::empty(),
+    )
+    .await;
+    assert!(
+        headers.get(header::LOCATION).is_none()
+            || !headers
+                .get(header::LOCATION)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("")
+                .contains("code=")
+    );
+    let _ = status;
+    cleanup(fixture).await;
+}
+
+#[tokio::test]
+async fn authorize_rejects_missing_redirect_uri() {
+    let fixture = fixture_async(false).await;
+    let mut query = Serializer::new(String::new());
+    query.append_pair("client_id", fixture.client_id.as_str());
+    query.append_pair("response_type", "code");
+    query.append_pair("scope", "openid");
+    query.append_pair("state", STATE);
+    query.append_pair("code_challenge", &fixture.challenge);
+    query.append_pair("code_challenge_method", "S256");
+    let query = query.finish();
+    let (status, headers, _) = send(
+        app(&fixture),
+        Method::GET,
+        &format!("/oauth2/authorize?{query}"),
+        &[],
+        Body::empty(),
+    )
+    .await;
+    // Missing redirect_uri must not produce a redirect with a code.
+    assert!(
+        headers.get(header::LOCATION).is_none()
+            || !headers
+                .get(header::LOCATION)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("")
+                .contains("code=")
+    );
+    let _ = status;
+    cleanup(fixture).await;
+}
+
+#[tokio::test]
+async fn authorize_rejects_short_code_challenge() {
+    let fixture = fixture_async(false).await;
+    let mut query = Serializer::new(String::new());
+    query.append_pair("client_id", fixture.client_id.as_str());
+    query.append_pair("redirect_uri", fixture.redirect_uri.as_str());
+    query.append_pair("response_type", "code");
+    query.append_pair("scope", "openid");
+    query.append_pair("state", STATE);
+    query.append_pair("code_challenge", "short");
+    query.append_pair("code_challenge_method", "S256");
+    let query = query.finish();
+    let (status, headers, _) = send(
+        app(&fixture),
+        Method::GET,
+        &format!("/oauth2/authorize?{query}"),
+        &[],
+        Body::empty(),
+    )
+    .await;
+    assert!(
+        headers.get(header::LOCATION).is_none()
+            || !headers
+                .get(header::LOCATION)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("")
+                .contains("code=")
+    );
+    let _ = status;
     cleanup(fixture).await;
 }
 

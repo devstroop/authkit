@@ -30,6 +30,7 @@ fn fixture() -> Fixture {
     store.migrate().expect("migrated store");
     let user = User::new(
         Id::from_suffix(USER_SUFFIX).expect("valid user id"),
+        None,
         Email::parse("session-test@example.com").expect("valid email"),
         DisplayName::parse("Session Test").expect("valid display name"),
         Timestamp::from_millis(1),
