@@ -196,10 +196,20 @@ pub(crate) async fn auth_begin(
         Err(_) => return bad_request("invalid email"),
     };
     let store = sessions.store().clone();
+    let application_id = crate::tenant::current()
+        .as_ref()
+        .map(|app| app.id().clone());
     let user = tokio::task::spawn_blocking({
         let store = store.clone();
         let email = email.clone();
-        move || authkit_core::ports::UserRepository::find_by_email(store.as_ref(), &email)
+        let application_id = application_id.clone();
+        move || {
+            authkit_core::ports::UserRepository::find_by_email(
+                store.as_ref(),
+                application_id.as_ref(),
+                &email,
+            )
+        }
     })
     .await
     .ok()

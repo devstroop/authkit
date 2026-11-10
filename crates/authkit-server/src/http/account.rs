@@ -267,10 +267,12 @@ pub(crate) async fn request_email_change(
     };
 
     // Ensure new email is not already in use.
+    let application_id = user.application_id().cloned();
     if let Ok(Ok(Some(_))) = tokio::task::spawn_blocking({
         let store = store.clone();
         let email = new_email.clone();
-        move || UserRepository::find_by_email(store.as_ref(), &email)
+        let application_id = application_id.clone();
+        move || UserRepository::find_by_email(store.as_ref(), application_id.as_ref(), &email)
     })
     .await
     {
@@ -334,16 +336,26 @@ pub(crate) async fn request_email_change(
 }
 
 pub(crate) async fn email_change_confirm_page(
+    State(state): State<AppState>,
+    session: Option<Extension<SessionContext>>,
     axum::extract::Query(q): axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> Response {
+    let Some(Extension(session)) = session else {
+        return redirect("/login");
+    };
+    let Some(sessions) = state.sessions.as_ref() else {
+        return unavailable();
+    };
     let token = q.get("token").cloned().unwrap_or_default();
     let email = q.get("email").cloned().unwrap_or_default();
-    // Render a simple confirm form.
-    let body = format!(
-        r#"<div class="auth-card" style="max-width:32rem;"><h1>Confirm email change</h1><div class="card"><form method="post" action="/account/email-change/confirm"><input type="hidden" name="token" value="{token}"><input type="hidden" name="email" value="{email}"><button type="submit" class="btn">Confirm</button></form></div></div>"#,
-        token = token,
-        email = email
-    );
+    let csrf = sessions.csrf_token(session.session());
+    let template = EmailChangeConfirmTemplate {
+        title: "Confirm email change",
+        csrf: &csrf,
+        token: &token,
+        email: &email,
+    };
+    let body = template.render().unwrap_or_default();
     (
         StatusCode::OK,
         [
@@ -446,10 +458,12 @@ pub(crate) async fn confirm_email_change(
     };
 
     // Ensure new email not in use by another account.
+    let application_id = user.application_id().cloned();
     if let Ok(Ok(Some(other))) = tokio::task::spawn_blocking({
         let store = store.clone();
         let email = new_email.clone();
-        move || UserRepository::find_by_email(store.as_ref(), &email)
+        let application_id = application_id.clone();
+        move || UserRepository::find_by_email(store.as_ref(), application_id.as_ref(), &email)
     })
     .await
         && other.id() != user.id()
@@ -617,7 +631,7 @@ pub(crate) async fn connected_apps_page(
             if c.revoked_at().is_some() {
                 continue;
             }
-            let tenant = TenantContext::new(c.organization_id().clone());
+            let tenant = TenantContext::new(c.application_id().clone());
             let client_name = tokio::task::spawn_blocking({
                 let store = store.clone();
                 let tenant = tenant.clone();
@@ -693,7 +707,7 @@ pub(crate) async fn revoke_consent(
         let Some(mut consent) = consent else {
             return Ok::<_, authkit_core::domain::DomainError>(false);
         };
-        let tenant = TenantContext::new(consent.organization_id().clone());
+        let tenant = TenantContext::new(consent.application_id().clone());
         let expected = consent.version();
         consent.revoke(now);
         let result = ConsentRepository::update(store.as_ref(), &tenant, &consent, expected)?;
@@ -714,6 +728,15 @@ struct ProfileTemplate<'a> {
     title: &'a str,
     csrf: &'a str,
     display_name: &'a str,
+}
+
+#[derive(askama::Template)]
+#[template(path = "pages/email_change_confirm.html")]
+struct EmailChangeConfirmTemplate<'a> {
+    title: &'a str,
+    csrf: &'a str,
+    token: &'a str,
+    email: &'a str,
 }
 
 pub(crate) async fn profile_page(

@@ -199,8 +199,11 @@ pub(crate) async fn login_submit(
 
     let store_clone = store.clone();
     let email_for_lookup = email_parsed.clone();
+    let application_id = crate::tenant::current()
+        .as_ref()
+        .map(|app| app.id().clone());
     let user = match tokio::task::spawn_blocking(move || {
-        find_user_by_email(&store_clone, &email_for_lookup)
+        find_user_by_email(&store_clone, application_id, &email_for_lookup)
     })
     .await
     .ok()
@@ -555,6 +558,7 @@ pub(crate) async fn register_submit(
     let display_name_for_create = display_name.clone();
     let user_result = tokio::task::spawn_blocking(move || {
         let user = (CreateUser {
+            application_id: None,
             email: email_for_create,
             display_name: display_name_for_create,
         })
@@ -618,9 +622,10 @@ pub(crate) async fn register_submit(
 
 fn find_user_by_email(
     store: &Arc<SqlStore>,
+    application_id: Option<Id<authkit_core::domain::id::ApplicationEntity>>,
     email: &Email,
 ) -> Result<Option<User>, authkit_core::domain::DomainError> {
-    UserRepository::find_by_email(store.as_ref(), email)
+    UserRepository::find_by_email(store.as_ref(), application_id.as_ref(), email)
 }
 
 fn form_value(query: &str, name: &str) -> Option<String> {

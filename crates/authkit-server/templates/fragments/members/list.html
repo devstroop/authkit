@@ -14,7 +14,7 @@
 </ul>
 {% if can_manage %}
 <h2 style="font-family:var(--font-display);font-size:1.5rem;font-weight:400;margin:var(--space-5) 0 var(--space-3);">{{ crate::i18n::t("add_member") }}</h2>
-<form method="post" action="/organizations/{{ org_id }}/members" hx-post="/organizations/{{ org_id }}/members" hx-target="#members" hx-swap="beforeend">
+<form method="post" action="/organizations/{{ application_id }}/members" hx-post="/organizations/{{ application_id }}/members" hx-target="#members" hx-swap="beforeend">
   <input type="hidden" name="_csrf" value="{{ csrf }}">
   {{ ui::text_input("email", crate::i18n::t("user_email"), "email", "email") }}
   {{ ui::button(crate::i18n::t("add")) }}

@@ -6,7 +6,7 @@
     <div style="font-weight:500;">{{ client.name }}</div>
     <div style="font-size:0.8rem;color:var(--muted);font-family:monospace;">{{ client.client_id }} · {{ client.status }}</div>
   </div>
-  <a href="/organizations/{{ org_id }}/oauth-clients/{{ client.id }}" style="font-weight:500;font-size:0.9rem;">{{ crate::i18n::t("manage") }} →</a>
+  <a href="/organizations/{{ application_id }}/oauth-clients/{{ client.id }}" style="font-weight:500;font-size:0.9rem;">{{ crate::i18n::t("manage") }} →</a>
 </li>
 {% endfor %}
 {% if clients.is_empty() %}
@@ -15,7 +15,7 @@
 </ul>
 {% if can_manage %}
 <h2 style="font-family:var(--font-display);font-size:1.5rem;font-weight:400;margin:var(--space-5) 0 var(--space-3);">{{ crate::i18n::t("create_oauth_client") }}</h2>
-<form method="post" action="/organizations/{{ org_id }}/oauth-clients" hx-post="/organizations/{{ org_id }}/oauth-clients" hx-target="#oauth-clients" hx-swap="outerHTML">
+<form method="post" action="/organizations/{{ application_id }}/oauth-clients" hx-post="/organizations/{{ application_id }}/oauth-clients" hx-target="#oauth-clients" hx-swap="outerHTML">
   <input type="hidden" name="_csrf" value="{{ csrf }}">
   <label class="field">
     <span>{{ crate::i18n::t("application") }}</span>

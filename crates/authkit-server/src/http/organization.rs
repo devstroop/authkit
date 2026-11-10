@@ -1,9 +1,9 @@
 //! Organization administration pages.
 
 use askama::Template;
-use authkit_core::application::CreateOrganization;
+use authkit_core::application::AcceptInvitation;
 use authkit_core::domain::id::{
-    DomainEntity, InvitationEntity, OrganizationEntity, RoleBindingEntity, RoleEntity, UserEntity,
+    ApplicationEntity, DomainEntity, InvitationEntity, RoleBindingEntity, RoleEntity, UserEntity,
 };
 use authkit_core::domain::invitation::Invitation;
 use authkit_core::domain::{
@@ -30,7 +30,6 @@ use crate::session::{SecureIdGenerator, SystemClock};
 #[template(path = "pages/organizations.html")]
 struct OrganizationsTemplate<'a> {
     title: &'a str,
-    csrf: &'a str,
     organizations: Vec<OrganizationView>,
 }
 
@@ -43,8 +42,7 @@ struct OrganizationView {
 
 #[derive(askama::Template)]
 #[template(path = "fragments/organizations/list.html")]
-struct OrganizationListFragment<'a> {
-    csrf: &'a str,
+struct OrganizationListFragment {
     organizations: Vec<OrganizationView>,
 }
 
@@ -61,7 +59,6 @@ pub(crate) async fn organizations_page(
     };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
-    let csrf = sessions.csrf_token(session.session());
     let memberships = tokio::task::spawn_blocking({
         let store = store.clone();
         let user_id = user_id.clone();
@@ -79,8 +76,8 @@ pub(crate) async fn organizations_page(
         }
         let org = tokio::task::spawn_blocking({
             let store = store.clone();
-            let org_id = m.organization_id().clone();
-            move || OrganizationRepository::find_by_id(store.as_ref(), &org_id)
+            let application_id = m.application_id().clone();
+            move || OrganizationRepository::find_by_id(store.as_ref(), &application_id)
         })
         .await
         .ok()
@@ -96,7 +93,6 @@ pub(crate) async fn organizations_page(
 
     if headers.get("HX-Request").is_some() {
         let fragment = OrganizationListFragment {
-            csrf: &csrf,
             organizations: organizations.clone(),
         };
         let body = fragment.render().unwrap_or_default();
@@ -105,51 +101,10 @@ pub(crate) async fn organizations_page(
 
     let template = OrganizationsTemplate {
         title: "title_organizations",
-        csrf: &csrf,
         organizations,
     };
     let body = template.render().unwrap_or_default();
     html_ok(&body)
-}
-
-pub(crate) async fn create_organization(
-    State(state): State<AppState>,
-    session: Option<Extension<SessionContext>>,
-    body: axum::body::Bytes,
-) -> Response {
-    let Some(Extension(session)) = session else {
-        return redirect("/login");
-    };
-    let Some(sessions) = state.sessions.as_ref() else {
-        return unavailable();
-    };
-    let mut params = parse_form(&body);
-    let slug = params.remove("slug").unwrap_or_default();
-    let name = params.remove("name").unwrap_or_default();
-    let slug = match Slug::parse(&slug) {
-        Ok(v) => v,
-        Err(_) => return bad_request(),
-    };
-    let name = match DisplayName::parse(&name) {
-        Ok(v) => v,
-        Err(_) => return bad_request(),
-    };
-    let store = sessions.store().clone();
-    let user_id = session.session().user_id().clone();
-    let result = tokio::task::spawn_blocking(move || {
-        let uc = CreateOrganization {
-            slug,
-            name,
-            owner_id: user_id,
-        };
-        uc.execute(store.as_ref(), &SystemClock, &SecureIdGenerator)
-    })
-    .await;
-    if result.ok().and_then(|r| r.ok()).is_some() {
-        redirect("/organizations")
-    } else {
-        unavailable()
-    }
 }
 
 #[derive(askama::Template)]
@@ -157,7 +112,7 @@ pub(crate) async fn create_organization(
 struct MembersTemplate<'a> {
     title: &'a str,
     csrf: &'a str,
-    org_id: &'a str,
+    application_id: &'a str,
     members: Vec<MemberView>,
     can_manage: bool,
 }
@@ -173,7 +128,7 @@ struct MemberView {
 #[template(path = "fragments/members/list.html")]
 struct MembersFragment<'a> {
     csrf: &'a str,
-    org_id: &'a str,
+    application_id: &'a str,
     members: Vec<MemberView>,
     can_manage: bool,
 }
@@ -182,7 +137,7 @@ pub(crate) async fn members_page(
     State(state): State<AppState>,
     headers: HeaderMap,
     session: Option<Extension<SessionContext>>,
-    Path(org_id): Path<String>,
+    Path(application_id): Path<String>,
 ) -> Response {
     let Some(Extension(session)) = session else {
         return redirect("/login");
@@ -190,19 +145,19 @@ pub(crate) async fn members_page(
     let Some(sessions) = state.sessions.as_ref() else {
         return unavailable();
     };
-    let org_id = match Id::<OrganizationEntity>::parse(&org_id) {
+    let application_id = match Id::<ApplicationEntity>::parse(&application_id) {
         Ok(v) => v,
         Err(_) => return bad_request(),
     };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
     let csrf = sessions.csrf_token(session.session());
-    if !can_manage_members(&store, &user_id, &org_id).await
-        && !can_read_members(&store, &user_id, &org_id).await
+    if !can_manage_members(&store, &user_id, &application_id).await
+        && !can_read_members(&store, &user_id, &application_id).await
     {
         return forbidden();
     }
-    let tenant = TenantContext::new(org_id.clone());
+    let tenant = TenantContext::new(application_id.clone());
     let memberships = tokio::task::spawn_blocking({
         let store = store.clone();
         let tenant = tenant.clone();
@@ -235,11 +190,11 @@ pub(crate) async fn members_page(
         });
     }
 
-    let can_manage = can_manage_members(&store, &user_id, &org_id).await;
+    let can_manage = can_manage_members(&store, &user_id, &application_id).await;
     if headers.get("HX-Request").is_some() {
         let fragment = MembersFragment {
             csrf: &csrf,
-            org_id: org_id.as_str(),
+            application_id: application_id.as_str(),
             members: members.clone(),
             can_manage,
         };
@@ -249,7 +204,7 @@ pub(crate) async fn members_page(
     let template = MembersTemplate {
         title: "title_members",
         csrf: &csrf,
-        org_id: org_id.as_str(),
+        application_id: application_id.as_str(),
         members,
         can_manage,
     };
@@ -260,7 +215,7 @@ pub(crate) async fn members_page(
 pub(crate) async fn add_member(
     State(state): State<AppState>,
     session: Option<Extension<SessionContext>>,
-    Path(org_id): Path<String>,
+    Path(application_id): Path<String>,
     body: axum::body::Bytes,
 ) -> Response {
     let Some(Extension(session)) = session else {
@@ -269,13 +224,13 @@ pub(crate) async fn add_member(
     let Some(sessions) = state.sessions.as_ref() else {
         return unavailable();
     };
-    let org_id = match Id::<OrganizationEntity>::parse(&org_id) {
+    let application_id = match Id::<ApplicationEntity>::parse(&application_id) {
         Ok(v) => v,
         Err(_) => return bad_request(),
     };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
-    if !can_manage_members(&store, &user_id, &org_id).await {
+    if !can_manage_members(&store, &user_id, &application_id).await {
         return forbidden();
     }
     let mut params = parse_form(&body);
@@ -287,7 +242,8 @@ pub(crate) async fn add_member(
     let target_user = match tokio::task::spawn_blocking({
         let store = store.clone();
         let email = email.clone();
-        move || UserRepository::find_by_email(store.as_ref(), &email)
+        let application_id = application_id.clone();
+        move || UserRepository::find_by_email(store.as_ref(), Some(&application_id), &email)
     })
     .await
     .ok()
@@ -296,7 +252,7 @@ pub(crate) async fn add_member(
         Some(u) => u,
         None => return bad_request(),
     };
-    let tenant = TenantContext::new(org_id.clone());
+    let tenant = TenantContext::new(application_id.clone());
     let result = tokio::task::spawn_blocking({
         let store = store.clone();
         let tenant = tenant.clone();
@@ -311,7 +267,10 @@ pub(crate) async fn add_member(
     })
     .await;
     if result.ok().and_then(|r| r.ok()).is_some() {
-        redirect(&format!("/organizations/{}/members", org_id.as_str()))
+        redirect(&format!(
+            "/organizations/{}/members",
+            application_id.as_str()
+        ))
     } else {
         unavailable()
     }
@@ -322,7 +281,7 @@ pub(crate) async fn add_member(
 struct InvitationsTemplate<'a> {
     title: &'a str,
     csrf: &'a str,
-    org_id: &'a str,
+    application_id: &'a str,
     invitations: Vec<InvitationView>,
     roles: Vec<RoleOption>,
     can_manage: bool,
@@ -345,7 +304,7 @@ struct RoleOption {
 #[template(path = "fragments/invitations/list.html")]
 struct InvitationsFragment<'a> {
     csrf: &'a str,
-    org_id: &'a str,
+    application_id: &'a str,
     invitations: Vec<InvitationView>,
     roles: Vec<RoleOption>,
     can_manage: bool,
@@ -355,7 +314,7 @@ pub(crate) async fn invitations_page(
     State(state): State<AppState>,
     headers: HeaderMap,
     session: Option<Extension<SessionContext>>,
-    Path(org_id): Path<String>,
+    Path(application_id): Path<String>,
 ) -> Response {
     let Some(Extension(session)) = session else {
         return redirect("/login");
@@ -363,17 +322,17 @@ pub(crate) async fn invitations_page(
     let Some(sessions) = state.sessions.as_ref() else {
         return unavailable();
     };
-    let org_id = match Id::<OrganizationEntity>::parse(&org_id) {
+    let application_id = match Id::<ApplicationEntity>::parse(&application_id) {
         Ok(v) => v,
         Err(_) => return bad_request(),
     };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
     let csrf = sessions.csrf_token(session.session());
-    if !can_read_members(&store, &user_id, &org_id).await {
+    if !can_read_members(&store, &user_id, &application_id).await {
         return forbidden();
     }
-    let tenant = TenantContext::new(org_id.clone());
+    let tenant = TenantContext::new(application_id.clone());
     let invitations = tokio::task::spawn_blocking({
         let store = store.clone();
         let tenant = tenant.clone();
@@ -408,11 +367,11 @@ pub(crate) async fn invitations_page(
             name: r.name().as_str().to_owned(),
         })
         .collect();
-    let can_manage = can_manage_members(&store, &user_id, &org_id).await;
+    let can_manage = can_manage_members(&store, &user_id, &application_id).await;
     if headers.get("HX-Request").is_some() {
         let fragment = InvitationsFragment {
             csrf: &csrf,
-            org_id: org_id.as_str(),
+            application_id: application_id.as_str(),
             invitations: invitation_views.clone(),
             roles: role_options.clone(),
             can_manage,
@@ -423,7 +382,7 @@ pub(crate) async fn invitations_page(
     let template = InvitationsTemplate {
         title: "title_invitations",
         csrf: &csrf,
-        org_id: org_id.as_str(),
+        application_id: application_id.as_str(),
         invitations: invitation_views,
         roles: role_options,
         can_manage,
@@ -435,7 +394,7 @@ pub(crate) async fn invitations_page(
 pub(crate) async fn create_invitation(
     State(state): State<AppState>,
     session: Option<Extension<SessionContext>>,
-    Path(org_id): Path<String>,
+    Path(application_id): Path<String>,
     body: axum::body::Bytes,
 ) -> Response {
     let Some(Extension(session)) = session else {
@@ -444,13 +403,13 @@ pub(crate) async fn create_invitation(
     let Some(sessions) = state.sessions.as_ref() else {
         return unavailable();
     };
-    let org_id = match Id::<OrganizationEntity>::parse(&org_id) {
+    let application_id = match Id::<ApplicationEntity>::parse(&application_id) {
         Ok(v) => v,
         Err(_) => return bad_request(),
     };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
-    if !can_manage_members(&store, &user_id, &org_id).await {
+    if !can_manage_members(&store, &user_id, &application_id).await {
         return forbidden();
     }
     let mut params = parse_form(&body);
@@ -464,7 +423,7 @@ pub(crate) async fn create_invitation(
         Ok(v) => v,
         Err(_) => return bad_request(),
     };
-    let tenant = TenantContext::new(org_id.clone());
+    let tenant = TenantContext::new(application_id.clone());
     let now = sessions.clock().now();
     let pepper = sessions.pepper().to_vec();
     let token_plain = random_token();
@@ -472,7 +431,7 @@ pub(crate) async fn create_invitation(
     let expires = authkit_core::domain::time::Timestamp::from_millis(
         now.as_millis().saturating_add(7 * 24 * 60 * 60 * 1000),
     );
-    let org_id_for_task = org_id.clone();
+    let application_id_for_task = application_id.clone();
     let result = tokio::task::spawn_blocking({
         let store = store.clone();
         let tenant = tenant.clone();
@@ -480,13 +439,13 @@ pub(crate) async fn create_invitation(
         let token_hash = token_hash.clone();
         let role_id = role_id.clone();
         let user_id = user_id.clone();
-        let org_id = org_id_for_task.clone();
+        let application_id = application_id_for_task.clone();
         move || {
             let invitation = Invitation::new(
                 SecureIdGenerator
                     .generate::<InvitationEntity>()
                     .expect("id"),
-                org_id.clone(),
+                application_id.clone(),
                 email,
                 token_hash,
                 vec![role_id],
@@ -506,7 +465,10 @@ pub(crate) async fn create_invitation(
             // Dev-only token logging.
             #[cfg(debug_assertions)]
             tracing::debug!(invitation_token = %token, "dev-only invitation token");
-            redirect(&format!("/organizations/{}/invitations", org_id.as_str()))
+            redirect(&format!(
+                "/organizations/{}/invitations",
+                application_id.as_str()
+            ))
         }
         _ => unavailable(),
     }
@@ -515,7 +477,7 @@ pub(crate) async fn create_invitation(
 pub(crate) async fn revoke_invitation(
     State(state): State<AppState>,
     session: Option<Extension<SessionContext>>,
-    Path((org_id, invitation_id)): Path<(String, String)>,
+    Path((application_id, invitation_id)): Path<(String, String)>,
     _body: axum::body::Bytes,
 ) -> Response {
     let Some(Extension(session)) = session else {
@@ -524,7 +486,7 @@ pub(crate) async fn revoke_invitation(
     let Some(sessions) = state.sessions.as_ref() else {
         return unavailable();
     };
-    let org_id = match Id::<OrganizationEntity>::parse(&org_id) {
+    let application_id = match Id::<ApplicationEntity>::parse(&application_id) {
         Ok(v) => v,
         Err(_) => return bad_request(),
     };
@@ -534,10 +496,10 @@ pub(crate) async fn revoke_invitation(
     };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
-    if !can_manage_members(&store, &user_id, &org_id).await {
+    if !can_manage_members(&store, &user_id, &application_id).await {
         return forbidden();
     }
-    let tenant = TenantContext::new(org_id.clone());
+    let tenant = TenantContext::new(application_id.clone());
     let now = sessions.clock().now();
     let outcome = tokio::task::spawn_blocking({
         let store = store.clone();
@@ -562,7 +524,10 @@ pub(crate) async fn revoke_invitation(
         .map(|o| o.is_applied())
         .unwrap_or(false)
     {
-        redirect(&format!("/organizations/{}/invitations", org_id.as_str()))
+        redirect(&format!(
+            "/organizations/{}/invitations",
+            application_id.as_str()
+        ))
     } else {
         unavailable()
     }
@@ -573,7 +538,7 @@ pub(crate) async fn revoke_invitation(
 struct RolesTemplate<'a> {
     title: &'a str,
     csrf: &'a str,
-    org_id: &'a str,
+    application_id: &'a str,
     roles: Vec<RoleView>,
     can_manage: bool,
 }
@@ -589,7 +554,7 @@ struct RoleView {
 #[template(path = "fragments/roles/list.html")]
 struct RolesFragment<'a> {
     csrf: &'a str,
-    org_id: &'a str,
+    application_id: &'a str,
     roles: Vec<RoleView>,
     can_manage: bool,
 }
@@ -598,7 +563,7 @@ pub(crate) async fn roles_page(
     State(state): State<AppState>,
     headers: HeaderMap,
     session: Option<Extension<SessionContext>>,
-    Path(org_id): Path<String>,
+    Path(application_id): Path<String>,
 ) -> Response {
     let Some(Extension(session)) = session else {
         return redirect("/login");
@@ -606,17 +571,17 @@ pub(crate) async fn roles_page(
     let Some(sessions) = state.sessions.as_ref() else {
         return unavailable();
     };
-    let org_id = match Id::<OrganizationEntity>::parse(&org_id) {
+    let application_id = match Id::<ApplicationEntity>::parse(&application_id) {
         Ok(v) => v,
         Err(_) => return bad_request(),
     };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
     let csrf = sessions.csrf_token(session.session());
-    if !can_read_members(&store, &user_id, &org_id).await {
+    if !can_read_members(&store, &user_id, &application_id).await {
         return forbidden();
     }
-    let tenant = TenantContext::new(org_id.clone());
+    let tenant = TenantContext::new(application_id.clone());
     let roles = tokio::task::spawn_blocking({
         let store = store.clone();
         let tenant = tenant.clone();
@@ -640,11 +605,11 @@ pub(crate) async fn roles_page(
                 .join(", "),
         })
         .collect();
-    let can_manage = can_manage_members(&store, &user_id, &org_id).await;
+    let can_manage = can_manage_members(&store, &user_id, &application_id).await;
     if headers.get("HX-Request").is_some() {
         let fragment = RolesFragment {
             csrf: &csrf,
-            org_id: org_id.as_str(),
+            application_id: application_id.as_str(),
             roles: role_views.clone(),
             can_manage,
         };
@@ -654,7 +619,7 @@ pub(crate) async fn roles_page(
     let template = RolesTemplate {
         title: "title_roles",
         csrf: &csrf,
-        org_id: org_id.as_str(),
+        application_id: application_id.as_str(),
         roles: role_views,
         can_manage,
     };
@@ -665,7 +630,7 @@ pub(crate) async fn roles_page(
 pub(crate) async fn create_role(
     State(state): State<AppState>,
     session: Option<Extension<SessionContext>>,
-    Path(org_id): Path<String>,
+    Path(application_id): Path<String>,
     body: axum::body::Bytes,
 ) -> Response {
     let Some(Extension(session)) = session else {
@@ -674,13 +639,13 @@ pub(crate) async fn create_role(
     let Some(sessions) = state.sessions.as_ref() else {
         return unavailable();
     };
-    let org_id = match Id::<OrganizationEntity>::parse(&org_id) {
+    let application_id = match Id::<ApplicationEntity>::parse(&application_id) {
         Ok(v) => v,
         Err(_) => return bad_request(),
     };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
-    if !can_manage_members(&store, &user_id, &org_id).await {
+    if !can_manage_members(&store, &user_id, &application_id).await {
         return forbidden();
     }
     let mut params = parse_form(&body);
@@ -700,21 +665,20 @@ pub(crate) async fn create_role(
         .filter_map(|p| Permission::parse(p).ok())
         .collect();
     let permission_set = PermissionSet::new(permissions);
-    let tenant = TenantContext::new(org_id.clone());
+    let tenant = TenantContext::new(application_id.clone());
     let now = sessions.clock().now();
-    let org_id_for_task = org_id.clone();
+    let application_id_for_task = application_id.clone();
     let result = tokio::task::spawn_blocking({
         let store = store.clone();
         let tenant = tenant.clone();
         let slug = slug.clone();
         let name = name.clone();
         let permission_set = permission_set.clone();
-        let org_id = org_id_for_task.clone();
+        let application_id = application_id_for_task.clone();
         move || {
             let role = Role::custom(
                 SecureIdGenerator.generate::<RoleEntity>().expect("id"),
-                org_id.clone(),
-                None,
+                application_id.clone(),
                 slug,
                 name,
                 None,
@@ -732,7 +696,7 @@ pub(crate) async fn create_role(
         .map(|o| o.is_applied())
         .unwrap_or(false)
     {
-        redirect(&format!("/organizations/{}/roles", org_id.as_str()))
+        redirect(&format!("/organizations/{}/roles", application_id.as_str()))
     } else {
         unavailable()
     }
@@ -741,7 +705,7 @@ pub(crate) async fn create_role(
 pub(crate) async fn bind_role(
     State(state): State<AppState>,
     session: Option<Extension<SessionContext>>,
-    Path(org_id): Path<String>,
+    Path(application_id): Path<String>,
     body: axum::body::Bytes,
 ) -> Response {
     let Some(Extension(session)) = session else {
@@ -750,13 +714,13 @@ pub(crate) async fn bind_role(
     let Some(sessions) = state.sessions.as_ref() else {
         return unavailable();
     };
-    let org_id = match Id::<OrganizationEntity>::parse(&org_id) {
+    let application_id = match Id::<ApplicationEntity>::parse(&application_id) {
         Ok(v) => v,
         Err(_) => return bad_request(),
     };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
-    if !can_manage_members(&store, &user_id, &org_id).await {
+    if !can_manage_members(&store, &user_id, &application_id).await {
         return forbidden();
     }
     let mut params = parse_form(&body);
@@ -773,7 +737,8 @@ pub(crate) async fn bind_role(
     let target_user = match tokio::task::spawn_blocking({
         let store = store.clone();
         let email = email.clone();
-        move || UserRepository::find_by_email(store.as_ref(), &email)
+        let application_id = application_id.clone();
+        move || UserRepository::find_by_email(store.as_ref(), Some(&application_id), &email)
     })
     .await
     .ok()
@@ -782,21 +747,21 @@ pub(crate) async fn bind_role(
         Some(u) => u,
         None => return bad_request(),
     };
-    let tenant = TenantContext::new(org_id.clone());
+    let tenant = TenantContext::new(application_id.clone());
     let now = sessions.clock().now();
-    let org_id_for_task = org_id.clone();
+    let application_id_for_task = application_id.clone();
     let outcome = tokio::task::spawn_blocking({
         let store = store.clone();
         let tenant = tenant.clone();
         let role_id = role_id.clone();
         let target_id = target_user.id().clone();
-        let org_id = org_id_for_task.clone();
+        let application_id = application_id_for_task.clone();
         move || {
             let binding = RoleBinding::organization(
                 SecureIdGenerator
                     .generate::<RoleBindingEntity>()
                     .expect("id"),
-                org_id.clone(),
+                application_id.clone(),
                 role_id,
                 target_id,
                 now,
@@ -811,7 +776,7 @@ pub(crate) async fn bind_role(
         .map(|o| o.is_applied())
         .unwrap_or(false)
     {
-        redirect(&format!("/organizations/{}/roles", org_id.as_str()))
+        redirect(&format!("/organizations/{}/roles", application_id.as_str()))
     } else {
         unavailable()
     }
@@ -822,7 +787,7 @@ pub(crate) async fn bind_role(
 struct ApplicationsTemplate<'a> {
     title: &'a str,
     csrf: &'a str,
-    org_id: &'a str,
+    application_id: &'a str,
     apps: Vec<ApplicationView>,
     can_manage: bool,
 }
@@ -839,7 +804,7 @@ struct ApplicationView {
 #[template(path = "fragments/applications/list.html")]
 struct ApplicationsFragment<'a> {
     csrf: &'a str,
-    org_id: &'a str,
+    application_id: &'a str,
     apps: Vec<ApplicationView>,
     can_manage: bool,
 }
@@ -848,7 +813,7 @@ pub(crate) async fn applications_page(
     State(state): State<AppState>,
     headers: HeaderMap,
     session: Option<Extension<SessionContext>>,
-    Path(org_id): Path<String>,
+    Path(application_id): Path<String>,
 ) -> Response {
     let Some(Extension(session)) = session else {
         return redirect("/login");
@@ -856,17 +821,17 @@ pub(crate) async fn applications_page(
     let Some(sessions) = state.sessions.as_ref() else {
         return unavailable();
     };
-    let org_id = match Id::<OrganizationEntity>::parse(&org_id) {
+    let application_id = match Id::<ApplicationEntity>::parse(&application_id) {
         Ok(v) => v,
         Err(_) => return bad_request(),
     };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
     let csrf = sessions.csrf_token(session.session());
-    if !can_read_members(&store, &user_id, &org_id).await {
+    if !can_read_members(&store, &user_id, &application_id).await {
         return forbidden();
     }
-    let tenant = TenantContext::new(org_id.clone());
+    let tenant = TenantContext::new(application_id.clone());
     let apps = tokio::task::spawn_blocking({
         let store = store.clone();
         let tenant = tenant.clone();
@@ -889,11 +854,11 @@ pub(crate) async fn applications_page(
             },
         })
         .collect();
-    let can_manage = can_manage_members(&store, &user_id, &org_id).await;
+    let can_manage = can_manage_members(&store, &user_id, &application_id).await;
     if headers.get("HX-Request").is_some() {
         let fragment = ApplicationsFragment {
             csrf: &csrf,
-            org_id: org_id.as_str(),
+            application_id: application_id.as_str(),
             apps: app_views.clone(),
             can_manage,
         };
@@ -903,7 +868,7 @@ pub(crate) async fn applications_page(
     let template = ApplicationsTemplate {
         title: "title_applications",
         csrf: &csrf,
-        org_id: org_id.as_str(),
+        application_id: application_id.as_str(),
         apps: app_views,
         can_manage,
     };
@@ -914,7 +879,7 @@ pub(crate) async fn applications_page(
 pub(crate) async fn create_application(
     State(state): State<AppState>,
     session: Option<Extension<SessionContext>>,
-    Path(org_id): Path<String>,
+    Path(application_id): Path<String>,
     body: axum::body::Bytes,
 ) -> Response {
     let Some(Extension(session)) = session else {
@@ -923,13 +888,13 @@ pub(crate) async fn create_application(
     let Some(sessions) = state.sessions.as_ref() else {
         return unavailable();
     };
-    let org_id = match Id::<OrganizationEntity>::parse(&org_id) {
+    let application_id = match Id::<ApplicationEntity>::parse(&application_id) {
         Ok(v) => v,
         Err(_) => return bad_request(),
     };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
-    if !can_manage_members(&store, &user_id, &org_id).await {
+    if !can_manage_members(&store, &user_id, &application_id).await {
         return forbidden();
     }
     let mut params = parse_form(&body);
@@ -953,14 +918,14 @@ pub(crate) async fn create_application(
         "cli" => ApplicationKind::Cli,
         _ => return bad_request(),
     };
-    let tenant = TenantContext::new(org_id.clone());
+    let tenant = TenantContext::new(application_id.clone());
     let result = tokio::task::spawn_blocking({
         let store = store.clone();
         let tenant = tenant.clone();
         let slug = slug.clone();
         let name = name.clone();
         move || {
-            let uc = authkit_core::application::CreateApplication {
+            let uc = authkit_core::application::CreateApplicationSurface {
                 tenant,
                 slug,
                 name,
@@ -972,7 +937,10 @@ pub(crate) async fn create_application(
     })
     .await;
     if result.ok().and_then(|r| r.ok()).is_some() {
-        redirect(&format!("/organizations/{}/applications", org_id.as_str()))
+        redirect(&format!(
+            "/organizations/{}/applications",
+            application_id.as_str()
+        ))
     } else {
         unavailable()
     }
@@ -983,7 +951,7 @@ pub(crate) async fn create_application(
 struct OAuthClientsTemplate<'a> {
     title: &'a str,
     csrf: &'a str,
-    org_id: &'a str,
+    application_id: &'a str,
     clients: Vec<OAuthClientView>,
     apps: Vec<AppOption>,
     can_manage: bool,
@@ -1007,7 +975,7 @@ struct AppOption {
 #[template(path = "fragments/oauth_clients/list.html")]
 struct OAuthClientsFragment<'a> {
     csrf: &'a str,
-    org_id: &'a str,
+    application_id: &'a str,
     clients: Vec<OAuthClientView>,
     apps: Vec<AppOption>,
     can_manage: bool,
@@ -1017,7 +985,7 @@ pub(crate) async fn oauth_clients_page(
     State(state): State<AppState>,
     headers: HeaderMap,
     session: Option<Extension<SessionContext>>,
-    Path(org_id): Path<String>,
+    Path(application_id): Path<String>,
 ) -> Response {
     let Some(Extension(session)) = session else {
         return redirect("/login");
@@ -1025,17 +993,17 @@ pub(crate) async fn oauth_clients_page(
     let Some(sessions) = state.sessions.as_ref() else {
         return unavailable();
     };
-    let org_id = match Id::<OrganizationEntity>::parse(&org_id) {
+    let application_id = match Id::<ApplicationEntity>::parse(&application_id) {
         Ok(v) => v,
         Err(_) => return bad_request(),
     };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
     let csrf = sessions.csrf_token(session.session());
-    if !can_read_members(&store, &user_id, &org_id).await {
+    if !can_read_members(&store, &user_id, &application_id).await {
         return forbidden();
     }
-    let tenant = TenantContext::new(org_id.clone());
+    let tenant = TenantContext::new(application_id.clone());
     let clients = tokio::task::spawn_blocking({
         let store = store.clone();
         let tenant = tenant.clone();
@@ -1074,11 +1042,11 @@ pub(crate) async fn oauth_clients_page(
             name: a.name().as_str().to_owned(),
         })
         .collect();
-    let can_manage = can_manage_members(&store, &user_id, &org_id).await;
+    let can_manage = can_manage_members(&store, &user_id, &application_id).await;
     if headers.get("HX-Request").is_some() {
         let fragment = OAuthClientsFragment {
             csrf: &csrf,
-            org_id: org_id.as_str(),
+            application_id: application_id.as_str(),
             clients: client_views.clone(),
             apps: app_options.clone(),
             can_manage,
@@ -1089,7 +1057,7 @@ pub(crate) async fn oauth_clients_page(
     let template = OAuthClientsTemplate {
         title: "title_oauth_clients",
         csrf: &csrf,
-        org_id: org_id.as_str(),
+        application_id: application_id.as_str(),
         clients: client_views,
         apps: app_options,
         can_manage,
@@ -1101,7 +1069,7 @@ pub(crate) async fn oauth_clients_page(
 pub(crate) async fn create_oauth_client(
     State(state): State<AppState>,
     session: Option<Extension<SessionContext>>,
-    Path(org_id): Path<String>,
+    Path(application_id): Path<String>,
     body: axum::body::Bytes,
 ) -> Response {
     let Some(Extension(session)) = session else {
@@ -1110,13 +1078,13 @@ pub(crate) async fn create_oauth_client(
     let Some(sessions) = state.sessions.as_ref() else {
         return unavailable();
     };
-    let org_id = match Id::<OrganizationEntity>::parse(&org_id) {
+    let application_id = match Id::<ApplicationEntity>::parse(&application_id) {
         Ok(v) => v,
         Err(_) => return bad_request(),
     };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
-    if !can_manage_members(&store, &user_id, &org_id).await {
+    if !can_manage_members(&store, &user_id, &application_id).await {
         return forbidden();
     }
     let mut params = parse_form(&body);
@@ -1171,7 +1139,7 @@ pub(crate) async fn create_oauth_client(
         Ok(v) => v,
         Err(_) => return bad_request(),
     };
-    let tenant = TenantContext::new(org_id.clone());
+    let tenant = TenantContext::new(application_id.clone());
     let now = sessions.clock().now();
     let spec = OAuthClientSpec {
         application_id,
@@ -1215,7 +1183,7 @@ pub(crate) async fn create_oauth_client(
         title: "title_oauth_client_created",
         client_id: client.client_id().as_str(),
         secret: &secret_text,
-        org_id: org_id.as_str(),
+        application_id: tenant.application_id().as_str(),
     };
     let body = template.render().unwrap_or_default();
     html_ok(&body)
@@ -1226,7 +1194,7 @@ pub(crate) async fn create_oauth_client(
 struct OAuthClientDetailTemplate<'a> {
     title: &'a str,
     csrf: &'a str,
-    org_id: &'a str,
+    application_id: &'a str,
     client_id_internal: &'a str,
     name: &'a str,
     client_id: &'a str,
@@ -1240,13 +1208,13 @@ struct OAuthClientCreatedTemplate<'a> {
     title: &'a str,
     client_id: &'a str,
     secret: &'a str,
-    org_id: &'a str,
+    application_id: &'a str,
 }
 
 pub(crate) async fn oauth_client_detail(
     State(state): State<AppState>,
     session: Option<Extension<SessionContext>>,
-    Path((org_id, client_id)): Path<(String, String)>,
+    Path((application_id, client_id)): Path<(String, String)>,
 ) -> Response {
     let Some(Extension(session)) = session else {
         return redirect("/login");
@@ -1254,7 +1222,7 @@ pub(crate) async fn oauth_client_detail(
     let Some(sessions) = state.sessions.as_ref() else {
         return unavailable();
     };
-    let org_id = match Id::<OrganizationEntity>::parse(&org_id) {
+    let application_id = match Id::<ApplicationEntity>::parse(&application_id) {
         Ok(v) => v,
         Err(_) => return bad_request(),
     };
@@ -1265,10 +1233,10 @@ pub(crate) async fn oauth_client_detail(
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
     let csrf = sessions.csrf_token(session.session());
-    if !can_manage_members(&store, &user_id, &org_id).await {
+    if !can_manage_members(&store, &user_id, &application_id).await {
         return forbidden();
     }
-    let tenant = TenantContext::new(org_id.clone());
+    let tenant = TenantContext::new(application_id.clone());
     let client = tokio::task::spawn_blocking({
         let store = store.clone();
         let tenant = tenant.clone();
@@ -1296,7 +1264,7 @@ pub(crate) async fn oauth_client_detail(
     let template = OAuthClientDetailTemplate {
         title: "title_oauth_client",
         csrf: &csrf,
-        org_id: org_id.as_str(),
+        application_id: application_id.as_str(),
         client_id_internal: client.id().as_str(),
         name: client.name().as_str(),
         client_id: client.client_id().as_str(),
@@ -1310,7 +1278,7 @@ pub(crate) async fn oauth_client_detail(
 pub(crate) async fn add_redirect_uri(
     State(state): State<AppState>,
     session: Option<Extension<SessionContext>>,
-    Path((org_id, client_id)): Path<(String, String)>,
+    Path((application_id, client_id)): Path<(String, String)>,
     body: axum::body::Bytes,
 ) -> Response {
     let Some(Extension(session)) = session else {
@@ -1319,7 +1287,7 @@ pub(crate) async fn add_redirect_uri(
     let Some(sessions) = state.sessions.as_ref() else {
         return unavailable();
     };
-    let org_id = match Id::<OrganizationEntity>::parse(&org_id) {
+    let application_id = match Id::<ApplicationEntity>::parse(&application_id) {
         Ok(v) => v,
         Err(_) => return bad_request(),
     };
@@ -1329,7 +1297,7 @@ pub(crate) async fn add_redirect_uri(
     };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
-    if !can_manage_members(&store, &user_id, &org_id).await {
+    if !can_manage_members(&store, &user_id, &application_id).await {
         return forbidden();
     }
     let mut params = parse_form(&body);
@@ -1338,7 +1306,7 @@ pub(crate) async fn add_redirect_uri(
         Ok(v) => v,
         Err(_) => return bad_request(),
     };
-    let tenant = TenantContext::new(org_id.clone());
+    let tenant = TenantContext::new(application_id.clone());
     let now = sessions.clock().now();
     let outcome = tokio::task::spawn_blocking({
         let store = store.clone();
@@ -1364,7 +1332,7 @@ pub(crate) async fn add_redirect_uri(
     {
         redirect(&format!(
             "/organizations/{}/oauth-clients/{}",
-            org_id.as_str(),
+            application_id.as_str(),
             client_id.as_str()
         ))
     } else {
@@ -1375,7 +1343,7 @@ pub(crate) async fn add_redirect_uri(
 pub(crate) async fn remove_redirect_uri(
     State(state): State<AppState>,
     session: Option<Extension<SessionContext>>,
-    Path((org_id, client_id)): Path<(String, String)>,
+    Path((application_id, client_id)): Path<(String, String)>,
     body: axum::body::Bytes,
 ) -> Response {
     let Some(Extension(session)) = session else {
@@ -1384,7 +1352,7 @@ pub(crate) async fn remove_redirect_uri(
     let Some(sessions) = state.sessions.as_ref() else {
         return unavailable();
     };
-    let org_id = match Id::<OrganizationEntity>::parse(&org_id) {
+    let application_id = match Id::<ApplicationEntity>::parse(&application_id) {
         Ok(v) => v,
         Err(_) => return bad_request(),
     };
@@ -1394,7 +1362,7 @@ pub(crate) async fn remove_redirect_uri(
     };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
-    if !can_manage_members(&store, &user_id, &org_id).await {
+    if !can_manage_members(&store, &user_id, &application_id).await {
         return forbidden();
     }
     let mut params = parse_form(&body);
@@ -1403,7 +1371,7 @@ pub(crate) async fn remove_redirect_uri(
         Ok(v) => v,
         Err(_) => return bad_request(),
     };
-    let tenant = TenantContext::new(org_id.clone());
+    let tenant = TenantContext::new(application_id.clone());
     let now = sessions.clock().now();
     let outcome = tokio::task::spawn_blocking({
         let store = store.clone();
@@ -1429,7 +1397,7 @@ pub(crate) async fn remove_redirect_uri(
     {
         redirect(&format!(
             "/organizations/{}/oauth-clients/{}",
-            org_id.as_str(),
+            application_id.as_str(),
             client_id.as_str()
         ))
     } else {
@@ -1440,7 +1408,7 @@ pub(crate) async fn remove_redirect_uri(
 pub(crate) async fn replace_scopes(
     State(state): State<AppState>,
     session: Option<Extension<SessionContext>>,
-    Path((org_id, client_id)): Path<(String, String)>,
+    Path((application_id, client_id)): Path<(String, String)>,
     body: axum::body::Bytes,
 ) -> Response {
     let Some(Extension(session)) = session else {
@@ -1449,7 +1417,7 @@ pub(crate) async fn replace_scopes(
     let Some(sessions) = state.sessions.as_ref() else {
         return unavailable();
     };
-    let org_id = match Id::<OrganizationEntity>::parse(&org_id) {
+    let application_id = match Id::<ApplicationEntity>::parse(&application_id) {
         Ok(v) => v,
         Err(_) => return bad_request(),
     };
@@ -1459,7 +1427,7 @@ pub(crate) async fn replace_scopes(
     };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
-    if !can_manage_members(&store, &user_id, &org_id).await {
+    if !can_manage_members(&store, &user_id, &application_id).await {
         return forbidden();
     }
     let mut params = parse_form(&body);
@@ -1469,7 +1437,7 @@ pub(crate) async fn replace_scopes(
         .filter_map(|s| Scope::parse(s).ok())
         .collect();
     let scope_set = ScopeSet::new(scopes);
-    let tenant = TenantContext::new(org_id.clone());
+    let tenant = TenantContext::new(application_id.clone());
     let now = sessions.clock().now();
     let outcome = tokio::task::spawn_blocking({
         let store = store.clone();
@@ -1495,7 +1463,7 @@ pub(crate) async fn replace_scopes(
     {
         redirect(&format!(
             "/organizations/{}/oauth-clients/{}",
-            org_id.as_str(),
+            application_id.as_str(),
             client_id.as_str()
         ))
     } else {
@@ -1578,85 +1546,24 @@ pub(crate) async fn accept_invitation(
         return bad_request();
     }
 
-    let org_id = invitation.organization_id().clone();
-    let tenant = TenantContext::new(org_id.clone());
-    let role_ids = invitation.role_ids().to_vec();
-    let original_version = invitation.version();
-
-    // Create membership if needed.
-    let membership_result = tokio::task::spawn_blocking({
+    let accept_result = tokio::task::spawn_blocking({
         let store = store.clone();
-        let tenant = tenant.clone();
         let user_id = user_id.clone();
+        let token_hash = hash.clone();
         move || {
-            if MembershipRepository::find_by_user(store.as_ref(), &tenant, &user_id)?.is_some() {
-                return Ok::<_, authkit_core::domain::DomainError>(());
-            }
-            let uc = authkit_core::application::AddMembership {
-                tenant: tenant.clone(),
-                user_id: user_id.clone(),
+            let uc = AcceptInvitation {
+                token_hash,
+                user_id,
             };
             uc.execute(store.as_ref(), &SystemClock, &SecureIdGenerator)
-                .map(|_| ())
         }
     })
     .await;
-    if membership_result.ok().and_then(|r| r.ok()).is_none() {
-        return unavailable();
-    }
 
-    // Bind roles.
-    for role_id in role_ids {
-        let _ = tokio::task::spawn_blocking({
-            let store = store.clone();
-            let tenant = tenant.clone();
-            let role_id = role_id.clone();
-            let user_id = user_id.clone();
-            let org_id = org_id.clone();
-            move || {
-                let binding = RoleBinding::organization(
-                    SecureIdGenerator
-                        .generate::<RoleBindingEntity>()
-                        .expect("id"),
-                    org_id,
-                    role_id,
-                    user_id,
-                    now,
-                );
-                RoleBindingRepository::insert(store.as_ref(), &tenant, &binding)
-            }
-        })
-        .await;
-    }
-
-    // Mark invitation accepted.
-    let mut updated_invitation = invitation;
-    if updated_invitation.accept(now).is_err() {
-        return bad_request();
-    }
-    let update_result = tokio::task::spawn_blocking({
-        let store = store.clone();
-        let tenant = tenant.clone();
-        let updated_invitation = updated_invitation.clone();
-        move || {
-            InvitationRepository::update(
-                store.as_ref(),
-                &tenant,
-                &updated_invitation,
-                original_version,
-            )
-        }
-    })
-    .await;
-    if update_result
-        .ok()
-        .and_then(|r| r.ok())
-        .map(|o| o.is_applied())
-        .unwrap_or(false)
-    {
-        redirect("/account")
-    } else {
-        unavailable()
+    match accept_result {
+        Ok(Ok(_)) => redirect("/account"),
+        Ok(Err(_)) => bad_request(),
+        Err(_) => unavailable(),
     }
 }
 
@@ -1675,14 +1582,14 @@ struct DomainView {
 struct DomainsTemplate<'a> {
     title: &'a str,
     csrf: &'a str,
-    org_id: &'a str,
+    application_id: &'a str,
     domains: Vec<DomainView>,
     can_manage: bool,
 }
 
 pub(crate) async fn domains_page(
     State(state): State<AppState>,
-    Path(org_id): Path<String>,
+    Path(application_id): Path<String>,
     headers: HeaderMap,
     session: Option<Extension<SessionContext>>,
 ) -> Response {
@@ -1692,26 +1599,26 @@ pub(crate) async fn domains_page(
     let Some(sessions) = state.sessions.as_ref() else {
         return unavailable();
     };
-    let org_id = match Id::<OrganizationEntity>::parse(org_id) {
+    let application_id = match Id::<ApplicationEntity>::parse(application_id) {
         Ok(v) => v,
         Err(_) => return bad_request(),
     };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
     let csrf = sessions.csrf_token(session.session());
-    if !can_read_members(&store, &user_id, &org_id).await {
+    if !can_read_members(&store, &user_id, &application_id).await {
         return forbidden();
     }
     let domains = tokio::task::spawn_blocking({
         let store = store.clone();
-        let org_id = org_id.clone();
-        move || DomainRepository::list_for_organization(store.as_ref(), &org_id)
+        let application_id = application_id.clone();
+        move || DomainRepository::list_for_organization(store.as_ref(), &application_id)
     })
     .await
     .ok()
     .and_then(|r| r.ok())
     .unwrap_or_default();
-    let can_manage = can_manage_members(&store, &user_id, &org_id).await;
+    let can_manage = can_manage_members(&store, &user_id, &application_id).await;
     let domain_views: Vec<DomainView> = domains
         .into_iter()
         .map(|d| DomainView {
@@ -1721,11 +1628,11 @@ pub(crate) async fn domains_page(
             verified: d.is_verified(),
         })
         .collect();
-    let org_id_str = org_id.as_str().to_owned();
+    let application_id_str = application_id.as_str().to_owned();
     let template = DomainsTemplate {
         title: "title_domains",
         csrf: &csrf,
-        org_id: &org_id_str,
+        application_id: &application_id_str,
         domains: domain_views,
         can_manage,
     };
@@ -1736,7 +1643,7 @@ pub(crate) async fn domains_page(
 
 pub(crate) async fn add_domain(
     State(state): State<AppState>,
-    Path(org_id): Path<String>,
+    Path(application_id): Path<String>,
     session: Option<Extension<SessionContext>>,
     body: axum::body::Bytes,
 ) -> Response {
@@ -1746,13 +1653,13 @@ pub(crate) async fn add_domain(
     let Some(sessions) = state.sessions.as_ref() else {
         return unavailable();
     };
-    let org_id = match Id::<OrganizationEntity>::parse(org_id) {
+    let application_id = match Id::<ApplicationEntity>::parse(application_id) {
         Ok(v) => v,
         Err(_) => return bad_request(),
     };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
-    if !can_manage_members(&store, &user_id, &org_id).await {
+    if !can_manage_members(&store, &user_id, &application_id).await {
         return forbidden();
     }
     let params = parse_form(&body);
@@ -1769,7 +1676,7 @@ pub(crate) async fn add_domain(
     let id = crate::session::SecureIdGenerator
         .generate::<DomainEntity>()
         .expect("id");
-    let domain = match Domain::new(id, org_id.clone(), domain_str, token, now) {
+    let domain = match Domain::new(id, application_id.clone(), domain_str, token, now) {
         Ok(v) => v,
         Err(_) => return bad_request(),
     };
@@ -1779,12 +1686,15 @@ pub(crate) async fn add_domain(
         move || DomainRepository::insert(store.as_ref(), &domain)
     })
     .await;
-    redirect(&format!("/organizations/{}/domains", org_id.as_str()))
+    redirect(&format!(
+        "/organizations/{}/domains",
+        application_id.as_str()
+    ))
 }
 
 pub(crate) async fn verify_domain(
     State(state): State<AppState>,
-    Path((org_id, domain_id)): Path<(String, String)>,
+    Path((application_id, domain_id)): Path<(String, String)>,
     session: Option<Extension<SessionContext>>,
     body: axum::body::Bytes,
 ) -> Response {
@@ -1794,7 +1704,7 @@ pub(crate) async fn verify_domain(
     let Some(sessions) = state.sessions.as_ref() else {
         return unavailable();
     };
-    let org_id = match Id::<OrganizationEntity>::parse(org_id) {
+    let application_id = match Id::<ApplicationEntity>::parse(application_id) {
         Ok(v) => v,
         Err(_) => return bad_request(),
     };
@@ -1804,7 +1714,7 @@ pub(crate) async fn verify_domain(
     };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
-    if !can_manage_members(&store, &user_id, &org_id).await {
+    if !can_manage_members(&store, &user_id, &application_id).await {
         return forbidden();
     }
     let params = parse_form(&body);
@@ -1834,12 +1744,15 @@ pub(crate) async fn verify_domain(
         move || DomainRepository::update(store.as_ref(), &domain, expected)
     })
     .await;
-    redirect(&format!("/organizations/{}/domains", org_id.as_str()))
+    redirect(&format!(
+        "/organizations/{}/domains",
+        application_id.as_str()
+    ))
 }
 
 pub(crate) async fn remove_domain(
     State(state): State<AppState>,
-    Path((org_id, domain_id)): Path<(String, String)>,
+    Path((application_id, domain_id)): Path<(String, String)>,
     session: Option<Extension<SessionContext>>,
 ) -> Response {
     let Some(Extension(session)) = session else {
@@ -1848,7 +1761,7 @@ pub(crate) async fn remove_domain(
     let Some(sessions) = state.sessions.as_ref() else {
         return unavailable();
     };
-    let org_id = match Id::<OrganizationEntity>::parse(org_id) {
+    let application_id = match Id::<ApplicationEntity>::parse(application_id) {
         Ok(v) => v,
         Err(_) => return bad_request(),
     };
@@ -1858,7 +1771,7 @@ pub(crate) async fn remove_domain(
     };
     let user_id = session.session().user_id().clone();
     let store = sessions.store().clone();
-    if !can_manage_members(&store, &user_id, &org_id).await {
+    if !can_manage_members(&store, &user_id, &application_id).await {
         return forbidden();
     }
     let _ = tokio::task::spawn_blocking({
@@ -1867,19 +1780,22 @@ pub(crate) async fn remove_domain(
         move || DomainRepository::delete(store.as_ref(), &did)
     })
     .await;
-    redirect(&format!("/organizations/{}/domains", org_id.as_str()))
+    redirect(&format!(
+        "/organizations/{}/domains",
+        application_id.as_str()
+    ))
 }
 
 async fn can_read_members(
     store: &std::sync::Arc<authkit_store::SqlStore>,
     user_id: &authkit_core::domain::Id<UserEntity>,
-    org_id: &authkit_core::domain::Id<OrganizationEntity>,
+    application_id: &authkit_core::domain::Id<ApplicationEntity>,
 ) -> bool {
     let store = store.clone();
     let user_id = user_id.clone();
-    let org_id = org_id.clone();
+    let application_id = application_id.clone();
     tokio::task::spawn_blocking(move || {
-        let tenant = TenantContext::new(org_id.clone());
+        let tenant = TenantContext::new(application_id.clone());
         let membership = MembershipRepository::find_by_user(store.as_ref(), &tenant, &user_id)
             .ok()
             .flatten();
@@ -1906,13 +1822,13 @@ async fn can_read_members(
 async fn can_manage_members(
     store: &std::sync::Arc<authkit_store::SqlStore>,
     user_id: &authkit_core::domain::Id<UserEntity>,
-    org_id: &authkit_core::domain::Id<OrganizationEntity>,
+    application_id: &authkit_core::domain::Id<ApplicationEntity>,
 ) -> bool {
     let store = store.clone();
     let user_id = user_id.clone();
-    let org_id = org_id.clone();
+    let application_id = application_id.clone();
     tokio::task::spawn_blocking(move || {
-        let tenant = TenantContext::new(org_id.clone());
+        let tenant = TenantContext::new(application_id.clone());
         let membership = MembershipRepository::find_by_user(store.as_ref(), &tenant, &user_id)
             .ok()
             .flatten();

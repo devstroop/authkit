@@ -11,7 +11,7 @@
       <div style="font-weight:500;">{{ client.name }}</div>
       <div style="font-size:0.8rem;color:var(--muted);font-family:monospace;">{{ client.client_id }} · {{ client.status }}</div>
     </div>
-    <a href="/organizations/{{ org_id }}/oauth-clients/{{ client.id }}" style="font-weight:500;font-size:0.9rem;">{{ crate::i18n::t("manage") }} →</a>
+    <a href="/organizations/{{ application_id }}/oauth-clients/{{ client.id }}" style="font-weight:500;font-size:0.9rem;">{{ crate::i18n::t("manage") }} →</a>
   </li>
   {% endfor %}
   {% if clients.is_empty() %}
@@ -28,7 +28,7 @@
       <button type="button" class="modal-close" onclick="document.getElementById('create-oauth-client-dialog').close()" aria-label="Close">×</button>
     </div>
     <div class="modal-body">
-      <form method="post" action="/organizations/{{ org_id }}/oauth-clients" hx-post="/organizations/{{ org_id }}/oauth-clients" hx-target="#oauth-clients" hx-swap="outerHTML">
+      <form method="post" action="/organizations/{{ application_id }}/oauth-clients" hx-post="/organizations/{{ application_id }}/oauth-clients" hx-target="#oauth-clients" hx-swap="outerHTML">
         <input type="hidden" name="_csrf" value="{{ csrf }}">
         <label class="field">
           <span>{{ crate::i18n::t("application") }}</span>
@@ -53,6 +53,6 @@
     </div>
   </dialog>
   {% endif %}
-  <p class="links"><a href="/organizations/{{ org_id }}/applications">{{ crate::i18n::t("applications") }}</a></p>
+  <p class="links"><a href="/organizations/{{ application_id }}/applications">{{ crate::i18n::t("applications") }}</a></p>
 </div>
 {% endblock %}

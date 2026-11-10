@@ -11,7 +11,7 @@ use authkit_core::domain::audit::{
     AuditAction, AuditActor, AuditAttribute, AuditEvent, AuditTarget,
 };
 use authkit_core::domain::id::{
-    AuditEventEntity, Id, OrganizationEntity, SessionEntity, UserEntity,
+    ApplicationEntity, AuditEventEntity, Id, SessionEntity, UserEntity,
 };
 use authkit_core::domain::{
     DomainError, ErrorCode, IdError, SecretHash, Session, SessionAudience, SessionStatus,
@@ -228,18 +228,18 @@ impl SessionService {
     pub async fn create(
         &self,
         user_id: Id<UserEntity>,
-        organization_id: Option<Id<OrganizationEntity>>,
+        application_id: Option<Id<ApplicationEntity>>,
         audience: SessionAudience,
         now: Timestamp,
     ) -> Result<NewSession, SessionError> {
-        self.create_inner(user_id, organization_id, audience, now, None)
+        self.create_inner(user_id, application_id, audience, now, None)
             .await
     }
 
     async fn create_inner(
         &self,
         user_id: Id<UserEntity>,
-        organization_id: Option<Id<OrganizationEntity>>,
+        application_id: Option<Id<ApplicationEntity>>,
         audience: SessionAudience,
         now: Timestamp,
         rotated_from: Option<Id<SessionEntity>>,
@@ -253,7 +253,7 @@ impl SessionService {
         let session = Session::new(
             id,
             user_id,
-            organization_id,
+            application_id,
             audience,
             token_hash,
             now,
@@ -386,7 +386,7 @@ impl SessionService {
         let replacement = Session::new(
             id,
             current.user_id().clone(),
-            current.organization_id().cloned(),
+            current.application_id().cloned(),
             current.audience(),
             token_hash,
             now,
@@ -428,7 +428,7 @@ impl SessionService {
             return Ok(false);
         }
         let user_id = session.user_id().clone();
-        let org = session.organization_id().cloned();
+        let org = session.application_id().cloned();
         let store = self.store.clone();
         let _ = tokio::task::spawn_blocking({
             let store = store.clone();
@@ -480,7 +480,7 @@ impl SessionService {
     ) -> Result<(), SessionError> {
         let event = AuditEvent::new(
             self.ids.generate::<AuditEventEntity>()?,
-            session.organization_id().cloned(),
+            session.application_id().cloned(),
             AuditActor::User(session.user_id().clone()),
             AuditAction::parse("security.csrf_rejected")?,
             Some(AuditTarget::parse(session.id().as_str())?),
@@ -612,8 +612,10 @@ impl IdGenerator for SecureIdGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use authkit_core::domain::id::{OrganizationEntity, UserEntity};
-    use authkit_core::domain::{DisplayName, Email, Organization, SessionStatus, Slug, User};
+    use authkit_core::domain::id::{ApplicationEntity, UserEntity};
+    use authkit_core::domain::{
+        ApplicationKind, DisplayName, Email, Organization, SessionStatus, Slug, User,
+    };
     use authkit_core::ports::{IdGenerator, OrganizationRepository, UserRepository};
 
     fn service(environment: Environment) -> SessionService {
@@ -628,15 +630,19 @@ mod tests {
         let epoch = Timestamp::from_millis(1);
         let user = User::new(
             user_id(),
+            None,
             Email::parse("session-test@example.com").expect("valid email"),
             DisplayName::parse("Session Test").expect("valid display name"),
             epoch,
         );
         UserRepository::insert(&store, &user).expect("inserted user");
         let organization = Organization::new(
-            organization_id(),
+            application_id(),
             Slug::parse("session-test").expect("valid slug"),
             DisplayName::parse("Session Test").expect("valid display name"),
+            ApplicationKind::Web,
+            false,
+            "session-test.example.com".to_owned(),
             epoch,
         );
         OrganizationRepository::insert(&store, &organization).expect("inserted organization");
@@ -647,7 +653,7 @@ mod tests {
         Id::from_suffix("0123456789abcdef").expect("valid user id")
     }
 
-    fn organization_id() -> Id<OrganizationEntity> {
+    fn application_id() -> Id<ApplicationEntity> {
         Id::from_suffix("fedcba9876543210").expect("valid organization id")
     }
 
@@ -859,6 +865,7 @@ mod tests {
         store.migrate().expect("migrated store");
         let user = User::new(
             user_id(),
+            None,
             Email::parse("session-test@example.com").expect("valid email"),
             DisplayName::parse("Session Test").expect("valid display name"),
             Timestamp::from_millis(0),
@@ -942,14 +949,14 @@ mod tests {
     }
 
     #[test]
-    fn organization_ids_round_trip() {
+    fn application_ids_round_trip() {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .expect("runtime");
         let service = service(Environment::Test);
         runtime.block_on(async {
-            let org = organization_id();
+            let org = application_id();
             let created = service
                 .create(
                     user_id(),
@@ -964,7 +971,7 @@ mod tests {
                 .await
                 .expect("load")
                 .expect("session");
-            assert_eq!(loaded.organization_id(), Some(&org));
+            assert_eq!(loaded.application_id(), Some(&org));
         });
     }
 }

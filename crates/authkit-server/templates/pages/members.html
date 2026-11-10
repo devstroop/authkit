@@ -27,7 +27,7 @@
       <button type="button" class="modal-close" onclick="document.getElementById('add-member-dialog').close()" aria-label="Close">×</button>
     </div>
     <div class="modal-body">
-      <form method="post" action="/organizations/{{ org_id }}/members" hx-post="/organizations/{{ org_id }}/members" hx-target="#members" hx-swap="beforeend">
+      <form method="post" action="/organizations/{{ application_id }}/members" hx-post="/organizations/{{ application_id }}/members" hx-target="#members" hx-swap="beforeend">
         <input type="hidden" name="_csrf" value="{{ csrf }}">
         {{ ui::text_input("email", crate::i18n::t("user_email"), "email", "email") }}
         {{ ui::button(crate::i18n::t("add")) }}
@@ -36,9 +36,9 @@
   </dialog>
   {% endif %}
   <p class="links">
-    <a href="/organizations/{{ org_id }}/invitations">{{ crate::i18n::t("invitations") }}</a>
-    <a href="/organizations/{{ org_id }}/roles">{{ crate::i18n::t("roles") }}</a>
-    <a href="/organizations/{{ org_id }}/domains">{{ crate::i18n::t("domains") }}</a>
+    <a href="/organizations/{{ application_id }}/invitations">{{ crate::i18n::t("invitations") }}</a>
+    <a href="/organizations/{{ application_id }}/roles">{{ crate::i18n::t("roles") }}</a>
+    <a href="/organizations/{{ application_id }}/domains">{{ crate::i18n::t("domains") }}</a>
   </p>
 </div>
 {% endblock %}

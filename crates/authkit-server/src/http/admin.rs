@@ -12,6 +12,7 @@ use authkit_core::ports::{
 use axum::extract::{Extension, Path, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
+use base64::Engine;
 
 use crate::config::Config;
 use crate::http::routes::AppState;
@@ -27,6 +28,22 @@ struct AdminLoginTemplate<'a> {
     error: &'a str,
 }
 
+#[derive(Clone)]
+struct ProvisionResult {
+    application_id: String,
+    client_id: String,
+    client_secret: String,
+}
+
+#[derive(Template)]
+#[template(path = "pages/admin_applications.html")]
+struct AdminApplicationsTemplate<'a> {
+    title: &'static str,
+    csrf: &'a str,
+    result: Option<ProvisionResult>,
+    error: &'a str,
+}
+
 pub(crate) async fn login_page() -> Response {
     let template = AdminLoginTemplate {
         title: "title_admin_sign_in",
@@ -36,7 +53,7 @@ pub(crate) async fn login_page() -> Response {
     html_ok(&body)
 }
 
-pub(crate) fn admin_login_html<'a>(status: StatusCode, error: &'a str) -> Response {
+pub(crate) fn admin_login_html(status: StatusCode, error: &str) -> Response {
     let template = AdminLoginTemplate {
         title: "title_admin_sign_in",
         error,
@@ -75,7 +92,7 @@ pub(crate) async fn login_submit(
     let user = tokio::task::spawn_blocking({
         let store = store.clone();
         let email = email.clone();
-        move || UserRepository::find_by_email(store.as_ref(), &email)
+        move || UserRepository::find_by_email(store.as_ref(), None, &email)
     })
     .await
     .ok()
@@ -310,7 +327,7 @@ pub(crate) async fn dashboard(
             occurred_at: e.occurred_at().as_millis() as i64,
             action: e.action().as_str().to_owned(),
             org: e
-                .organization_id()
+                .application_id()
                 .map(|o| o.as_str().to_owned())
                 .unwrap_or_else(|| "-".to_owned()),
         })
@@ -405,7 +422,7 @@ pub(crate) async fn audit_page(
             for e in events {
                 rows.push(serde_json::json!({
                     "id": e.id().as_str(),
-                    "organization_id": e.organization_id().map(|o| o.as_str().to_owned()),
+                    "application_id": e.application_id().map(|o| o.as_str().to_owned()),
                     "actor": format!("{:?}", e.actor()),
                     "action": e.action().as_str(),
                     "target": e.target().map(|t| t.as_str().to_owned()),
@@ -430,12 +447,12 @@ pub(crate) async fn audit_page(
             return response;
         }
         // csv
-        let mut csv = String::from("id,organization_id,actor,action,target,occurred_at\n");
+        let mut csv = String::from("id,application_id,actor,action,target,occurred_at\n");
         for e in events {
             csv.push_str(&format!(
                 "{},{},{},{},{},{}\n",
                 csv_field(e.id().as_str()),
-                csv_field(e.organization_id().map(|o| o.as_str()).unwrap_or("")),
+                csv_field(e.application_id().map(|o| o.as_str()).unwrap_or("")),
                 csv_field(&format!("{:?}", e.actor())),
                 csv_field(e.action().as_str()),
                 csv_field(e.target().map(|t| t.as_str()).unwrap_or("")),
@@ -483,7 +500,7 @@ pub(crate) async fn audit_page(
             occurred_at: e.occurred_at().as_millis() as i64,
             action: e.action().as_str().to_owned(),
             org: e
-                .organization_id()
+                .application_id()
                 .map(|o| o.as_str().to_owned())
                 .unwrap_or_else(|| "-".to_owned()),
             actor: format!("{:?}", e.actor()),
@@ -554,6 +571,331 @@ pub(crate) async fn users_page(
     html_ok(&body)
 }
 
+pub(crate) async fn admin_applications_page(
+    State(state): State<AppState>,
+    session: Option<Extension<SessionContext>>,
+) -> Response {
+    let Some(Extension(session)) = session else {
+        return redirect("/admin/login");
+    };
+    let Some(sessions) = state.sessions.as_ref() else {
+        return unavailable();
+    };
+    let store = sessions.store().clone();
+    let csrf = sessions.csrf_token(session.session());
+    let user_id = session.session().user_id().clone();
+    let caller = tokio::task::spawn_blocking({
+        let store = store.clone();
+        let user_id = user_id.clone();
+        move || SystemAdministratorRepository::find_by_user(store.as_ref(), &user_id)
+    })
+    .await
+    .ok()
+    .and_then(|r| r.ok().flatten());
+    if !caller.map(|a| a.is_active()).unwrap_or(false) {
+        return forbidden();
+    }
+    let template = AdminApplicationsTemplate {
+        title: "title_admin_applications",
+        csrf: &csrf,
+        result: None,
+        error: "",
+    };
+    let body = template.render().unwrap_or_default();
+    html_ok(&body)
+}
+
+pub(crate) async fn admin_provision_application(
+    State(state): State<AppState>,
+    session: Option<Extension<SessionContext>>,
+    body: axum::body::Bytes,
+) -> Response {
+    let Some(Extension(session)) = session else {
+        return redirect("/admin/login");
+    };
+    let Some(sessions) = state.sessions.as_ref() else {
+        return unavailable();
+    };
+    let store = sessions.store().clone();
+    let csrf = sessions.csrf_token(session.session());
+    let user_id = session.session().user_id().clone();
+    let caller = tokio::task::spawn_blocking({
+        let store = store.clone();
+        let user_id = user_id.clone();
+        move || SystemAdministratorRepository::find_by_user(store.as_ref(), &user_id)
+    })
+    .await
+    .ok()
+    .and_then(|r| r.ok().flatten());
+    if !caller.map(|a| a.is_active()).unwrap_or(false) {
+        return forbidden();
+    }
+    let step_up_user = session.session().user_id().clone();
+    let mut params = parse_form(&body);
+    let code = params.remove("code").unwrap_or_default();
+    if !admin_totp_step_up(sessions, step_up_user, &code).await {
+        return forbidden();
+    }
+
+    let slug_str = params.remove("slug").unwrap_or_default();
+    let name_str = params.remove("name").unwrap_or_default();
+    let primary_domain = params.remove("primary_domain").unwrap_or_default();
+    let owner_email_str = params.remove("owner_email").unwrap_or_default();
+    let owner_password = params.remove("owner_password").unwrap_or_default();
+    let client_name_str = params.remove("client_name").unwrap_or_default();
+    let client_type_str = params.remove("client_type").unwrap_or_default();
+    let redirect_uri_str = params.remove("redirect_uri").unwrap_or_default();
+    let scopes_str = params.remove("scopes").unwrap_or_default();
+
+    let slug = match authkit_core::domain::Slug::parse(&slug_str) {
+        Ok(v) => v,
+        Err(_) => {
+            return render_admin_app_error(&csrf, "invalid slug");
+        }
+    };
+    let name = match DisplayName::parse(&name_str) {
+        Ok(v) => v,
+        Err(_) => {
+            return render_admin_app_error(&csrf, "invalid name");
+        }
+    };
+    let primary_domain = primary_domain.trim().to_ascii_lowercase();
+    if primary_domain.is_empty() {
+        return render_admin_app_error(&csrf, "primary domain is required");
+    }
+    let owner_email = match Email::parse(&owner_email_str) {
+        Ok(v) => v,
+        Err(_) => {
+            return render_admin_app_error(&csrf, "invalid owner email");
+        }
+    };
+
+    // Domain uniqueness.
+    let existing_domain = tokio::task::spawn_blocking({
+        let store = store.clone();
+        let domain = primary_domain.clone();
+        move || authkit_core::ports::ApplicationRepository::find_by_domain(store.as_ref(), &domain)
+    })
+    .await;
+    if existing_domain
+        .ok()
+        .and_then(|r| r.ok().flatten())
+        .is_some()
+    {
+        return render_admin_app_error(&csrf, "primary domain already in use");
+    }
+
+    // Slug uniqueness.
+    let existing_slug = tokio::task::spawn_blocking({
+        let store = store.clone();
+        let slug = slug.clone();
+        move || authkit_core::ports::OrganizationRepository::find_by_slug(store.as_ref(), &slug)
+    })
+    .await;
+    if existing_slug.ok().and_then(|r| r.ok().flatten()).is_some() {
+        return render_admin_app_error(&csrf, "slug already in use");
+    }
+
+    // Resolve or create owner.
+    let owner = tokio::task::spawn_blocking({
+        let store = store.clone();
+        let email = owner_email.clone();
+        move || UserRepository::find_by_email(store.as_ref(), None, &email)
+    })
+    .await
+    .ok()
+    .and_then(|r| r.ok().flatten());
+    let owner = if let Some(existing) = owner {
+        existing
+    } else {
+        if owner_password.len() < 12 {
+            return render_admin_app_error(&csrf, "owner password must be at least 12 characters");
+        }
+        let display_name = DisplayName::parse(owner_email_str.split('@').next().unwrap_or("owner"))
+            .unwrap_or_else(|_| DisplayName::parse("Owner").expect("valid"));
+        let new_user = authkit_core::domain::User::new(
+            crate::session::SecureIdGenerator
+                .generate::<authkit_core::domain::id::UserEntity>()
+                .expect("id"),
+            None,
+            owner_email.clone(),
+            display_name,
+            sessions.clock().now(),
+        );
+        let insert = tokio::task::spawn_blocking({
+            let store = store.clone();
+            let new_user = new_user.clone();
+            move || UserRepository::insert(store.as_ref(), &new_user)
+        })
+        .await;
+        if !insert
+            .ok()
+            .and_then(|r| r.ok())
+            .map(|o| o.is_applied())
+            .unwrap_or(false)
+        {
+            return render_admin_app_error(&csrf, "could not create owner user");
+        }
+        // credential
+        let verifier = match crate::password::hash_password(&owner_password) {
+            Ok(v) => v,
+            Err(_) => {
+                return render_admin_app_error(&csrf, "could not hash owner password");
+            }
+        };
+        let credential = Credential::password(
+            crate::session::SecureIdGenerator
+                .generate::<authkit_core::domain::id::CredentialEntity>()
+                .expect("id"),
+            new_user.id().clone(),
+            verifier,
+            sessions.clock().now(),
+        );
+        let cred_outcome = tokio::task::spawn_blocking({
+            let store = store.clone();
+            let credential = credential.clone();
+            move || CredentialRepository::insert(store.as_ref(), &credential)
+        })
+        .await;
+        if !cred_outcome
+            .ok()
+            .and_then(|r| r.ok())
+            .map(|o| o.is_applied())
+            .unwrap_or(false)
+        {
+            return render_admin_app_error(&csrf, "could not create owner credential");
+        }
+        new_user
+    };
+
+    // Validate and prepare the optional first OAuth client before provisioning the
+    // application so both are committed in one guarded batch.
+    let redirect_uri_str = if redirect_uri_str.is_empty() {
+        format!("https://{}/", primary_domain)
+    } else {
+        redirect_uri_str
+    };
+    let redirect_uri = match authkit_core::domain::RedirectUri::parse(&redirect_uri_str) {
+        Ok(v) => v,
+        Err(_) => {
+            return render_admin_app_error(&csrf, "invalid redirect uri");
+        }
+    };
+    let client_type = if client_type_str == "public" {
+        authkit_core::domain::ClientType::Public
+    } else {
+        authkit_core::domain::ClientType::Confidential
+    };
+    let pepper = sessions.pepper().to_vec();
+    let (secret_plain, secret_hash) =
+        if client_type == authkit_core::domain::ClientType::Confidential {
+            use rand_core::{OsRng, RngCore};
+            let mut bytes = [0u8; 32];
+            OsRng.fill_bytes(&mut bytes);
+            let secret = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes);
+            let hash = match crate::tokens::hash_client_secret(&pepper, &secret) {
+                Ok(v) => v,
+                Err(_) => {
+                    return render_admin_app_error(&csrf, "could not hash client secret");
+                }
+            };
+            (Some(secret), Some(hash))
+        } else {
+            (None, None)
+        };
+    use rand_core::{OsRng, RngCore};
+    let mut bytes = [0u8; 24];
+    OsRng.fill_bytes(&mut bytes);
+    let client_id_str: String = bytes.iter().map(|b| format!("{:02x}", b)).collect();
+    let client_id = match authkit_core::domain::ClientId::parse(client_id_str) {
+        Ok(v) => v,
+        Err(_) => {
+            return render_admin_app_error(&csrf, "invalid client id");
+        }
+    };
+    let scopes: Vec<authkit_core::domain::Scope> = if scopes_str.is_empty() {
+        vec![
+            authkit_core::domain::Scope::parse("openid").expect("valid"),
+            authkit_core::domain::Scope::parse("profile").expect("valid"),
+            authkit_core::domain::Scope::parse("email").expect("valid"),
+        ]
+    } else {
+        scopes_str
+            .split_whitespace()
+            .filter_map(|s| authkit_core::domain::Scope::parse(s).ok())
+            .collect()
+    };
+    let allowed_scopes = authkit_core::domain::ScopeSet::new(scopes);
+    let client_name = if client_name_str.is_empty() {
+        DisplayName::parse("Web client").expect("valid")
+    } else {
+        match DisplayName::parse(&client_name_str) {
+            Ok(v) => v,
+            Err(_) => {
+                return render_admin_app_error(&csrf, "invalid client name");
+            }
+        }
+    };
+    let client_provision = Some(authkit_core::application::CreateApplicationClient {
+        name: client_name,
+        client_type,
+        client_id: client_id.clone(),
+        secret_hash,
+        redirect_uris: vec![redirect_uri],
+        allowed_scopes,
+    });
+
+    let uc = authkit_core::application::CreateApplication {
+        slug,
+        name,
+        primary_domain: primary_domain.clone(),
+        owner_id: owner.id().clone(),
+        client: client_provision,
+    };
+    let application = match tokio::task::spawn_blocking({
+        let store = store.clone();
+        move || {
+            uc.execute(
+                store.as_ref(),
+                &crate::session::SystemClock,
+                &crate::session::SecureIdGenerator,
+            )
+        }
+    })
+    .await
+    {
+        Ok(Ok(app)) => app,
+        _ => {
+            return render_admin_app_error(&csrf, "application provisioning failed");
+        }
+    };
+
+    let result = ProvisionResult {
+        application_id: application.id().as_str().to_owned(),
+        client_id: client_id.as_str().to_owned(),
+        client_secret: secret_plain.unwrap_or_else(|| "(public client)".to_owned()),
+    };
+    let template = AdminApplicationsTemplate {
+        title: "title_admin_applications",
+        csrf: &csrf,
+        result: Some(result),
+        error: "",
+    };
+    let body = template.render().unwrap_or_default();
+    html_ok(&body)
+}
+
+fn render_admin_app_error(csrf: &str, message: &str) -> Response {
+    let template = AdminApplicationsTemplate {
+        title: "title_admin_applications",
+        csrf,
+        result: None,
+        error: message,
+    };
+    let body = template.render().unwrap_or_default();
+    html_ok(&body)
+}
+
 pub(crate) async fn grant_admin(
     State(state): State<AppState>,
     session: Option<Extension<SessionContext>>,
@@ -592,7 +934,7 @@ pub(crate) async fn grant_admin(
     let target_user = tokio::task::spawn_blocking({
         let store = store.clone();
         let email = email.clone();
-        move || UserRepository::find_by_email(store.as_ref(), &email)
+        move || UserRepository::find_by_email(store.as_ref(), None, &email)
     })
     .await
     .ok()
@@ -1072,7 +1414,7 @@ pub(crate) async fn setup_submit(
     let user = tokio::task::spawn_blocking({
         let store = store.clone();
         let email = email.clone();
-        move || UserRepository::find_by_email(store.as_ref(), &email)
+        move || UserRepository::find_by_email(store.as_ref(), None, &email)
     })
     .await
     .ok()
@@ -1086,6 +1428,7 @@ pub(crate) async fn setup_submit(
             crate::session::SecureIdGenerator
                 .generate::<authkit_core::domain::id::UserEntity>()
                 .expect("id"),
+            None,
             email.clone(),
             display_name,
             now,

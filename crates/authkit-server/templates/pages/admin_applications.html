@@ -1,0 +1,31 @@
+{% extends "layouts/admin.html" %}
+{% import "macros/ui.html" as ui %}
+{% block admin_content %}
+<h1>Provision application</h1>
+{% if error != "" %}
+<p style="color:var(--danger);">{{ error }}</p>
+{% endif %}
+{% if result.is_some() %}
+<div class="card">
+  <p>Application created: {{ result.as_ref().unwrap().application_id }}</p>
+  <p>Client ID: <code>{{ result.as_ref().unwrap().client_id }}</code></p>
+  <p>Client secret (shown once): <code>{{ result.as_ref().unwrap().client_secret }}</code></p>
+</div>
+{% endif %}
+<div class="card">
+  <form method="post" action="/admin/applications">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <label>Slug<input name="slug" required></label>
+    <label>Name<input name="name" required></label>
+    <label>Primary domain<input name="primary_domain" required></label>
+    <label>Owner email<input name="owner_email" type="email" required></label>
+    <label>Owner password (new users only)<input name="owner_password" type="password"></label>
+    <label>Client name<input name="client_name"></label>
+    <label>Client type<select name="client_type"><option value="confidential">confidential</option><option value="public">public</option></select></label>
+    <label>Redirect URI<input name="redirect_uri"></label>
+    <label>Scopes<input name="scopes" placeholder="openid profile email"></label>
+    <label>TOTP code<input name="code" required></label>
+    <button type="submit">Provision</button>
+  </form>
+</div>
+{% endblock %}

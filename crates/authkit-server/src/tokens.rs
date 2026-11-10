@@ -7,7 +7,7 @@ use authkit_core::domain::audit::{
 };
 use authkit_core::domain::grant::{RefreshFamily, RefreshToken};
 use authkit_core::domain::id::{
-    AuditEventEntity, Id, OrganizationEntity, RefreshFamilyEntity, RefreshTokenEntity,
+    ApplicationEntity, AuditEventEntity, Id, RefreshFamilyEntity, RefreshTokenEntity,
     SessionEntity, UserEntity,
 };
 use authkit_core::domain::oauth_client::{ClientType, GrantType, OAuthClient};
@@ -16,7 +16,8 @@ use authkit_core::domain::secret::SecretHash;
 use authkit_core::domain::tenant::TenantContext;
 use authkit_core::domain::time::Timestamp;
 use authkit_core::domain::user::User;
-use authkit_core::domain::{ClientId, DomainError};
+use authkit_core::domain::{Application, ClientId, DomainError};
+use authkit_core::ports::ApplicationRepository;
 use authkit_core::ports::{
     Clock, IdGenerator, MembershipRepository, RefreshFamilyRepository, RefreshTokenRepository,
     SessionRepository, UserRepository, write::UnitOfWork, write::WriteBatch, write::WriteCommand,
@@ -255,8 +256,7 @@ impl TokenService {
                 RedeemError::Unavailable => temporarily_unavailable(),
             })?;
 
-        if code.organization_id() != context.organization().id() || code.client_id() != client.id()
-        {
+        if code.application_id() != context.organization().id() || code.client_id() != client.id() {
             return Err(invalid_grant());
         }
 
@@ -265,7 +265,7 @@ impl TokenService {
         let scopes = code.scopes().clone();
         let session_id = code.session_id().cloned();
         let auth_time = code.auth_time();
-        let organization_id = code.organization_id().clone();
+        let organization_id = code.application_id().clone();
 
         let access = self.sign_access(
             context,
@@ -277,6 +277,7 @@ impl TokenService {
         )?;
         let id_token = self.maybe_id_token(
             client,
+            context.organization(),
             &user,
             &scopes,
             session_id.as_ref(),
@@ -460,7 +461,7 @@ impl TokenService {
             .with(WriteCommand::AppendAudit {
                 tenant: context.tenant().clone(),
                 event: self.audit_event(
-                    Some(family.organization_id().clone()),
+                    Some(family.application_id().clone()),
                     AuditActor::User(family.user_id().clone()),
                     "token.refresh",
                     family.id().as_str(),
@@ -492,13 +493,14 @@ impl TokenService {
         let access = self.sign_access(
             context,
             family.user_id().as_str(),
-            family.organization_id(),
+            family.application_id(),
             &granted,
             family.session_id(),
             Some(family.auth_time()),
         )?;
         let id_token = self.maybe_id_token(
             client,
+            context.organization(),
             &user,
             &granted,
             family.session_id(),
@@ -586,7 +588,7 @@ impl TokenService {
 
     /// Validates an access token and returns scope-gated OpenID Connect claims.
     pub async fn userinfo(&self, token: &str) -> Result<Value, UserInfoError> {
-        let claims = self.decode_access_token(token)?;
+        let claims = self.decode_access_token(token).await?;
         if !scope_string_has(&claims.scope, "openid") {
             return Err(UserInfoError::InsufficientScope);
         }
@@ -649,7 +651,7 @@ impl TokenService {
         let version = family.version();
         family.revoke(now);
         let event = self.audit_event(
-            Some(family.organization_id().clone()),
+            Some(family.application_id().clone()),
             AuditActor::Client(context.client().id().clone()),
             "token.revoke",
             family.id().as_str(),
@@ -677,10 +679,10 @@ impl TokenService {
     /// Ends the browser session and validates an RP logout redirect.
     pub async fn logout(&self, request: LogoutRequest) -> Result<LogoutOutcome, OAuthError> {
         let now = self.clock.now();
-        let hint = request
-            .id_token_hint
-            .as_deref()
-            .and_then(|token| self.decode_id_token(token).ok());
+        let hint = match request.id_token_hint.as_deref() {
+            Some(token) => self.decode_id_token(token).await.ok(),
+            None => None,
+        };
 
         let client = match hint.as_ref() {
             Some(claims) => match ClientId::parse(claims.aud.as_str()) {
@@ -788,7 +790,7 @@ impl TokenService {
         &self,
         context: &ClientContext,
         subject: &str,
-        organization_id: &Id<OrganizationEntity>,
+        organization_id: &Id<ApplicationEntity>,
         scopes: &ScopeSet,
         session_id: Option<&Id<SessionEntity>>,
         auth_time: Option<Timestamp>,
@@ -796,8 +798,9 @@ impl TokenService {
         let now = self.clock.now();
         let issued_at = now.as_millis() / 1_000;
         let expiry = issued_at.saturating_add(self.policy.access_ttl_secs());
+        let issuer = issuer_for_application(context.organization(), self.issuer.as_str());
         let claims = AccessClaims {
-            iss: self.issuer.as_str().to_owned(),
+            iss: issuer,
             sub: subject.to_owned(),
             aud: context.client().client_id().as_str().to_owned(),
             exp: expiry,
@@ -813,9 +816,11 @@ impl TokenService {
         self.sign_jwt(ACCESS_TOKEN_TYPE, &claims)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn maybe_id_token(
         &self,
         client: &OAuthClient,
+        application: &Application,
         user: &User,
         scopes: &ScopeSet,
         session_id: Option<&Id<SessionEntity>>,
@@ -827,8 +832,9 @@ impl TokenService {
         }
         let now = self.clock.now();
         let issued_at = now.as_millis() / 1_000;
+        let issuer = issuer_for_application(application, self.issuer.as_str());
         let claims = IdTokenClaims {
-            iss: self.issuer.as_str().to_owned(),
+            iss: issuer,
             sub: user.id().as_str().to_owned(),
             aud: client.client_id().as_str().to_owned(),
             exp: issued_at.saturating_add(self.policy.id_ttl_secs()),
@@ -855,11 +861,27 @@ impl TokenService {
             .map_err(|_| server_error())
     }
 
-    fn decode_access_token(&self, token: &str) -> Result<AccessClaims, UserInfoError> {
+    async fn issuer_is_valid(&self, iss: &str) -> bool {
+        if iss == self.issuer.as_str() {
+            return true;
+        }
+        let domain = iss
+            .strip_prefix("https://")
+            .unwrap_or(iss)
+            .trim_end_matches('/')
+            .to_owned();
+        let store = self.store.clone();
+        let domain2 = domain.clone();
+        blocking(move || Ok(store.find_by_domain(&domain2).ok().flatten().is_some()))
+            .await
+            .unwrap_or(false)
+    }
+
+    async fn decode_access_token(&self, token: &str) -> Result<AccessClaims, UserInfoError> {
         let claims: AccessClaims = self
             .decode_jwt(token, ACCESS_TOKEN_TYPE)
             .map_err(|_| UserInfoError::InvalidToken)?;
-        if claims.iss != self.issuer.as_str()
+        if !self.issuer_is_valid(&claims.iss).await
             || !self.claims_are_current(claims.exp, claims.iat, Some(claims.nbf), 0)
         {
             return Err(UserInfoError::InvalidToken);
@@ -867,9 +889,9 @@ impl TokenService {
         Ok(claims)
     }
 
-    fn decode_id_token(&self, token: &str) -> Result<IdTokenClaims, OAuthError> {
+    async fn decode_id_token(&self, token: &str) -> Result<IdTokenClaims, OAuthError> {
         let claims: IdTokenClaims = self.decode_jwt(token, "JWT")?;
-        if claims.iss != self.issuer.as_str()
+        if !self.issuer_is_valid(&claims.iss).await
             || !self.claims_are_current(claims.exp, claims.iat, None, 300)
         {
             return Err(invalid_request());
@@ -918,7 +940,7 @@ impl TokenService {
         &self,
         context: &ClientContext,
         user_id: &Id<UserEntity>,
-        organization_id: &Id<OrganizationEntity>,
+        organization_id: &Id<ApplicationEntity>,
         scopes: &ScopeSet,
         session_id: Option<&Id<SessionEntity>>,
         auth_time: Timestamp,
@@ -995,7 +1017,7 @@ impl TokenService {
         let version = latest.version();
         latest.revoke(now);
         let event = self.audit_event(
-            Some(latest.organization_id().clone()),
+            Some(latest.application_id().clone()),
             AuditActor::User(latest.user_id().clone()),
             "token.refresh.reuse",
             latest.id().as_str(),
@@ -1018,7 +1040,7 @@ impl TokenService {
 
     fn audit_event(
         &self,
-        organization_id: Option<Id<OrganizationEntity>>,
+        organization_id: Option<Id<ApplicationEntity>>,
         actor: AuditActor,
         action: &str,
         target: &str,
@@ -1194,4 +1216,18 @@ const fn temporarily_unavailable() -> OAuthError {
         OAuthErrorCode::TemporarilyUnavailable,
         "the service is temporarily unavailable",
     )
+}
+
+/// Derives an issuer URL from an application's primary domain, falling back to the
+/// configured issuer when no domain is set.
+pub fn issuer_for_application(
+    application: &authkit_core::domain::Application,
+    fallback: &str,
+) -> String {
+    let domain = application.primary_domain();
+    if !domain.is_empty() {
+        format!("https://{domain}")
+    } else {
+        fallback.to_owned()
+    }
 }

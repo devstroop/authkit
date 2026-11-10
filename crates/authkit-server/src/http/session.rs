@@ -114,7 +114,9 @@ pub(crate) async fn session_context(
             .await;
         }
 
-        let skip_csrf = request.uri().path() == "/admin/restore" && is_multipart(request.headers());
+        let skip_csrf = (request.uri().path() == "/admin/restore"
+            && is_multipart(request.headers()))
+            || request.uri().path() == "/admin/impersonate/exit";
         if !skip_csrf {
             let (restored, supplied) = match extract_csrf(request).await {
                 Ok(parts) => parts,

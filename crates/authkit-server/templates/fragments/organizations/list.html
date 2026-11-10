@@ -13,9 +13,3 @@
 <li style="color:var(--muted);padding:var(--space-4);text-align:center;">{{ crate::i18n::t("no_organizations_yet") }}</li>
 {% endif %}
 </ul>
-<form method="post" action="/organizations" hx-post="/organizations" hx-target="#organizations" hx-swap="beforeend">
-  <input type="hidden" name="_csrf" value="{{ csrf }}">
-  {{ ui::text_input("slug", crate::i18n::t("slug"), "text", "") }}
-  {{ ui::text_input("name", crate::i18n::t("name"), "text", "") }}
-  {{ ui::button(crate::i18n::t("create")) }}
-</form>

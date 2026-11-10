@@ -27,7 +27,7 @@
       <button type="button" class="modal-close" onclick="document.getElementById('create-application-dialog').close()" aria-label="Close">×</button>
     </div>
     <div class="modal-body">
-      <form method="post" action="/organizations/{{ org_id }}/applications" hx-post="/organizations/{{ org_id }}/applications" hx-target="#applications" hx-swap="outerHTML">
+      <form method="post" action="/organizations/{{ application_id }}/applications" hx-post="/organizations/{{ application_id }}/applications" hx-target="#applications" hx-swap="outerHTML">
         <input type="hidden" name="_csrf" value="{{ csrf }}">
         {{ ui::text_input("slug", crate::i18n::t("slug"), "text", "") }}
         {{ ui::text_input("name", crate::i18n::t("name"), "text", "") }}
@@ -48,8 +48,8 @@
   </dialog>
   {% endif %}
   <p class="links">
-    <a href="/organizations/{{ org_id }}/members">{{ crate::i18n::t("members") }}</a>
-    <a href="/organizations/{{ org_id }}/oauth-clients">{{ crate::i18n::t("oauth_clients") }}</a>
+    <a href="/organizations/{{ application_id }}/members">{{ crate::i18n::t("members") }}</a>
+    <a href="/organizations/{{ application_id }}/oauth-clients">{{ crate::i18n::t("oauth_clients") }}</a>
   </p>
 </div>
 {% endblock %}

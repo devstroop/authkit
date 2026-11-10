@@ -16,6 +16,7 @@ pub mod password;
 pub mod session;
 pub mod signing;
 pub mod telemetry;
+pub mod tenant;
 pub mod tokens;
 pub mod totp;
 

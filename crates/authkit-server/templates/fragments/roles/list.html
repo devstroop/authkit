@@ -12,7 +12,7 @@
 </ul>
 {% if can_manage %}
 <h2 style="font-family:var(--font-display);font-size:1.5rem;font-weight:400;margin:var(--space-5) 0 var(--space-3);">{{ crate::i18n::t("create_role") }}</h2>
-<form method="post" action="/organizations/{{ org_id }}/roles" hx-post="/organizations/{{ org_id }}/roles" hx-target="#roles" hx-swap="outerHTML">
+<form method="post" action="/organizations/{{ application_id }}/roles" hx-post="/organizations/{{ application_id }}/roles" hx-target="#roles" hx-swap="outerHTML">
   <input type="hidden" name="_csrf" value="{{ csrf }}">
   {{ ui::text_input("slug", crate::i18n::t("slug"), "text", "") }}
   {{ ui::text_input("name", crate::i18n::t("name"), "text", "") }}
