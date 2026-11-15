@@ -36,7 +36,7 @@ pub(crate) async fn login_page() -> Response {
     html_ok(&body)
 }
 
-pub(crate) fn admin_login_html<'a>(status: StatusCode, error: &'a str) -> Response {
+pub(crate) fn admin_login_html(status: StatusCode, error: &str) -> Response {
     let template = AdminLoginTemplate {
         title: "title_admin_sign_in",
         error,
