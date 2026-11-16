@@ -594,6 +594,7 @@ fn system_administrator_role(
 ) -> Result<authkit_core::domain::SystemAdministratorRole, DomainError> {
     match value {
         "super_admin" => Ok(authkit_core::domain::SystemAdministratorRole::SuperAdmin),
+        "operator" => Ok(authkit_core::domain::SystemAdministratorRole::Operator),
         "auditor" => Ok(authkit_core::domain::SystemAdministratorRole::Auditor),
         _ => Err(invalid_stored_value()),
     }

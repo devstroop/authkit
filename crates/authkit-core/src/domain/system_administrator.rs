@@ -11,6 +11,7 @@ pub enum SystemAdministratorStatus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SystemAdministratorRole {
     SuperAdmin,
+    Operator,
     Auditor,
 }
 
@@ -33,12 +34,28 @@ impl SystemAdministrator {
         created_by: Option<Id<UserEntity>>,
         now: Timestamp,
     ) -> Self {
+        Self::new_with_role(
+            id,
+            user_id,
+            created_by,
+            SystemAdministratorRole::SuperAdmin,
+            now,
+        )
+    }
+
+    pub fn new_with_role(
+        id: Id<SystemAdministratorEntity>,
+        user_id: Id<UserEntity>,
+        created_by: Option<Id<UserEntity>>,
+        role: SystemAdministratorRole,
+        now: Timestamp,
+    ) -> Self {
         Self {
             id,
             user_id,
             created_by,
             status: SystemAdministratorStatus::Active,
-            role: SystemAdministratorRole::SuperAdmin,
+            role,
             created_at: now,
             updated_at: now,
             version: 0,
@@ -118,6 +135,43 @@ impl SystemAdministrator {
             self.updated_at = now;
             self.version = self.version.saturating_add(1);
         }
+    }
+
+    pub fn change_role(&mut self, role: SystemAdministratorRole, now: Timestamp) {
+        if self.role != role {
+            self.role = role;
+            self.updated_at = now;
+            self.version = self.version.saturating_add(1);
+        }
+    }
+
+    // Permission helpers.
+    pub const fn can_manage_admins(&self) -> bool {
+        matches!(self.role, SystemAdministratorRole::SuperAdmin)
+    }
+    pub const fn can_rotate_signing_keys(&self) -> bool {
+        matches!(self.role, SystemAdministratorRole::SuperAdmin)
+    }
+    pub const fn can_backup_restore(&self) -> bool {
+        matches!(self.role, SystemAdministratorRole::SuperAdmin)
+    }
+    pub const fn can_view_users(&self) -> bool {
+        true
+    }
+    pub const fn can_impersonate(&self) -> bool {
+        matches!(
+            self.role,
+            SystemAdministratorRole::SuperAdmin | SystemAdministratorRole::Operator
+        )
+    }
+    pub const fn can_view_audit(&self) -> bool {
+        true
+    }
+    pub const fn can_export_audit(&self) -> bool {
+        matches!(
+            self.role,
+            SystemAdministratorRole::SuperAdmin | SystemAdministratorRole::Auditor
+        )
     }
 }
 

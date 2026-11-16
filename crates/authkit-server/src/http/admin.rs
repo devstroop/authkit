@@ -4,7 +4,7 @@ use askama::Template;
 use authkit_core::domain::WriteOutcome;
 use authkit_core::domain::id::{CredentialEntity, SystemAdministratorEntity, UserEntity};
 use authkit_core::domain::{
-    Credential, CredentialKind, DisplayName, Email, Id, SystemAdministrator,
+    Credential, CredentialKind, DisplayName, Email, Id, SystemAdministrator, SystemAdministratorRole,
 };
 use authkit_core::ports::{
     CredentialRepository, IdGenerator, SystemAdministratorRepository, UserRepository,
@@ -150,7 +150,9 @@ struct AdminAuditTemplate<'a> {
 struct AdminTemplate<'a> {
     title: &'a str,
     csrf: &'a str,
-    can_manage: bool,
+    can_manage_admins: bool,
+    can_rotate_keys: bool,
+    can_backup_restore: bool,
     admins: Vec<AdminView>,
     keys: Vec<KeyView>,
     events: Vec<EventView>,
@@ -160,6 +162,7 @@ struct AdminView {
     email: String,
     id: String,
     status: String,
+    role: String,
     active: bool,
 }
 
@@ -195,7 +198,7 @@ struct UserView {
 struct AdminUsersTemplate<'a> {
     title: &'a str,
     csrf: &'a str,
-    can_manage: bool,
+    can_impersonate: bool,
     users: Vec<UserView>,
 }
 
@@ -277,6 +280,11 @@ pub(crate) async fn dashboard(
             } else {
                 "disabled".to_owned()
             },
+            role: match a.role() {
+                authkit_core::domain::SystemAdministratorRole::SuperAdmin => "super_admin".to_owned(),
+                authkit_core::domain::SystemAdministratorRole::Operator => "operator".to_owned(),
+                authkit_core::domain::SystemAdministratorRole::Auditor => "auditor".to_owned(),
+            },
             active: a.is_active(),
         });
     }
@@ -316,11 +324,13 @@ pub(crate) async fn dashboard(
         })
         .collect();
 
-    let caller_is_super = admin.as_ref().map(|a| a.is_super_admin()).unwrap_or(false);
+    let caller = admin.as_ref();
     let template = AdminTemplate {
         title: "title_admin",
         csrf: &csrf,
-        can_manage: caller_is_super,
+        can_manage_admins: caller.map(|a| a.can_manage_admins()).unwrap_or(false),
+        can_rotate_keys: caller.map(|a| a.can_rotate_signing_keys()).unwrap_or(false),
+        can_backup_restore: caller.map(|a| a.can_backup_restore()).unwrap_or(false),
         admins: admin_views,
         keys: key_views,
         events: event_views,
@@ -526,7 +536,7 @@ pub(crate) async fn users_page(
     if caller.is_none() {
         return forbidden();
     }
-    let can_manage = caller.map(|a| a.is_super_admin()).unwrap_or(false);
+    let can_impersonate = caller.map(|a| a.can_impersonate()).unwrap_or(false);
     let users = tokio::task::spawn_blocking({
         let store = store.clone();
         move || UserRepository::list(store.as_ref())
@@ -547,7 +557,7 @@ pub(crate) async fn users_page(
     let template = AdminUsersTemplate {
         title: "title_users",
         csrf: &csrf,
-        can_manage,
+        can_impersonate,
         users: user_views,
     };
     let body = template.render().unwrap_or_default();
@@ -575,11 +585,12 @@ pub(crate) async fn grant_admin(
     .await
     .ok()
     .and_then(|r| r.ok().flatten());
-    if !caller.map(|a| a.is_active()).unwrap_or(false) {
+    if !caller.map(|a| a.can_manage_admins()).unwrap_or(false) {
         return forbidden();
     }
     let mut params = parse_form(&body);
     let code = params.remove("code").unwrap_or_default();
+    let role_str = params.remove("role").unwrap_or_default();
     let user_id = session.session().user_id().clone();
     if !admin_totp_step_up(sessions, user_id.clone(), &code).await {
         return forbidden();
@@ -588,6 +599,12 @@ pub(crate) async fn grant_admin(
     let email = match Email::parse(&email_str) {
         Ok(v) => v,
         Err(_) => return bad_request(),
+    };
+    let role = match role_str.as_str() {
+        "operator" => SystemAdministratorRole::Operator,
+        "auditor" => SystemAdministratorRole::Auditor,
+        "super_admin" | "" => SystemAdministratorRole::SuperAdmin,
+        _ => return bad_request(),
     };
     let target_user = tokio::task::spawn_blocking({
         let store = store.clone();
@@ -602,12 +619,13 @@ pub(crate) async fn grant_admin(
     };
     let now = sessions.clock().now();
     let created_by = session.session().user_id().clone();
-    let admin = SystemAdministrator::new(
+    let admin = SystemAdministrator::new_with_role(
         crate::session::SecureIdGenerator
             .generate::<SystemAdministratorEntity>()
             .expect("id"),
         target_user.id().clone(),
         Some(created_by),
+        role,
         now,
     );
     let outcome = tokio::task::spawn_blocking({
@@ -650,7 +668,7 @@ pub(crate) async fn disable_admin(
     .await
     .ok()
     .and_then(|r| r.ok().flatten());
-    if !caller.map(|a| a.is_active()).unwrap_or(false) {
+    if !caller.map(|a| a.can_manage_admins()).unwrap_or(false) {
         return forbidden();
     }
     let mut params = parse_form(&body);
@@ -716,7 +734,7 @@ pub(crate) async fn rotate_signing_key(
     .await
     .ok()
     .and_then(|r| r.ok().flatten());
-    if !caller.map(|a| a.is_active()).unwrap_or(false) {
+    if !caller.map(|a| a.can_rotate_signing_keys()).unwrap_or(false) {
         return forbidden();
     }
     let mut params = parse_form(&body);
@@ -935,12 +953,25 @@ pub(crate) async fn impersonate(
     Path(user_id): Path<String>,
     session: Option<Extension<SessionContext>>,
 ) -> Response {
-    let Some(Extension(_admin_session)) = session else {
+    let Some(Extension(admin_session)) = session else {
         return redirect("/admin/login");
     };
     let Some(sessions) = state.sessions.as_ref() else {
         return unavailable();
     };
+    let admin_user_id = admin_session.session().user_id().clone();
+    let store = sessions.store().clone();
+    let caller = tokio::task::spawn_blocking({
+        let store = store.clone();
+        let admin_user_id = admin_user_id.clone();
+        move || SystemAdministratorRepository::find_by_user(store.as_ref(), &admin_user_id)
+    })
+    .await
+    .ok()
+    .and_then(|r| r.ok().flatten());
+    if !caller.map(|a| a.is_active() && a.can_impersonate()).unwrap_or(false) {
+        return forbidden();
+    }
     let uid = match Id::<UserEntity>::parse(user_id) {
         Ok(v) => v,
         Err(_) => return bad_request(),
@@ -1177,7 +1208,7 @@ pub(crate) async fn backup_download(
     .await
     .ok()
     .and_then(|r| r.ok().flatten());
-    if !caller.map(|a| a.is_super_admin()).unwrap_or(false) {
+    if !caller.map(|a| a.can_backup_restore()).unwrap_or(false) {
         return forbidden();
     }
 
@@ -1232,7 +1263,7 @@ pub(crate) async fn restore_page(
     .await
     .ok()
     .and_then(|r| r.ok().flatten());
-    if !caller.map(|a| a.is_super_admin()).unwrap_or(false) {
+    if !caller.map(|a| a.can_backup_restore()).unwrap_or(false) {
         return forbidden();
     }
     let csrf = sessions.csrf_token(session.session());
@@ -1267,7 +1298,7 @@ pub(crate) async fn restore_submit(
     .await
     .ok()
     .and_then(|r| r.ok().flatten());
-    if !caller.map(|a| a.is_super_admin()).unwrap_or(false) {
+    if !caller.map(|a| a.can_backup_restore()).unwrap_or(false) {
         return forbidden();
     }
     let csrf = sessions.csrf_token(session.session());

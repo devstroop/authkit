@@ -9,7 +9,7 @@
   <p style="color:var(--muted);">{{ crate::i18n::t("no_administrators") }}</p>
   {% else %}
   <table>
-    <thead><tr><th>{{ crate::i18n::t("email") }}</th><th>{{ crate::i18n::t("status") }}</th><th>{{ crate::i18n::t("actions") }}</th></tr></thead>
+    <thead><tr><th>{{ crate::i18n::t("email") }}</th><th>Role</th><th>{{ crate::i18n::t("status") }}</th><th>{{ crate::i18n::t("actions") }}</th></tr></thead>
     <tbody>
     {% for admin in admins %}
     <tr>
@@ -17,10 +17,11 @@
         <div style="font-weight:500;">{{ admin.email }}</div>
         <div style="font-size:0.8rem;color:var(--muted);font-family:monospace;">{{ admin.id }}</div>
       </td>
+      <td>{{ admin.role }}</td>
       <td>{{ admin.status }}</td>
       <td>
         {% if admin.active %}
-        {% if can_manage %}
+        {% if can_manage_admins %}
         <form method="post" action="/admin/administrators/{{ admin.id }}/disable" style="display:inline">
           <input type="hidden" name="_csrf" value="{{ csrf }}">
           <input type="text" name="code" placeholder="TOTP code" class="input" style="width:auto;padding:0.2rem 0.5rem;font-size:0.8rem;">
@@ -34,7 +35,7 @@
     </tbody>
   </table>
   {% endif %}
-  {% if can_manage %}
+  {% if can_manage_admins %}
   <div style="margin:var(--space-4) 0;">
     <button type="button" class="btn btn-primary" style="width:auto;" onclick="document.getElementById('grant-admin-dialog').showModal()">{{ crate::i18n::t("grant_admin") }}</button>
   </div>
@@ -47,6 +48,14 @@
       <form method="post" action="/admin/administrators" style="margin-top:var(--space-4);">
         <input type="hidden" name="_csrf" value="{{ csrf }}">
         {{ ui::text_input("email", crate::i18n::t("email"), "email", "email") }}
+        <label class="field">
+          <span>Role</span>
+          <select name="role" class="input" required aria-required="true">
+            <option value="super_admin">Super admin</option>
+            <option value="operator">Operator</option>
+            <option value="auditor">Auditor</option>
+          </select>
+        </label>
         {{ ui::text_input("code", "TOTP code", "text", "one-time-code") }}
         {{ ui::button(crate::i18n::t("grant_admin")) }}
       </form>
@@ -73,17 +82,17 @@
     </tbody>
   </table>
   {% endif %}
-  {% if can_manage %}
+  {% if can_rotate_keys %}
   <form method="post" action="/admin/signing-keys/rotate" style="margin-top:var(--space-4);">
     <input type="hidden" name="_csrf" value="{{ csrf }}">
     {{ ui::text_input("code", "TOTP code", "text", "one-time-code") }}
     {{ ui::button(crate::i18n::t("rotate_signing_key")) }}
   </form>
   {% endif %}
-  {% if can_manage %}
+  {% if can_backup_restore %}
   <p style="margin-top:var(--space-3);"><a class="btn btn-ghost" href="/admin/backup">Download backup</a></p>
   {% endif %}
-  {% if can_manage %}
+  {% if can_backup_restore %}
   <p style="margin-top:var(--space-3);"><a class="btn btn-ghost" href="/admin/restore">Restore database</a></p>
   {% endif %}
 </section>

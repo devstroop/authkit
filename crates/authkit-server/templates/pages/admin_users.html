@@ -25,7 +25,7 @@
       <td>{{ user.status }}</td>
       <td>{% if user.verified %}<span style="color:var(--primary);font-weight:600;">✓</span>{% else %}<span style="color:var(--muted);">—</span>{% endif %}</td>
       <td>
-        {% if can_manage %}
+        {% if can_impersonate %}
         <form method="post" action="/admin/impersonate/{{ user.id }}" style="display:inline">
           <input type="hidden" name="_csrf" value="{{ csrf }}">
           <button type="submit" class="btn btn-secondary" style="width:auto;padding:0.3rem 0.75rem;font-size:0.85rem;">{{ crate::i18n::t("impersonate") }}</button>

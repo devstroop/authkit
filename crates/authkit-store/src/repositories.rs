@@ -1720,6 +1720,7 @@ impl SystemAdministratorRepository for SqlStore {
                 .bind(status)
                 .bind(match admin.role() {
                     authkit_core::domain::SystemAdministratorRole::SuperAdmin => "super_admin",
+                    authkit_core::domain::SystemAdministratorRole::Operator => "operator",
                     authkit_core::domain::SystemAdministratorRole::Auditor => "auditor",
                 })
                 .bind(admin.created_at().as_millis() as i64)
@@ -1755,6 +1756,7 @@ impl SystemAdministratorRepository for SqlStore {
                 .bind(status)
                 .bind(match admin.role() {
                     authkit_core::domain::SystemAdministratorRole::SuperAdmin => "super_admin",
+                    authkit_core::domain::SystemAdministratorRole::Operator => "operator",
                     authkit_core::domain::SystemAdministratorRole::Auditor => "auditor",
                 })
                 .bind(admin.created_at().as_millis() as i64)
