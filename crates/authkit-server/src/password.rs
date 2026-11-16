@@ -17,6 +17,14 @@ pub fn hash_password(password: &str) -> Result<DomainVerifier, DomainError> {
     if password.len() < 12 {
         return Err(DomainError::invalid("password is too short"));
     }
+    let has_upper = password.chars().any(|c| c.is_ascii_uppercase());
+    let has_lower = password.chars().any(|c| c.is_ascii_lowercase());
+    let has_digit = password.chars().any(|c| c.is_ascii_digit());
+    if !(has_upper && has_lower && has_digit) {
+        return Err(DomainError::invalid(
+            "password must include uppercase, lowercase, and a digit",
+        ));
+    }
     let salt = SaltString::generate(&mut OsRng);
     let params = Params::new(MEMORY_KIB, TIME_COST, PARALLELISM, Some(32))
         .map_err(|_| DomainError::new(ErrorCode::Internal, "invalid Argon2 parameters"))?;
@@ -86,8 +94,11 @@ mod tests {
 
     #[test]
     fn round_trips() {
-        let verifier = hash_password("correct horse battery staple").expect("hash");
-        assert!(verify_password("correct horse battery staple", &verifier));
+        let verifier = hash_password("Correct horse battery staple 42").expect("hash");
+        assert!(verify_password(
+            "Correct horse battery staple 42",
+            &verifier
+        ));
         assert!(!verify_password("wrong password", &verifier));
     }
 

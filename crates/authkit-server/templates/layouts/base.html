@@ -3,7 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ crate::i18n::t(title) }}</title>
+  <title>{{ crate::branding::current_title(&crate::i18n::t(title)) }}</title>
+  {% if !crate::branding::current_favicon().is_empty() %}
+  <link rel="icon" href="{{ crate::branding::current_favicon() }}">
+  {% endif %}
+  {% if !crate::branding::current_custom_css().is_empty() %}
+  <style>{{ crate::branding::current_custom_css() | safe }}</style>
+  {% endif %}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..600&family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -94,12 +100,21 @@
       flex: 1;
       display: flex;
       align-items: center;
+      align-items: safe center;
       justify-content: center;
+      padding: var(--space-4);
+    }
+    main.admin-main {
+      align-items: stretch;
+      justify-content: flex-start;
+      padding: var(--space-4);
     }
     /* Auth shell */
     .auth-shell {
       display: grid;
       grid-template-columns: 1.1fr 1fr;
+      width: 100%;
+      margin-top: var(--space-4);
       border-radius: var(--radius-lg);
       overflow: hidden;
       box-shadow: var(--shadow-xl);
@@ -117,7 +132,8 @@
       color: #f5f2eb;
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
+      justify-content: center;
+      gap: var(--space-10);
       overflow: hidden;
     }
     @media (prefers-color-scheme: dark) {
@@ -198,7 +214,7 @@
     .auth-card {
       max-width: 22rem;
       width: 100%;
-      margin: 0 auto;
+      margin: var(--space-4) auto;
     }
     .auth-card h1 {
       font-family: var(--font-display);
@@ -319,12 +335,12 @@
       *, *::before, *::after { transition: none !important; animation: none !important; }
     }
     /* Admin */
-    .admin-layout { display: grid; grid-template-columns: 14rem 1fr; gap: var(--space-6); max-width: 76rem; margin: var(--space-6) auto; padding: 0 var(--space-4); }
+    .admin-layout { display: grid; grid-template-columns: 14rem minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: var(--space-6); width: 100%; max-width: none; margin: 0; min-width: 0; padding: var(--space-4); }
     .admin-nav {
       display: flex; flex-direction: column; gap: var(--space-1);
       padding: var(--space-3);
       background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--radius); height: fit-content; position: sticky; top: var(--space-4);
+      border-radius: var(--radius); align-self: start; position: sticky; top: var(--space-4);
       box-shadow: var(--shadow-sm);
     }
     .admin-nav a, .admin-nav button {
@@ -338,6 +354,7 @@
     .admin-content {
       background: var(--surface); border: 1px solid var(--border);
       border-radius: var(--radius); padding: var(--space-6); box-shadow: var(--shadow);
+      min-height: 0;
     }
     .card {
       background: var(--surface); border: 1px solid var(--border);
@@ -368,6 +385,7 @@
       .admin-layout { grid-template-columns: 1fr; }
       .admin-nav { flex-direction: row; flex-wrap: wrap; position: static; }
     }
+    .auth-footer { grid-template-columns: 1fr 1fr; }
     @media (max-width: 40rem) {
       .auth-shell { grid-template-columns: 1fr; min-height: 0; border-radius: 0; box-shadow: none; }
       .auth-brand { padding: var(--space-6) var(--space-5); min-height: 10rem; }
@@ -375,6 +393,7 @@
       .brand-sub { font-size: 0.95rem; }
       .auth-panel { padding: var(--space-5) var(--space-4); }
       .auth-card h1 { font-size: 2.25rem; }
+      .auth-footer { grid-template-columns: 1fr; }
     }
   
     /* Responsive helpers */
@@ -391,9 +410,6 @@
 
     table.table { display: block; overflow-x: auto; max-width: 100%; white-space: nowrap; }
     .empty-state { color: var(--muted); padding: var(--space-6); text-align: center; list-style: none; }
-    .auth-lang-switcher { position: fixed; top: 0.75rem; right: 0.75rem; z-index: 100; font-size: 0.75rem; display: flex; gap: 0.35rem; align-items: center; }
-    .auth-lang-switcher a { color: var(--muted); text-decoration: none; padding: 0.15rem 0.35rem; border-radius: 0.25rem; }
-    .auth-lang-switcher a:hover { color: var(--fg); background: var(--bg-2); }
     /* HTMX loading indicator */
     .htmx-indicator { display: none; }
     .htmx-request .htmx-indicator { display: inline-block; }
@@ -479,23 +495,10 @@
     </div>
   </header>
   {% endblock %}
-  <main id="main" aria-live="polite">
+  <main id="main" aria-live="polite" class="{% block main_class %}{% endblock %}">
     {% block content %}{% endblock %}
   </main>
-  {% block site_footer %}
-  <footer class="site-footer">
-    <div class="site-footer-inner" style="display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);flex-wrap:wrap;">
-      <span>© 2026 AuthKit · MIT / Apache-2.0 · Powered by <a href="https://devstroop.com" target="_blank" rel="noopener noreferrer" style="color:var(--muted);text-decoration:none;font-weight:500;">Devstroop</a></span>
-      <label style="display:flex;align-items:center;gap:var(--space-2);font-size:0.85rem;color:var(--muted);">
-        <span>Language</span>
-        <select id="lang-select" class="lang-select" aria-label="Language" onchange="setLang(this.value)">
-          <option value="en" {% if crate::i18n::current_locale().as_str() == "en" %}selected{% endif %}>English</option>
-          <option value="es" {% if crate::i18n::current_locale().as_str() == "es" %}selected{% endif %}>Español</option>
-        </select>
-      </label>
-    </div>
-  </footer>
-  {% endblock %}
+  {% block site_footer %}{% endblock %}
 <script>
 var EYE_OPEN = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
 var EYE_CLOSED = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
@@ -505,6 +508,9 @@ function togglePassword(id, btn) {
   if (input.type === "password") { input.type = "text"; btn.innerHTML = EYE_CLOSED; btn.setAttribute("aria-label", "Hide password"); }
   else { input.type = "password"; btn.innerHTML = EYE_OPEN; btn.setAttribute("aria-label", "Show password"); }
 }
+</script>
+<script>
+function setLang(lang){document.cookie="authkit_lang="+lang+"; path=/; max-age=31536000; SameSite=Lax";var u=new URL(window.location.href);u.searchParams.set("lang",lang);window.location.href=u.toString();}
 </script>
 <script>
 (function(){var m=document.cookie.match(/(?:^|; )authkit_impersonating=([^;]*)/);if(m){var b=document.createElement("div");b.style.cssText="position:fixed;top:0;left:0;right:0;background:#c25a38;color:#fff;padding:.7rem 1rem;text-align:center;z-index:9999;font-family:Manrope,sans-serif;font-size:.9rem;font-weight:500";b.textContent="{{ crate::i18n::t("impersonating") }}";var f=document.createElement("form");f.method="post";f.action="/admin/impersonate/exit";f.style.display="inline";f.style.marginLeft="1rem";var btn=document.createElement("button");btn.type="submit";btn.textContent="{{ crate::i18n::t("exit") }}";btn.style.cssText="background:#fff;color:#c25a38;border:0;padding:.25rem .75rem;border-radius:.375rem;cursor:pointer;font-weight:600;font-size:.85rem";f.appendChild(btn);b.appendChild(f);document.body.prepend(b);}})();

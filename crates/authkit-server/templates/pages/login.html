@@ -8,7 +8,6 @@
       <h2 class="brand-headline">{{ crate::i18n::t("brand_headline")  | safe }}</h2>
       <p class="brand-sub">{{ crate::i18n::t("brand_sub") }}</p>
     </div>
-    <div class="brand-foot">{{ crate::i18n::t("brand_foot") }}</div>
   </aside>
   <section class="auth-panel">
     <div class="auth-card">
@@ -34,8 +33,8 @@
       <div style="margin:var(--space-4) 0;display:flex;flex-direction:column;gap:var(--space-2);">
         <a class="btn btn-secondary" href="/magic-auth" style="text-align:center;text-decoration:none;">{{ crate::i18n::t("magic_auth") }}</a>
         <button type="button" id="pk-login" class="btn btn-secondary">{{ crate::i18n::t("sign_in_passkey") }}</button>
-        <p id="pk-login-status" style="margin-top:var(--space-2);font-size:0.85rem;color:var(--muted);"></p>
       </div>
+      <p id="pk-login-status" style="margin-top:var(--space-2);font-size:0.85rem;color:var(--muted);"></p>
       <p class="links" style="justify-content:center;margin-top:var(--space-2);">
         <span style="color:var(--muted);">{{ crate::i18n::t("dont_have_account") }}</span>
         <a href="/register">{{ crate::i18n::t("create_account") }}</a>

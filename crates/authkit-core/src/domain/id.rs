@@ -133,6 +133,11 @@ entity!(
     OneTimeTokenEntity,
     "tok"
 );
+entity!(
+    /// A deployment or organization brand (title, logo, favicon, custom CSS).
+    BrandEntity,
+    "brd"
+);
 
 /// A typed, prefix-validated entity identifier.
 ///
